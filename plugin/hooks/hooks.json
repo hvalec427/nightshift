@@ -1,10 +1,10 @@
 {
-  "description": "Every session gets nightshift's default instructions and this machine's own (~/.nightshift/instructions.md); nightshift runs have them in their system prompt instead.",
+  "description": "Every session gets nightshift's default instructions (the plugin's instructions.md); nightshift runs have them in their system prompt instead.",
   "hooks": {
     "SessionStart": [
       {
         "hooks": [
-          { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/instructions.sh\" hook" }
+          { "type": "command", "command": "[ -n \"${NIGHTSHIFT_ISSUE:-}\" ] || cat \"${CLAUDE_PLUGIN_ROOT}/instructions.md\" 2>/dev/null; exit 0" }
         ]
       }
     ]

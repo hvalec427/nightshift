@@ -296,8 +296,7 @@ ALLOWED_TOOLS='Bash(gh issue *) Bash(gh pr *) Bash(gh repo view *) Bash(gh api *
 # no user-level skills, settings, plugins or hooks, only the repo's own and
 # nightshift's plugin (its copy in $NS/plugin, which install.sh keeps), plus
 # rn-agent when it's installed. Attribution in commits and pull requests is
-# off; the plugin's instructions.md and ~/.nightshift/instructions.md say what
-# else to do (see run_claude).
+# off; the plugin's instructions.md says what else to do (see run_claude).
 RUN_SETTINGS='{"attribution":{"commit":"","pr":""}}'
 
 # rn-agent's plugin directory, if it's installed and enabled.
@@ -326,13 +325,9 @@ run_claude() {
     set -- "$@" --setting-sources project,local --settings "$RUN_SETTINGS" --plugin-dir "$NS/plugin"
     rn=$(rn_agent_dir) && set -- "$@" --plugin-dir "$rn"
   fi
-  # nightshift's defaults and this machine's instructions.md (the plugin's
-  # SessionStart hook skips runs); without the plugin's copy, the latter alone.
-  if [ -f "$NS/plugin/hooks/instructions.sh" ]; then
-    ins=$(NIGHTSHIFT_HOME=$NS sh "$NS/plugin/hooks/instructions.sh")
-  else
-    ins=$(cat "$NS/instructions.md" 2>/dev/null)
-  fi
+  # nightshift's defaults, from the plugin's copy (its SessionStart hook skips
+  # runs); without the copy, none.
+  ins=$(cat "$NS/plugin/instructions.md" 2>/dev/null)
   [ -n "$ins" ] && set -- "$@" --append-system-prompt "$ins"
   exec claude "$@" </dev/null
 }
@@ -1378,9 +1373,7 @@ cmd_doctor() {
   fi
   # Your own sessions get the instructions from the plugin's SessionStart hook.
   plugin nightshift "nightshift's plugin in Claude Code (your own sessions get the instructions)" "run install.sh again"
-  mine="(no $NS/instructions.md)"
-  [ -s "$NS/instructions.md" ] && mine="+ $NS/instructions.md"
-  if [ -s "$NS/plugin/instructions.md" ]; then pass "instructions: nightshift's defaults $mine"
+  if [ -s "$NS/plugin/instructions.md" ]; then pass "instructions: nightshift's defaults"
   else fail missing "nightshift's default instructions ($NS/plugin/instructions.md)" "run install.sh again"
   fi
   runs_line
@@ -1389,6 +1382,8 @@ cmd_doctor() {
     printf '  %-7s %s\n' note "isolated in the config is ignored now: runs are always isolated"
   grep -q '^permission_mode=' "$CONFIG" 2>/dev/null &&
     printf '  %-7s %s\n' note "permission_mode in the config is ignored now: runs always use auto"
+  [ -s "$NS/instructions.md" ] &&
+    printf '  %-7s %s\n' note "$NS/instructions.md is ignored now: runs use nightshift's defaults"
 
   echo "repos"
   rn=""

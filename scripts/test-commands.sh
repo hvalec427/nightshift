@@ -194,7 +194,7 @@ without() {
   expect_line "doctor: the token" "$OUT" "^  ok      Claude token ($NS/token)$"
   expect_line "doctor: the plugin copy" "$OUT" "^  ok      nightshift's plugin for runs ($NS/plugin)$"
   expect_line "doctor: the plugin in Claude Code" "$OUT" "^  ok      nightshift's plugin in Claude Code"
-  expect_line "doctor: the instructions" "$OUT" "^  ok      instructions: nightshift's defaults (no $NS/instructions.md)$"
+  expect_line "doctor: the instructions" "$OUT" "^  ok      instructions: nightshift's defaults$"
   expect_line "doctor: runs' model and effort, unset" "$OUT" "^  ok      runs: the account's default model, the default effort (set model= and effort= in $NS/config to choose)$"
   expect_line "doctor: the repo" "$OUT" "^  ok      o/r: clone $CLONE, \`agent\` label$"
   expect_line "doctor: a hint for merged branches" "$OUT" "^  hint    o/r: GitHub keeps merged branches"
@@ -270,7 +270,9 @@ without() {
 
 (healthy
   echo "mine" >"$NS/instructions.md"
-  expect_line "doctor: this machine's instructions" "$(ns doctor)" "^  ok      instructions: nightshift's defaults + $NS/instructions.md$")
+  try ns doctor
+  expect_line "doctor: a note for this machine's instructions.md" "$OUT" "^  note    $NS/instructions.md is ignored now: runs use nightshift's defaults$"
+  expect "doctor: the note isn't a problem" "$ST" 0)
 
 (healthy
   : >"$(gh_dir o/r)/labels"

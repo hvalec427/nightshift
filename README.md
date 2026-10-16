@@ -260,10 +260,8 @@ enabled get nightshift's default instructions:
 `~/.nightshift/plugin/instructions.md`), its rules for commit messages and pull
 requests, Conventional Commits and no AI attribution included. Runs get them in
 their system prompt, your own sessions from the plugin's `SessionStart` hook.
-To add to them, or override them, write your own rules in
-`~/.nightshift/instructions.md`: they come after the defaults and win where the
-two disagree. Each machine has its own; `nightshift doctor` says which ones
-apply.
+Only the defaults apply: a `~/.nightshift/instructions.md` from an older version
+is ignored (`nightshift doctor` notes it).
 
 ## A dedicated machine
 

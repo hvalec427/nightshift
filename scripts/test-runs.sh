@@ -150,13 +150,14 @@ AT_LABEL='i=0; until gh api "repos/$NIGHTSHIFT_REPO/issues/$NIGHTSHIFT_ISSUE" --
   poll
   expect_line "no plugin copy: says the run isn't isolated" "$(cat "$(idir 7)/log")" "run install.sh again): this run isn't isolated"
   expect "no plugin copy: no --setting-sources" "$(run_opt --setting-sources)" ""
-  expect "no plugin copy, no instructions.md: nothing appended" "$(run_opt --append-system-prompt)" "")
+  expect "no plugin copy: nothing appended" "$(run_opt --append-system-prompt)" "")
 
 (world
+  cp -R "$ROOT/plugin" "$NS/plugin"
   echo "Write in Slovenian." >"$NS/instructions.md"
   gh_issue o/r 7 alice agent
   poll
-  expect "no plugin copy: this machine's instructions alone" "$(run_opt --append-system-prompt)" "Write in Slovenian.")
+  expect "this machine's instructions.md: still only nightshift's defaults" "$(run_opt --append-system-prompt)" "$(cat "$ROOT/plugin/instructions.md")")
 
 (world
   cp -R "$ROOT/plugin" "$NS/plugin"
