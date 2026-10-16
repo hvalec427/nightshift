@@ -88,6 +88,12 @@ hang() {
   touch "$RUN/waiting"
   while kill -0 "$PPID" 2>/dev/null; do sleep 0.2; done
 }
+# Wait until $RUN/go exists (or nightshift's run is gone), then go on:
+# $RUN/waiting says it's waiting.
+hold() {
+  touch "$RUN/waiting"
+  while [ ! -e "$RUN/go" ] && kill -0 "$PPID" 2>/dev/null; do sleep 0.1; done
+}
 
 event "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"$session\"}"
 code=0

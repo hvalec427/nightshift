@@ -60,13 +60,13 @@ report() {
 world() {
   W=$(mktemp -d)
   W=$(cd "$W" && pwd -P)
-  mkdir -p "$W/home" "$W/ns/issues" "$W/gh" "$W/claude" "$W/bin"
-  export HOME="$W/home" NIGHTSHIFT_HOME="$W/ns" GH_FAKE="$W/gh" CLAUDE_FAKE="$W/claude"
+  mkdir -p "$W/home" "$W/ns/issues" "$W/gh" "$W/claude" "$W/curl" "$W/bin"
+  export HOME="$W/home" NIGHTSHIFT_HOME="$W/ns" GH_FAKE="$W/gh" CLAUDE_FAKE="$W/claude" CURL_FAKE="$W/curl"
   export XDG_CONFIG_HOME="$W/home/.config" GIT_CONFIG_NOSYSTEM=1
   export GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com
   # A LaunchAgent of its own, never the machine's.
   export NIGHTSHIFT_LABEL="com.nightshift.test.$$.${W##*.}"
-  unset NIGHTSHIFT_REPO NIGHTSHIFT_ISSUE NIGHTSHIFT_WAIT NIGHTSHIFT_LIB CLAUDE_CODE_OAUTH_TOKEN
+  unset NIGHTSHIFT_REPO NIGHTSHIFT_ISSUE NIGHTSHIFT_WAIT NIGHTSHIFT_LIB NIGHTSHIFT_UPDATING CLAUDE_CODE_OAUTH_TOKEN
   # The pull requests checked on every poll, not every 30 s.
   export NIGHTSHIFT_PR_INTERVAL=0
   # git and jq from wherever they are; nothing else of this machine's own
@@ -101,6 +101,15 @@ end_world() {
 
 # nightshift, as the user runs it.
 ns() { "$ROOT/nightshift" "$@"; }
+
+# nightshift as a release install has it: this clone's script, at version $1,
+# in $NS/bin/nightshift (written aside and moved in, as install.sh does).
+release_ns() {
+  mkdir -p "$NS/bin"
+  sed "s/^VERSION=dev\$/VERSION='$1'/" "$ROOT/nightshift" >"$NS/bin/nightshift.new"
+  chmod +x "$NS/bin/nightshift.new"
+  mv "$NS/bin/nightshift.new" "$NS/bin/nightshift"
+}
 
 # One poll, waiting for the runs it starts.
 poll() { "$ROOT/nightshift" once; }

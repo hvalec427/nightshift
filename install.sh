@@ -9,6 +9,8 @@
 #   … | sh -s -- --service
 #
 # Run it again to update. Run from a clone, it installs the clone's files.
+# A watch with auto_update=true runs it itself, with NIGHTSHIFT_UPDATING=1:
+# then it leaves the service as it is (the watch restarts itself).
 set -e
 
 REPO="hvalec427/nightshift"
@@ -53,7 +55,7 @@ fi
 mkdir -p "$BIN"
 # A running service is stopped (its runs cleanly) while its script is replaced.
 restart=0
-if [ -x "$BIN/nightshift" ] && launchctl print "$SERVICE" 2>/dev/null | grep -q '^	pid = '; then
+if [ -z "${NIGHTSHIFT_UPDATING:-}" ] && [ -x "$BIN/nightshift" ] && launchctl print "$SERVICE" 2>/dev/null | grep -q '^	pid = '; then
   restart=1
   "$BIN/nightshift" stop 2>/dev/null || launchctl bootout "$SERVICE" || true # before `nightshift stop` had no argument
 fi
@@ -66,11 +68,14 @@ else
   mkdir "$src"
   curl -fsSL "https://codeload.github.com/$REPO/tar.gz/$ref" | tar -xz -C "$src" --strip-components 1
 fi
-sed "s/^VERSION=dev\$/VERSION='$version'/" "$src/nightshift" >"$BIN/nightshift"
+# The script is written aside and moved in: a watch running it reads it as it
+# goes, so it must never change under it.
+sed "s/^VERSION=dev\$/VERSION='$version'/" "$src/nightshift" >"$BIN/nightshift.new"
+chmod +x "$BIN/nightshift.new"
 cp -R "$src/plugin" "$NS/plugin.new"
 [ -n "$here" ] || rm -rf "$src"
+mv "$BIN/nightshift.new" "$BIN/nightshift"
 rm -rf "$NS/plugin" && mv "$NS/plugin.new" "$NS/plugin"
-chmod +x "$BIN/nightshift"
 echo "nightshift $version installed to $BIN/nightshift (its plugin for runs: $NS/plugin)"
 
 # shellcheck disable=SC2016 # written to the rc file as is
@@ -107,7 +112,8 @@ fi
 # the new version, once nothing required is missing.
 echo "──"
 "$BIN/nightshift" doctor && ok=1 || ok=0
-if [ $service -eq 1 ] || [ $restart -eq 1 ]; then
+if [ -n "${NIGHTSHIFT_UPDATING:-}" ]; then :
+elif [ $service -eq 1 ] || [ $restart -eq 1 ]; then
   echo "──"
   if [ "$ok" -eq 1 ]; then
     "$BIN/nightshift" start || true

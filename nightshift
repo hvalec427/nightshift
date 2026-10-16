@@ -781,6 +781,11 @@ poll_repo() {
       echo "$updated" >"$d/updated"
       continue
     fi
+    if [ -n "$PENDING" ]; then
+      did="$did, #$n waits (updating)"
+      set_status "$repo" "$n" queued
+      continue # started by the new version
+    fi
     if [ "$(count_running)" -ge "$(setting max_parallel 2)" ]; then
       did="$did, #$n waits (at capacity)"
       set_status "$repo" "$n" queued
@@ -824,6 +829,43 @@ poll() {
   done
 }
 
+# --- updating itself --------------------------------------------------------------
+
+# The release a watch updates to once no run is in flight, while one is
+# pending (no runs start meanwhile).
+PENDING=""
+
+# With auto_update=true, a release install's watch asks for the latest release
+# once an hour (NIGHTSHIFT_UPDATE_INTERVAL is for tests). A newer one is
+# pending until the runs in flight finish; then its install.sh runs in update
+# mode (the service left as it is), and the watch execs the new script. A
+# failed update stays on this version until the next check.
+check_update() {
+  [ "$(setting auto_update false)" = true ] || return 0
+  case "$VERSION" in [0-9]*) ;; *) return 0 ;; esac
+  if [ -z "$PENDING" ]; then
+    f="$NS/poll/update" now=$(date +%s)
+    [ $((now - $(cat "$f" 2>/dev/null || echo 0))) -ge "${NIGHTSHIFT_UPDATE_INTERVAL:-3600}" ] || return 0
+    mkdir -p "$NS/poll" && echo "$now" >"$f"
+    latest=$(latest_release)
+    [ -n "$latest" ] && ! version_ge "$VERSION" "$latest" || return 0
+    PENDING=$latest
+    if [ "$(count_running)" -gt 0 ]; then log "v$PENDING is out: updating once the runs in flight finish"
+    else log "v$PENDING is out: updating to it"
+    fi
+  fi
+  [ "$(count_running)" -eq 0 ] || return 0
+  : >"$NS/update.log"
+  # Downloaded first: a failed download piped to sh would look like success.
+  if script=$(curl -fsSL --max-time 30 "https://raw.githubusercontent.com/$REPO/v$PENDING/install.sh" 2>>"$NS/update.log") &&
+    (cd "$NS" && printf '%s\n' "$script" | NIGHTSHIFT_UPDATING=1 sh) >>"$NS/update.log" 2>&1; then
+    log "updated to v$PENDING: restarting"
+    exec "$SELF" watch
+  fi
+  log "update to v$PENDING failed (see $NS/update.log): staying on $VERSION, trying again in an hour"
+  PENDING=""
+}
+
 # --- commands -------------------------------------------------------------------
 
 cmd_watch() {
@@ -834,10 +876,11 @@ cmd_watch() {
   fi
   echo $$ >"$NS/watch.pid"
   trap stop_watch TERM INT
-  log "watching: $(repos | cut -d' ' -f1 | tr '\n' ' ')"
+  log "watching (nightshift $VERSION): $(repos | cut -d' ' -f1 | tr '\n' ' ')"
   # For allowed_users' default, asked once (each poll asks if this fails).
   LOGIN=$(gh api user -q .login 2>/dev/null)
   while :; do
+    check_update
     poll
     trim_log
     sleep "$(setting interval 5)" &
