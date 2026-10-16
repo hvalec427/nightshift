@@ -24,6 +24,8 @@ LABELS_NOW='gh api "repos/$NIGHTSHIFT_REPO/issues/$NIGHTSHIFT_ISSUE" --jq ".labe
   expect_line "the prompt: a first run" "$(run_prompt)" "^This is your first run for this issue\.$"
   expect "no --resume on a first run" "$(run_opt --resume)" ""
   expect "the permission mode: auto by default" "$(run_opt --permission-mode)" auto
+  expect "no model set: no --model" "$(run_opt --model)" ""
+  expect "no effort set: no --effort" "$(run_opt --effort)" ""
   expect "stream-json out" "$(run_opt --output-format)" stream-json
   expect "the run knows its issue" "$(grep -E '^NIGHTSHIFT_(ISSUE|REPO)=' "$CLAUDE_FAKE/runs/1/env")" "NIGHTSHIFT_ISSUE=7
 NIGHTSHIFT_REPO=o/r"
@@ -176,5 +178,18 @@ AT_LABEL='i=0; until gh api "repos/$NIGHTSHIFT_REPO/issues/$NIGHTSHIFT_ISSUE" --
   expect "isolated false: no --plugin-dir" "$(run_opt --plugin-dir)" ""
   expect "isolated false: still the instructions" "$(run_opt --append-system-prompt)" "$(cat "$ROOT/plugin/instructions.md")"
   expect "permission_mode from the config" "$(run_opt --permission-mode)" bypassPermissions)
+
+(world
+  set_config model sonnet
+  set_config effort high
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  expect "the model from the config" "$(run_opt --model)" sonnet
+  expect "the effort from the config" "$(run_opt --effort)" high
+  gh_comment o/r 7 alice "1 yes" >/dev/null
+  poll
+  expect "a resumed run: still the model" "$(run_opt --model)" sonnet
+  expect "a resumed run: still the effort" "$(run_opt --effort)" high)
 
 report

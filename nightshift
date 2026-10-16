@@ -307,6 +307,10 @@ run_claude() {
   export PATH NIGHTSHIFT_REPO NIGHTSHIFT_ISSUE
   # shellcheck disable=SC2086 # $ALLOWED_TOOLS is a word per tool, $resume two words or none
   set -- -p "$1" --output-format stream-json --verbose --permission-mode "$mode" --allowedTools $ALLOWED_TOOLS $resume
+  # The config's model and effort, if set; unset, the account's default.
+  model=$(setting model "") effort=$(setting effort "")
+  [ -n "$model" ] && set -- "$@" --model "$model"
+  [ -n "$effort" ] && set -- "$@" --effort "$effort"
   # Without the plugin's copy (install.sh not run since), not isolated: the
   # run needs the issue skill.
   if [ "$(setting isolated true)" != false ] && [ ! -d "$NS/plugin" ]; then
