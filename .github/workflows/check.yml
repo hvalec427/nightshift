@@ -20,7 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Warnings and errors: info notes vary between shellcheck versions.
       - name: shellcheck
-        run: shellcheck nightshift install.sh scripts/*.sh
+        run: shellcheck -S warning nightshift install.sh scripts/*.sh
       - name: Release script tests
         run: bash scripts/test-release.sh

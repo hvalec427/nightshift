@@ -93,7 +93,7 @@ if command -v claude >/dev/null 2>&1; then
   if [ "$pinned" = "$REPO#$ref" ]; then
     claude plugin marketplace update nightshift
   else
-    [ -n "$pinned" ] && claude plugin marketplace remove nightshift >/dev/null || true
+    if [ -n "$pinned" ]; then claude plugin marketplace remove nightshift >/dev/null || true; fi
     claude plugin marketplace add "$REPO#$ref"
   fi
   claude plugin install nightshift@nightshift
