@@ -1,0 +1,12 @@
+{
+  "name": "nightshift",
+  "owner": { "name": "Žiga Hvalec" },
+  "description": "A machine that works your GitHub issues with Claude Code.",
+  "plugins": [
+    {
+      "name": "nightshift",
+      "source": "./plugin",
+      "description": "Work GitHub issues end to end, and finish any task as a pull request (with screenshots when an app is running)."
+    }
+  ]
+}

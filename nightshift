@@ -1,0 +1,281 @@
+#!/bin/sh
+# nightshift: work GitHub issues labelled `agent` with Claude Code, unattended.
+#
+#   nightshift watch                     poll the configured repos and run agents
+#   nightshift once                      one poll, then exit (for testing)
+#   nightshift status                    the issues it knows and what each is doing
+#   nightshift stop <owner/repo>#<n>     stop an issue's running agent
+#   nightshift add <owner/repo> <clone>  watch a repo, using this clone of it
+#
+# State lives in $NIGHTSHIFT_HOME (default ~/.nightshift): `config`, and per
+# issue `issues/<owner>_<repo>_<n>/` with `session` (the Claude session id),
+# `seen` (the last comment handed to the agent), `pid` while it runs, `pr`
+# once it opened one, and `log`.
+set -u
+
+NS="${NIGHTSHIFT_HOME:-$HOME/.nightshift}"
+SELF="$(cd "$(dirname "$0")" && pwd -P)/$(basename "$0")"
+CONFIG="$NS/config"
+MARKER="<!-- nightshift -->"
+LABEL=agent
+
+log() { printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >>"$NS/watch.log"; }
+die() { echo "nightshift: $*" >&2; exit 1; }
+
+# A `key=value` setting from the config, or a default.
+setting() {
+  v=$(sed -n "s/^$1=//p" "$CONFIG" 2>/dev/null | tail -1)
+  printf '%s' "${v:-$2}"
+}
+
+# `repo <owner/repo> <clone path>` lines.
+repos() { sed -n 's/^repo  *\([^ ]*\)  *\(.*\)$/\1 \2/p' "$CONFIG" 2>/dev/null; }
+
+allowed_users() {
+  u=$(setting allowed_users "")
+  [ -n "$u" ] || u=$(gh api user -q .login)
+  printf '%s' "$u"
+}
+
+# allowed_users as a jq array literal: ["a","b"].
+allowed_json() { printf '["%s"]' "$(allowed_users | sed 's/[ ,][ ,]*/","/g')"; }
+
+issue_dir() { printf '%s/issues/%s_%s' "$NS" "$(echo "$1" | tr '/' '_')" "$2"; }
+
+running() { [ -f "$1/pid" ] && kill -0 "$(cat "$1/pid")" 2>/dev/null; }
+
+count_running() {
+  n=0
+  for d in "$NS"/issues/*/; do
+    [ -d "$d" ] && running "${d%/}" && n=$((n + 1))
+  done
+  echo $n
+}
+
+# --- one agent run --------------------------------------------------------------
+
+# The issue's worktree in the repo's clone, created on the first run (or again,
+# on its existing branch, after it was removed).
+worktree() {
+  repo=$1 n=$2 clone=$3
+  wt="$clone/.claude/worktrees/issue-$n"
+  branch="nightshift/issue-$n"
+  if [ ! -d "$wt" ]; then
+    git -C "$clone" fetch -q origin >/dev/null 2>&1 || true
+    base=$(gh repo view "$repo" --json defaultBranchRef -q .defaultBranchRef.name)
+    mkdir -p "$clone/.claude/worktrees"
+    if git -C "$clone" rev-parse -q --verify "refs/heads/$branch" >/dev/null; then
+      git -C "$clone" worktree add -q "$wt" "$branch"
+    else
+      git -C "$clone" worktree add -q -b "$branch" "$wt" "origin/$base"
+    fi
+  fi
+  printf '%s' "$wt"
+}
+
+# Tools a run may use without asking, on top of the permission mode: the ones
+# that reach GitHub, which an automatic reviewer might otherwise hold back.
+ALLOWED_TOOLS='Bash(gh issue *) Bash(gh pr *) Bash(gh repo view *) Bash(gh api *) Bash(git *) Bash(signalbox *) Bash(boop *)'
+
+# `nightshift _run <repo> <n> <clone>`: one run, as its own process (its pid is
+# the issue's `pid`). SIGTERM stops its claude, which runs the SessionEnd hooks.
+run_agent() {
+  repo=$1 n=$2 clone=$3
+  dir=$(issue_dir "$repo" "$n")
+  news=$(cat "$dir/news" 2>/dev/null)
+  wt=$(worktree "$repo" "$n" "$clone") || { comment_failure "$repo" "$n" "couldn't create the worktree: see $dir/log"; return; }
+  echo "$wt" >"$dir/worktree"
+  if [ -s "$dir/session" ]; then
+    intro="New on the issue since your last run:
+
+$news"
+    resume="--resume $(cat "$dir/session")"
+  else
+    intro="This is your first run for this issue."
+    resume=""
+  fi
+  prompt="You are nightshift, working GitHub issue #$n in $repo, unattended: nobody is at a terminal, and you talk to the user only through the issue. Use the issue skill.
+This checkout is the issue's own worktree, on branch nightshift/issue-$n.
+
+$intro"
+  mode=$(setting permission_mode auto)
+  log "$repo#$n: run starting"
+  printf '\n=== %s run\n' "$(date '+%Y-%m-%d %H:%M:%S')" >>"$dir/log"
+  # shellcheck disable=SC2086 # $resume is two words or none
+  (cd "$wt" && exec claude -p "$prompt" --output-format json --permission-mode "$mode" --allowedTools $ALLOWED_TOOLS $resume) >"$dir/out.json" 2>>"$dir/log" &
+  cpid=$!
+  trap 'kill -TERM $cpid 2>/dev/null; stopped=1' TERM
+  stopped=0
+  wait $cpid
+  status=$?
+  # A signal interrupts `wait`; let claude finish its SessionEnd hooks.
+  while kill -0 $cpid 2>/dev/null; do sleep 1; done
+  if [ $stopped -eq 1 ]; then
+    log "$repo#$n: stopped"
+    return
+  fi
+  cat "$dir/out.json" >>"$dir/log"
+  sid=$(sed -n 's/.*"session_id" *: *"\([^"]*\)".*/\1/p' "$dir/out.json" | head -1)
+  [ -n "$sid" ] && echo "$sid" >"$dir/session"
+  if [ $status -ne 0 ] || grep -q '"is_error" *: *true' "$dir/out.json"; then
+    log "$repo#$n: run failed ($status)"
+    comment_failure "$repo" "$n" "$(tail -15 "$dir/log")"
+  else
+    log "$repo#$n: run done"
+  fi
+  # Once there's a pull request, the worktree's work is on GitHub: remove it
+  # (the branch stays; a later comment brings it back).
+  pr=$(gh pr list --repo "$repo" --head "nightshift/issue-$n" --state all --json url -q '.[0].url' 2>/dev/null)
+  if [ -n "$pr" ]; then
+    echo "$pr" >"$dir/pr"
+    if [ -z "$(git -C "$wt" status --porcelain 2>/dev/null)" ]; then
+      (cd "$wt" && signalbox down --detached-only >/dev/null 2>&1) || true
+      git -C "$clone" worktree remove --force "$wt" 2>>"$dir/log" && rm -f "$dir/worktree"
+    fi
+  fi
+}
+
+comment_failure() {
+  gh issue comment "$2" --repo "$1" --body "🤖 **nightshift**: the last run failed. Reply to try again.
+
+\`\`\`
+$3
+\`\`\`
+$MARKER" >/dev/null 2>&1 || log "$1#$2: couldn't comment the failure"
+}
+
+# --- polling --------------------------------------------------------------------
+
+poll_repo() {
+  repo=$1 clone=$2
+  allowed=$(allowed_json)
+  open=$(gh api "repos/$repo/issues?labels=$LABEL&state=open&per_page=100" \
+    --jq '.[] | select(.pull_request | not) | "\(.number) \(.updated_at)"' 2>>"$NS/watch.log") || { log "$repo: couldn't list issues"; return; }
+
+  # Issues no longer labelled (or closed): stop what's running there.
+  for d in "$NS/issues/$(echo "$repo" | tr '/' '_')"_*; do
+    [ -d "$d" ] || continue
+    n=${d##*_}
+    if ! printf '%s\n' "$open" | grep -q "^$n "; then
+      if running "$d"; then
+        kill -TERM "$(cat "$d/pid")" 2>/dev/null
+        log "$repo#$n: label removed or issue closed: stopped"
+      fi
+    fi
+  done
+
+  printf '%s\n' "$open" | {
+  while read -r n updated; do
+    [ -n "$n" ] || continue
+    d=$(issue_dir "$repo" "$n")
+    running "$d" && continue
+    [ -f "$d/updated" ] && [ "$(cat "$d/updated")" = "$updated" ] && continue
+    if [ ! -d "$d" ]; then
+      # Only a label added by an allowed user starts work.
+      by=$(gh api --paginate "repos/$repo/issues/$n/events" \
+        --jq "[.[] | select(.event == \"labeled\" and .label.name == \"$LABEL\")] | last | .actor.login // empty" 2>/dev/null | tail -1)
+      if ! printf '%s' "$allowed" | grep -q "\"$by\""; then
+        log "$repo#$n: labelled by ${by:-unknown}, not an allowed user: ignored"
+        mkdir -p "$d" && echo "$updated" >"$d/updated" && touch "$d/ignored"
+        continue
+      fi
+      mkdir -p "$d"
+    fi
+    [ -f "$d/ignored" ] && { echo "$updated" >"$d/updated"; continue; }
+    seen=$(cat "$d/seen" 2>/dev/null || echo 0)
+    filter=".[] | select(.id > $seen and (.user.login as \$u | $allowed | index(\$u)) and (.body | contains(\"$MARKER\") | not))"
+    news=$(gh api --paginate "repos/$repo/issues/$n/comments?per_page=100" \
+      --jq "$filter | \"- @\(.user.login) (comment \(.id)):\n\n\(.body[0:3000])\n\"" 2>>"$NS/watch.log")
+    last=$(gh api --paginate "repos/$repo/issues/$n/comments?per_page=100" --jq "$filter | .id" 2>/dev/null | tail -1)
+    first_run=0
+    [ -s "$d/session" ] || [ -f "$d/started" ] || first_run=1
+    if [ $first_run -eq 0 ] && [ -z "$news" ]; then
+      echo "$updated" >"$d/updated"
+      continue
+    fi
+    if [ "$(count_running)" -ge "$(setting max_parallel 2)" ]; then
+      continue # at capacity: picked up on a later poll
+    fi
+    [ -n "$last" ] && echo "$last" >"$d/seen"
+    echo "$updated" >"$d/updated"
+    touch "$d/started"
+    printf '%s' "$news" >"$d/news"
+    "$SELF" _run "$repo" "$n" "$clone" &
+    echo $! >"$d/pid"
+  done
+  # `once` waits for the runs it started (they're children of this pipeline).
+  if [ "${NIGHTSHIFT_WAIT:-}" = 1 ]; then wait; fi
+  }
+}
+
+poll() {
+  repos | while read -r repo clone; do
+    [ -d "$clone/.git" ] || [ -f "$clone/.git" ] || { log "$repo: $clone isn't a git checkout"; continue; }
+    poll_repo "$repo" "$clone"
+  done
+}
+
+# --- commands -------------------------------------------------------------------
+
+cmd_watch() {
+  [ -s "$CONFIG" ] || die "no repos to watch yet: nightshift add <owner/repo> <clone>"
+  if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && [ -s "$NS/token" ]; then
+    CLAUDE_CODE_OAUTH_TOKEN=$(cat "$NS/token")
+    export CLAUDE_CODE_OAUTH_TOKEN
+  fi
+  log "watching: $(repos | cut -d' ' -f1 | tr '\n' ' ')"
+  while :; do
+    poll
+    sleep "$(setting interval 30)"
+  done
+}
+
+cmd_status() {
+  found=0
+  for d in "$NS"/issues/*/; do
+    [ -d "$d" ] || continue
+    d=${d%/}
+    found=1
+    name=$(basename "$d")
+    n=${name##*_}
+    repo=$(echo "${name%_*}" | sed 's/_/\//')
+    if [ -f "$d/ignored" ]; then what="ignored (labelled by someone else)"
+    elif running "$d"; then what="running (pid $(cat "$d/pid"))"
+    elif [ -f "$d/pr" ]; then what="PR $(cat "$d/pr")"
+    elif [ -s "$d/session" ]; then what="waiting for a reply"
+    else what="queued"
+    fi
+    printf '%-40s %s\n' "$repo#$n" "$what"
+  done
+  [ $found -eq 1 ] || echo "no issues yet"
+}
+
+cmd_stop() {
+  case "$1" in */*#*) ;; *) die "usage: nightshift stop <owner/repo>#<n>" ;; esac
+  d=$(issue_dir "${1%#*}" "${1##*#}")
+  running "$d" || die "$1 isn't running"
+  kill -TERM "$(cat "$d/pid")" && echo "stopped $1"
+}
+
+cmd_add() {
+  [ $# -eq 2 ] || die "usage: nightshift add <owner/repo> <clone path>"
+  clone=$(cd "$2" 2>/dev/null && pwd -P) || die "$2 doesn't exist"
+  git -C "$clone" rev-parse --git-dir >/dev/null 2>&1 || die "$clone isn't a git checkout"
+  mkdir -p "$NS"
+  touch "$CONFIG"
+  grep -q "^repo $1 " "$CONFIG" && die "$1 is already watched"
+  echo "repo $1 $clone" >>"$CONFIG"
+  gh label create "$LABEL" --repo "$1" --color 5319E7 --description "nightshift works this issue" >/dev/null 2>&1 || true
+  echo "watching $1 (clone: $clone); add the \`$LABEL\` label to an issue to start"
+}
+
+mkdir -p "$NS/issues"
+case "${1:-}" in
+watch) cmd_watch ;;
+once) NIGHTSHIFT_WAIT=1; export NIGHTSHIFT_WAIT; poll ;;
+_run) shift; run_agent "$@"; rm -f "$(issue_dir "$1" "$2")/pid" ;;
+status) cmd_status ;;
+stop) shift; cmd_stop "${1:-}" ;;
+add) shift; cmd_add "$@" ;;
+*) sed -n '2,8s/^# \{0,1\}//p' "$0"; exit 2 ;;
+esac

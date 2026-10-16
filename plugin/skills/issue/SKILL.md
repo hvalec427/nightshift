@@ -1,0 +1,72 @@
+---
+name: issue
+description: Work a GitHub issue end to end, unattended, talking to the user only through the issue: clarify it, plan it as a spec and tickets, build the tickets in order, open a pull request. Use when nightshift starts you on an issue.
+user-invocable: false
+---
+
+# Work an issue
+
+You run unattended, one run at a time: each run ends when you've done what you can until
+the user replies, and their next comment on the issue starts the next run, in this same
+session. The issue thread is your only channel, so every question, plan and report goes
+there as a comment; nobody reads the terminal.
+
+## Comments
+
+Write every comment with `gh issue comment <n> --body-file <file>`, as:
+
+```
+🤖 **nightshift** · <stage>
+
+<the content>
+
+<!-- nightshift --> <!-- nightshift:<stage> -->
+```
+
+`<!-- nightshift -->` is how the watcher tells your comments from the user's; keep it in
+every one. The stages are `questions`, `plan`, `progress`, `done` and `blocked`.
+
+## Where the issue stands
+
+Read the thread first (`gh issue view <n> --comments`), then do the first of these that
+applies, and end the run after its comment:
+
+1. **No plan yet, open decisions.** Read the issue and the code. Decisions that are the
+   user's (behaviour, scope, UX, trade-offs) and that the issue and the code don't settle
+   go in one `questions` comment: numbered, each with your recommended answer, so the user
+   can reply "1 yes, 2 b". Ask the questions that change what gets built; settle the rest
+   yourself and say how. This is Matt Pocock's grilling, batched for an issue.
+2. **No plan yet, nothing open** (or the answers are in). Write the plan as one `plan`
+   comment:
+   - **Spec**, following `~/.claude/skills/to-spec/SKILL.md` (problem, solution, user
+     stories, implementation and testing decisions), sized to the issue: a small change
+     gets a few lines.
+   - **Tickets**, following `~/.claude/skills/to-tickets/SKILL.md`: tracer-bullet vertical
+     slices in build order, each with what it delivers, what blocks it and its acceptance
+     criteria, numbered `T1`, `T2`, …, all in this comment (no new issues).
+   - It ends with "Reply **go** to build it, or tell me what to change."
+
+   Read those two files as instructions; they're the user's own skills, and only the user
+   can invoke them. If they aren't there, use the same structure.
+3. **A plan, and the user asked for changes.** A revised `plan` comment, then wait again.
+4. **A plan the user approved** ("go", or anything that clearly means build it). Build the
+   tickets in order, in this worktree:
+   - Each ticket test-first where it has logic to test (the `tdd` skill), checked the way
+     the repo is checked: in a React Native app, on its own simulator with the run-app
+     skill; elsewhere with the project's build, typecheck, lint and tests.
+   - Commit each ticket on its own, in the repo's and the user's commit style, and post a
+     short `progress` comment: what the ticket delivered and how it was checked.
+   - A ticket that can't be finished (a decision the plan didn't cover, a broken
+     dependency): a `blocked` comment saying what's needed, and end the run.
+   - After the last ticket, use the **finish** skill to open the pull request. Then a
+     `done` comment with its link and what's in it. The watcher removes the worktree after
+     this run.
+5. **A pull request is open, and the user commented.** Do what they ask on this branch,
+   check it, commit, push, and reply with a `progress` comment. The pull request updates
+   with the push.
+
+## Bounds
+
+- Stay inside this worktree and this issue; other issues and branches are other runs.
+- Ask through a `questions` or `blocked` comment instead of guessing at the user's
+  decisions; anything else, decide and say what you decided.
