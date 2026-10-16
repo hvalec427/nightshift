@@ -10,8 +10,7 @@ The issue skill sent you here, and its rules (comments, the status label, the is
 overlap, bounds) hold throughout. The test-first guidance below is adapted from Matt
 Pocock's `tdd` skill (see `THIRD_PARTY.md` in the plugin).
 
-`nightshift label building`, then build the tickets in order, one at a time, in this
-worktree:
+Build the tickets in order, one at a time, in this worktree:
 
 - Each ticket test-first where it has logic to test (**test first**, below), checked the
   way the repo is checked: in a React Native app, on its own simulator with the run-app

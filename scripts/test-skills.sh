@@ -34,6 +34,11 @@ while IFS= read -r f; do
 done < <(find "$SKILLS" -name '*.md')
 expect "every link in a skill resolves" "$dangling" ""
 
+expect_line "comments name the skill that wrote them" "$(cat "$ISSUE")" \
+  '^🤖 \*\*nightshift\*\* · <stage> · `nightshift:<skill>`$'
+expect "no skill sets the status label: the watcher does, from the skill" \
+  "$(grep -l 'nightshift label' "$SKILLS"/*/SKILL.md | sed "s|^$SKILLS/||")" ""
+
 expect "the issue skill is its SKILL.md alone, the stages' guidance in their skills" \
   "$(cd "$SKILLS/issue" && find . -type f)" "./SKILL.md"
 

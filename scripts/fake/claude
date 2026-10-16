@@ -57,6 +57,8 @@ ${2:-Some $1.}
   tool_use "gh issue comment $NIGHTSHIFT_ISSUE --body \"$body\""
   gh issue comment "$NIGHTSHIFT_ISSUE" --repo "$NIGHTSHIFT_REPO" --body "$body" >/dev/null
 }
+# The skill $1 invoked (`nightshift:plan`, …), as the Skill tool does.
+skill() { jq -cn --arg s "$1" '{type: "assistant", message: {content: [{type: "tool_use", name: "Skill", input: {skill: $s}}]}}'; }
 # The status label $1, through nightshift.
 label() { tool_use "nightshift label $1"; nightshift label "$1"; }
 # A commit of file $1 (with content $2) on the issue's branch.

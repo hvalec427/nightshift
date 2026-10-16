@@ -12,7 +12,7 @@ Pocock's `to-spec` and `to-tickets` skills (see `THIRD_PARTY.md` in the plugin).
 
 ## The plan comment
 
-`nightshift label planning`, then write the plan as one `plan` comment, short enough to
+Write the plan as one `plan` comment, short enough to
 read in a minute:
 
 - **On top:** what gets built, in two or three lines; the decisions the user should see;

@@ -64,6 +64,25 @@ no issues yet"
   mkdir -p "$(idir 9)"
   expect_line "status: one never run" "$(ns status)" "^o/r#9  *queued$")
 
+(world
+  gh_issue o/r 7 alice agent
+  runs_do 'skill nightshift:plan; hang'
+  "$ROOT/nightshift" once &
+  bg=$!
+  wait_for "$CLAUDE_FAKE/runs/1/waiting"
+  wait_for "$(idir 7)/skill"
+  expect_line "status: a run going, its skill" "$(ns status)" \
+    "^o/r#7  *planning · nightshift:plan [0-9]*s (pid $(state 7 pid))$"
+  ns stop o/r#7 >/dev/null
+  wait "$bg"
+  runs_do 'skill nightshift:questions; comment questions'
+  gh_comment o/r 7 alice "go on" >/dev/null
+  poll
+  expect_line "status: waiting, the skill it ended in" "$(ns status)" "^o/r#7  *needs you · nightshift:questions · [0-9]*s · spent "
+  echo https://github.com/o/r/pull/1 >"$(idir 7)/pr"
+  echo "PR open" >"$(idir 7)/label"
+  expect_line "status: a pull request, the skill it ended in" "$(ns status)" "^o/r#7  *PR https://github.com/o/r/pull/1 · nightshift:questions · waiting [0-9]*s · spent ")
+
 # --- logs -------------------------------------------------------------------------
 
 LOG="0	2026-10-16 10:00:00 a run
@@ -132,7 +151,7 @@ an old line"
   export NIGHTSHIFT_REPO=o/r NIGHTSHIFT_ISSUE=7
   try ns label loud
   expect "label, an unknown status: the statuses" "$ST $OUT" \
-    "1 nightshift: usage: nightshift label <status>: one of queued, thinking, planning, building, updating, needs you, PR open, stopped"
+    "1 nightshift: usage: nightshift label <status>: one of queued, thinking, planning, building, updating, answering, needs you, PR open, stopped"
   ns label building
   expect "label: sets it" "$(status_label 7)" building
   ns label "needs you"
