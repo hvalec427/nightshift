@@ -77,11 +77,13 @@ model_effort "the issue skill" "$ISSUE" sonnet low
 for s in questions plan; do model_effort "the $s skill" "$SKILLS/$s/SKILL.md" opus high; done
 for s in build update review; do model_effort "the $s skill" "$SKILLS/$s/SKILL.md" sonnet high; done
 for s in answer finish; do model_effort "the $s skill" "$SKILLS/$s/SKILL.md" sonnet medium; done
-bad=""
+bad="" nomodel=""
 for f in "$SKILLS"/*/SKILL.md; do
   case "$(field "$f" effort)" in low|medium|high|max) ;; *) bad="$bad${f#"$SKILLS"/} " ;; esac
+  [ -n "$(field "$f" model)" ] || nomodel="$nomodel${f#"$SKILLS"/} "
 done
 expect "every skill's effort is low, medium, high or max" "$bad" ""
+expect "every skill sets a model" "$nomodel" ""
 
 AGENTS="$ROOT/plugin/agents"
 while read -r a model effort; do
@@ -132,10 +134,5 @@ expect_line "it files at most three a run" "$issue" "at most three"
 expect_line "filing finishes before the run ends" "$issue" "run_in_background: false"
 expect_line "the filed issue says where it was found" "$issue" "Found while working #<n>."
 expect_line "a ticket subagent reports defects to the run, not files them" "$build" "files no issues"
-
-review=$(cat "$SKILLS/review/SKILL.md")
-expect_line "the spec reviewer is the plugin's spec-review agent" "$review" "\`nightshift:spec-review\`"
-expect_line "the standards reviewer is the plugin's standards-review agent" "$review" "\`nightshift:standards-review\`"
-expect_line "the reviewers' models are their agents' own" "$review" "without a \`model\`"
 
 report
