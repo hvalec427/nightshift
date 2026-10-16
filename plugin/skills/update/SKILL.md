@@ -18,7 +18,8 @@ requests can merge in any order:
   duplicates it: use what landed instead of a copy, follow a rename, drop what's done.
   Rebasing alone isn't enough.
 - Run the full checks again, as for a ticket (the build skill), then
-  `git push --force-with-lease origin HEAD`.
+  `git push --force-with-lease origin HEAD`. Run them in the foreground and wait for
+  them: a run ends when you stop.
 - Update the overlap lines in the PR body (`gh pr edit --body-file`): drop the ones
   about the merged work, and add any new ones.
 - A `progress` comment: what conflicted and how you fixed it, then what changed beyond
