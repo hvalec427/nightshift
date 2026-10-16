@@ -97,9 +97,9 @@ in `~/.nightshift`. A merged branch is deleted, here and on GitHub, unless it ha
 commits the pull request didn't (a failed delete on GitHub is logged, not fatal). A comment on a done issue (open and labelled) picks it up again.
 
 Each run starts in the plugin's `issue` skill, which reads the thread and hands the
-stage to a skill of its own: `questions`, `plan`, `build` (then `review` and `finish`), `update`, or
-`answer` for question and duplicate issues. Invoking a skill loads all of its guidance,
-so no stage runs without it. The status label follows the skill, `nightshift logs`
+stage to a skill of its own: `questions`, `plan`, `build` (then `review` and
+`finish`), `update`, or `answer` for question and duplicate issues. Invoking a
+skill loads all of its guidance, so no stage runs without it. The status label follows the skill, `nightshift logs`
 shows each one a run invokes, and each comment names the skill that wrote it
 (`🤖 nightshift · plan · nightshift:plan`).
 
@@ -146,7 +146,7 @@ waiting on you:
 
 The watcher sets them as runs start and end, and as a run invokes one of
 nightshift's skills: `nightshift:questions` sets `thinking`, `plan` `planning`,
-`build` and `finish` `building`, `update` `updating` and `answer` `answering`
+`build`, `review` and `finish` `building`, `update` `updating` and `answer` `answering`
 (`nightshift label <status>` sets one by hand). They come off once it's done, or when you remove the `agent` label with nothing
 running (and come back with it). `nightshift status` says the same, with the
 skill a run is in (or its last one ended in).
