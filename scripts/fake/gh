@@ -1,0 +1,167 @@
+#!/usr/bin/env bash
+# A fake gh for the tests: the commands nightshift (and a fake run) use,
+# against GitHub as files in $GH_FAKE (see github.sh). Every call is logged to
+# $GH_FAKE/calls, a line each; one matching a pattern in $GH_FAKE/fail fails;
+# one it doesn't know is logged to $GH_FAKE/unexpected and fails, so a test
+# can't pass on an answer nobody gave.
+set -u
+: "${GH_FAKE:?}"
+# shellcheck source=github.sh
+. "$(dirname "$0")/github.sh"
+
+call="$*"
+printf '%s\n' "$call" | tr '\n' ' ' | sed 's/ $//' >>"$GH_FAKE/calls"
+echo >>"$GH_FAKE/calls"
+if [ -f "$GH_FAKE/fail" ]; then
+  while IFS= read -r p; do
+    # shellcheck disable=SC2053 # a glob, on purpose
+    [ -n "$p" ] && [[ "$call" == $p ]] && { echo "fake gh: failing, as told: $call" >&2; exit 1; }
+  done <"$GH_FAKE/fail"
+fi
+
+unexpected() {
+  printf '%s\n' "$call" >>"$GH_FAKE/unexpected"
+  echo "fake gh: unexpected call: $call" >&2
+  exit 2
+}
+not_found() { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
+
+# The options every command here takes: --jq/-q, --json, --repo, and the rest
+# as name/value pairs, positionals in POS.
+jqf="" repo="" POS=() OPTS=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+  -q | --jq) jqf=$2; shift ;;
+  -R | --repo) repo=$2; shift ;;
+  --json | -X | --method | --state | --limit | --head | --base | --title | --body | --body-file | \
+    --add-label | --remove-label | --color | --description | -F | -f) OPTS+=("$1" "$2"); shift ;;
+  --paginate | --force | --version) OPTS+=("$1" "") ;;
+  -*) unexpected ;;
+  *) POS+=("$1") ;;
+  esac
+  shift
+done
+# An option's value (empty if not given).
+opt() {
+  local i
+  for ((i = 0; i < ${#OPTS[@]}; i += 2)); do
+    [ "${OPTS[i]}" = "$1" ] && { printf '%s' "${OPTS[i + 1]}"; return 0; }
+  done
+  return 1
+}
+
+# JSON on stdin, as gh prints it: through --jq when given (strings raw, null
+# as an empty line), else as it is.
+out() {
+  if [ -n "$jqf" ]; then jq -r -c "($jqf) | if . == null then \"\" else . end"
+  else cat
+  fi
+}
+
+D=""
+in_repo() { D=$(gh_dir "$1"); [ -d "$D" ] || not_found; }
+
+api() {
+  local path=${POS[1]:-} method r owner name rest n f
+  method=$(opt -X || opt --method) || method=GET
+  [ "$path" = user ] && { jq -n --arg l "$(cat "$GH_FAKE/user")" '{login: $l}' | out; return; }
+  owner=$(echo "$path" | cut -d/ -f2) name=$(echo "$path" | cut -d/ -f3)
+  r="$owner/$name" rest=${path#repos/"$r"}
+  case "$path" in repos/*/*) ;; *) unexpected ;; esac
+  in_repo "$r"
+  case "$method $rest" in
+  "GET ") out <"$D/repo.json" ;;
+  "GET /issues?"*)
+    case "$rest" in *labels=*) ;; *) unexpected ;; esac
+    l=$(echo "$rest" | sed -n 's/.*labels=\([^&]*\).*/\1/p') s=$(echo "$rest" | sed -n 's/.*state=\([^&]*\).*/\1/p')
+    for f in "$D"/issues/*.json; do
+      case "${f##*/}" in *.*.json) ;; *) cat "$f" ;; esac
+    done | jq -s --arg l "$l" --arg s "${s:-open}" 'map(select(.state == $s and any(.labels[]; .name == $l))) | sort_by(.number) | reverse' | out ;;
+  "GET /issues/"*)
+    n=$(echo "$rest" | cut -d/ -f3 | cut -d'?' -f1) f="$D/issues/$n"
+    [ -f "$f.json" ] || not_found
+    case "$rest" in
+    "/issues/$n") out <"$f.json" ;;
+    "/issues/$n/labels") jq .labels "$f.json" | out ;;
+    "/issues/$n/comments"*) out <"$f.comments.json" ;;
+    "/issues/$n/events") out <"$f.events.json" ;;
+    *) unexpected ;;
+    esac ;;
+  "GET /labels/"*) grep -qxF "${rest#/labels/}" "$D/labels" || not_found; jq -n --arg n "${rest#/labels/}" '{name: $n}' | out ;;
+  "GET /commits/"*)
+    s=$(git -C "$(cat "$D/origin")" rev-parse -q --verify "refs/heads/${rest#/commits/}") || not_found
+    jq -n --arg s "$s" '{sha: $s}' | out ;;
+  "GET /git/ref/heads/"*)
+    s=$(git -C "$(cat "$D/origin")" rev-parse -q --verify "refs/heads/${rest#/git/ref/heads/}") || not_found
+    jq -n --arg s "$s" '{object: {sha: $s}}' | out ;;
+  "DELETE /git/refs/heads/"*)
+    git -C "$(cat "$D/origin")" rev-parse -q --verify "refs/heads/${rest#/git/refs/heads/}" >/dev/null || { echo "gh: Reference does not exist (HTTP 422)" >&2; exit 1; }
+    git -C "$(cat "$D/origin")" update-ref -d "refs/heads/${rest#/git/refs/heads/}" ;;
+  *) unexpected ;;
+  esac
+}
+
+# The fields gh pr list/view --json asks for.
+fields() { opt --json | jq -R 'split(",")'; }
+
+pr() {
+  local state head
+  in_repo "$repo"
+  case "${POS[1]:-}" in
+  list)
+    state=$(opt --state) || state=open
+    head=$(opt --head) || head=""
+    jq --arg s "$(echo "$state" | tr a-z A-Z)" --arg h "$head" --argjson f "$(fields)" --argjson lim "$(opt --limit || echo 30)" '
+      map(select(($s == "ALL" or .state == $s) and ($h == "" or .headRefName == $h)))
+      | .[:$lim] | map(with_entries(select(.key as $k | $f | index($k))))' "$D/pulls.json" | out ;;
+  view)
+    jq -e --arg u "${POS[2]}" --argjson f "$(fields)" '
+      first(.[] | select(.url == $u or (.number | tostring) == $u)) | with_entries(select(.key as $k | $f | index($k)))' \
+      "$D/pulls.json" >/dev/null || not_found
+    jq --arg u "${POS[2]}" --argjson f "$(fields)" '
+      first(.[] | select(.url == $u or (.number | tostring) == $u)) | with_entries(select(.key as $k | $f | index($k)))' \
+      "$D/pulls.json" | out ;;
+  create)
+    git -C "$(cat "$D/origin")" rev-parse -q --verify "refs/heads/$(opt --head)" >/dev/null ||
+      { echo "fake gh: no branch $(opt --head) on the remote" >&2; exit 1; }
+    gh_pr "$repo" "$(opt --head)" "$(opt --base || jq -r .default_branch "$D/repo.json")" "$(opt --body || cat "$(opt --body-file)")" ;;
+  *) unexpected ;;
+  esac
+}
+
+issue() {
+  local n=${POS[2]:-} f body
+  in_repo "$repo"
+  f="$D/issues/$n"
+  [ -f "$f.json" ] || not_found
+  case "${POS[1]:-}" in
+  comment)
+    body=$(opt --body) || body=$(cat "$(opt --body-file)") || unexpected
+    id=$(gh_comment "$repo" "$n" "$(cat "$GH_FAKE/user")" "$body")
+    echo "https://github.com/$repo/issues/$n#issuecomment-$id" ;;
+  edit)
+    if old=$(opt --remove-label); then
+      IFS=, read -ra ls <<<"$old"
+      for l in "${ls[@]}"; do gh_label_remove "$repo" "$n" "$(cat "$GH_FAKE/user")" "$l"; done
+    fi
+    new=$(opt --add-label) && gh_label_add "$repo" "$n" "$(cat "$GH_FAKE/user")" "$new"
+    echo "https://github.com/$repo/issues/$n" ;;
+  *) unexpected ;;
+  esac
+}
+
+case "${POS[0]:-}" in
+"") opt --version >/dev/null && { echo "gh version ${FAKE_GH_VERSION:-2.99.0} (2026-01-01)"; exit 0; }; unexpected ;;
+api) api ;;
+pr) pr ;;
+issue) issue ;;
+label)
+  [ "${POS[1]:-}" = create ] || unexpected
+  in_repo "$repo"
+  grep -qxF "${POS[2]}" "$D/labels" || echo "${POS[2]}" >>"$D/labels" ;;
+repo)
+  [ "${POS[1]:-}" = view ] || unexpected
+  in_repo "${POS[2]}"
+  jq '{defaultBranchRef: {name: .default_branch}}' "$D/repo.json" | out ;;
+*) unexpected ;;
+esac

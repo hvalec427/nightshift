@@ -3,10 +3,9 @@
 # commit-lint.sh, each run in a throwaway git repo with chosen commits and tags.
 #   bash scripts/test-release.sh
 set -euo pipefail
+. "$(dirname "$0")/test-lib.sh"
 
 SCRIPTS="$(cd "$(dirname "$0")" && pwd -P)"
-# Tests run in subshells, so failures are counted in a file.
-FAILS=$(mktemp)
 
 # A fresh repo in a temp dir, as the current directory.
 repo() {
@@ -21,14 +20,6 @@ repo() {
 # A commit with message $1 (and body $2).
 commit() { git commit -q --allow-empty -m "$1" ${2:+-m "$2"}; }
 
-# Whether $2 (what a script printed) is $3, for the test named $1.
-expect() {
-  if [ "$2" = "$3" ]; then echo "ok   $1"
-  else
-    printf 'FAIL %s\n  expected: %s\n  got:      %s\n' "$1" "$3" "$2"
-    echo "$1" >>"$FAILS"
-  fi
-}
 
 next() { bash "$SCRIPTS/next-version.sh"; }
 notes() { bash "$SCRIPTS/release-notes.sh" "$@"; }
@@ -132,8 +123,4 @@ expect "lint: full stop" "$(lint "fix: add x.")" fail
 expect "lint: over 72" "$(lint "fix: $(printf 'a%.0s' $(seq 1 68))")" fail
 expect "lint: 72 exactly" "$(lint "fix: $(printf 'a%.0s' $(seq 1 67))")" pass
 
-if [ -s "$FAILS" ]; then
-  echo "$(wc -l <"$FAILS" | tr -d ' ') failed"
-  exit 1
-fi
-echo "All release tests pass."
+report

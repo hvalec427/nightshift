@@ -1,0 +1,160 @@
+# shellcheck shell=bash
+# What the tests share, sourced by each scripts/test-*.sh: `expect` and its
+# kin, which count failures, `report`, which ends a test file with them, and
+# `world`, a throwaway machine for nightshift with a fake GitHub and a fake
+# Claude (scripts/fake) and a clone of o/r watched.
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+# Tests run in subshells, so failures are counted in a file.
+FAILS=$(mktemp)
+FAKES="$ROOT/scripts/fake"
+# shellcheck source=fake/github.sh
+. "$FAKES/github.sh"
+
+# Whether $2 (what it gave) is $3, for the test named $1.
+expect() {
+  if [ "$2" = "$3" ]; then echo "ok   $1"
+  else
+    printf 'FAIL %s\n  expected: %s\n  got:      %s\n' "$1" "$3" "$2"
+    echo "$1" >>"$FAILS"
+  fi
+}
+
+# Whether $2 has a line matching the grep pattern $3 (with $4 = no, hasn't).
+expect_line() {
+  local has=no
+  printf '%s\n' "$2" | grep -q -- "$3" && has=yes
+  if [ "$has" = "${4:-yes}" ]; then echo "ok   $1"
+  else
+    printf 'FAIL %s\n  expected a line %s: %s\n  in:\n%s\n' "$1" "$([ "${4:-yes}" = yes ] && echo matching || echo "not matching")" "$3" "$(printf '%s\n' "$2" | sed 's/^/    /')"
+    echo "$1" >>"$FAILS"
+  fi
+}
+
+# Whether the test named $1 holds: the command after it succeeds.
+expect_ok() {
+  local name=$1
+  shift
+  if "$@" >/dev/null; then echo "ok   $name"
+  else
+    printf 'FAIL %s\n  this failed: %s\n' "$name" "$*"
+    echo "$name" >>"$FAILS"
+  fi
+}
+
+# The end of a test file: what failed, and its exit status.
+report() {
+  if [ -s "$FAILS" ]; then
+    echo "$(wc -l <"$FAILS" | tr -d ' ') failed"
+    exit 1
+  fi
+  echo "all passed"
+}
+
+# --- a world ----------------------------------------------------------------------
+
+# A throwaway machine, set up in the current shell (so call it in a subshell):
+# HOME and NIGHTSHIFT_HOME in a temp dir W, a PATH of the fakes, git, jq and
+# the system's own tools, GitHub logged in as alice, and o/r on GitHub (its
+# remote in $ORIGIN, with a commit on master) watched with its clone in $CLONE.
+world() {
+  W=$(mktemp -d)
+  W=$(cd "$W" && pwd -P)
+  mkdir -p "$W/home" "$W/ns/issues" "$W/gh" "$W/claude" "$W/bin"
+  export HOME="$W/home" NIGHTSHIFT_HOME="$W/ns" GH_FAKE="$W/gh" CLAUDE_FAKE="$W/claude"
+  export XDG_CONFIG_HOME="$W/home/.config" GIT_CONFIG_NOSYSTEM=1
+  export GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com
+  # A LaunchAgent of its own, never the machine's.
+  export NIGHTSHIFT_LABEL="com.nightshift.test.$$.${W##*.}"
+  unset NIGHTSHIFT_REPO NIGHTSHIFT_ISSUE NIGHTSHIFT_WAIT NIGHTSHIFT_LIB CLAUDE_CODE_OAUTH_TOKEN
+  # git and jq from wherever they are; nothing else of this machine's own
+  # (no real gh, claude or signalbox).
+  for t in git jq; do ln -s "$(command -v "$t")" "$W/bin/$t"; done
+  export PATH="$FAKES:$W/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+  echo alice >"$GH_FAKE/user"
+  NS=$NIGHTSHIFT_HOME
+  REPO=o/r
+  ORIGIN="$W/origin.git"
+  CLONE="$W/clone"
+  git init -q --bare -b master "$ORIGIN"
+  git clone -q "$ORIGIN" "$CLONE" 2>/dev/null
+  git -C "$CLONE" config commit.gpgsign false
+  echo hello >"$CLONE/README"
+  git -C "$CLONE" add README && git -C "$CLONE" commit -q -m "chore: start"
+  git -C "$CLONE" push -q origin master
+  gh_repo "$REPO" "$ORIGIN"
+  printf 'repo %s %s\n' "$REPO" "$CLONE" >"$NS/config"
+  trap end_world EXIT
+}
+
+# Whatever a test left running in its world (on a failure): stopped.
+end_world() {
+  local p
+  for p in "$NS/watch.pid" "$NS"/issues/*/pid; do
+    [ -f "$p" ] && { kill -9 "$(cat "$p")" 2>/dev/null || true; }
+  done
+  pkill -9 -f "$W/" 2>/dev/null || true
+  return 0
+}
+
+# nightshift, as the user runs it.
+ns() { "$ROOT/nightshift" "$@"; }
+
+# One poll, waiting for the runs it starts.
+poll() { "$ROOT/nightshift" once; }
+
+# A setting in the config.
+set_config() { echo "$1=$2" >>"$NS/config"; }
+
+# What the next runs do: their script (see scripts/fake/claude).
+runs_do() { printf '%s\n' "$1" >"$CLAUDE_FAKE/script"; }
+
+# How many runs there were.
+runs() { find "$CLAUDE_FAKE/runs" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l | tr -d ' '; }
+
+# Run $1's arguments (default: the last), a line each (multi-line ones as they are).
+run_args() { tr '\0' '\n' <"$CLAUDE_FAKE/runs/${1:-$(runs)}/args"; }
+
+# The value run $2 (default: the last) gave option $1 ("" if none; "-" if
+# it has it with no value).
+run_opt() {
+  local a prev="" k=${2:-$(runs)} found=""
+  while IFS= read -r -d '' a; do
+    [ "$prev" = "$1" ] && { printf '%s' "$a"; return; }
+    prev=$a
+  done <"$CLAUDE_FAKE/runs/$k/args"
+  [ "$prev" = "$1" ] && found=-
+  printf '%s' "$found"
+}
+
+# Run $1's prompt (default: the last).
+run_prompt() { run_opt -p "${1:-}"; }
+
+# Issue $1's state dir, and a file of it.
+idir() { printf '%s/issues/o_r_%s' "$NS" "$1"; }
+state() { cat "$(idir "$1")/$2" 2>/dev/null; }
+
+# Issue $1's status label on GitHub (without `nightshift: `), or nothing.
+status_label() { gh_labels "$REPO" "$1" | sed -n 's/^nightshift: //p'; }
+
+# The gh calls so far matching the grep pattern $1.
+gh_calls() { grep -- "$1" "$GH_FAKE/calls" 2>/dev/null; }
+
+# Whether the fake gh was asked anything it doesn't know.
+expect_no_unexpected() {
+  expect "${1:-gh}: no unexpected calls" "$(cat "$GH_FAKE/unexpected" 2>/dev/null)" ""
+}
+
+# Wait until the file $1 exists (10s at most).
+wait_for() {
+  local i=0
+  while [ ! -e "$1" ] && [ $i -lt 100 ]; do sleep 0.1; i=$((i + 1)); done
+  [ -e "$1" ]
+}
+
+# Wait until the issue $1 has no run going (10s at most).
+wait_idle() {
+  local i=0 d
+  d=$(idir "$1")
+  while [ -f "$d/pid" ] && kill -0 "$(cat "$d/pid")" 2>/dev/null && [ $i -lt 100 ]; do sleep 0.1; i=$((i + 1)); done
+}

@@ -3,21 +3,12 @@
 # nightshift's defaults and a machine's own file, in a throwaway NIGHTSHIFT_HOME.
 #   bash scripts/test-instructions.sh
 set -euo pipefail
+. "$(dirname "$0")/test-lib.sh"
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 SCRIPT="$ROOT/plugin/hooks/instructions.sh"
 DEFAULTS="$ROOT/plugin/instructions.md"
-FAILS=$(mktemp)
 HOME_DIR=$(mktemp -d)
 
-# Whether $2 (what the script printed) is $3, for the test named $1.
-expect() {
-  if [ "$2" = "$3" ]; then echo "ok   $1"
-  else
-    printf 'FAIL %s\n  expected: %s\n  got:      %s\n' "$1" "$3" "$2"
-    echo "$1" >>"$FAILS"
-  fi
-}
 
 # The script's output, with this test's NIGHTSHIFT_HOME and no issue.
 run() { env -u NIGHTSHIFT_ISSUE NIGHTSHIFT_HOME="$HOME_DIR" sh "$SCRIPT" "$@"; }
@@ -57,8 +48,4 @@ rm "$HOME_DIR/instructions.md"
 expect "neither: nothing" \
   "$(env -u NIGHTSHIFT_ISSUE NIGHTSHIFT_HOME="$HOME_DIR" sh "$HOME_DIR/bare/hooks/instructions.sh")" ""
 
-if [ -s "$FAILS" ]; then
-  echo "$(wc -l <"$FAILS" | tr -d ' ') failed"
-  exit 1
-fi
-echo "All instructions tests pass."
+report
