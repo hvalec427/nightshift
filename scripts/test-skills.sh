@@ -59,5 +59,7 @@ expect "the hook prints nightshift's defaults" \
   "$(env -u NIGHTSHIFT_ISSUE CLAUDE_PLUGIN_ROOT="$ROOT/plugin" sh -c "$hook")" "$(cat "$ROOT/plugin/instructions.md")"
 expect "the hook prints nothing in a run" \
   "$(NIGHTSHIFT_ISSUE=7 CLAUDE_PLUGIN_ROOT="$ROOT/plugin" sh -c "$hook")" ""
+expect "the defaults have the CLAUDE.md rules, with the root's budget" \
+  "$(grep -c -e '^# CLAUDE.md$' -e '200 lines' "$ROOT/plugin/instructions.md")" 2
 
 report

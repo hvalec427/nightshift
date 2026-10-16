@@ -21,3 +21,17 @@ These apply in every repository, on top of the repo's own conventions.
 - **Pull requests** follow the same rules. The **title is a Conventional Commit subject**
   too, since pull requests are squash-merged and the title becomes the commit on the default
   branch. No AI attribution footer; brief descriptions.
+
+# CLAUDE.md
+
+A project's `CLAUDE.md` is read by every run, so keep it small and true. Most changes leave
+it alone.
+
+- **When.** Only when a change taught something future runs need and won't find on their own.
+- **What.** Durable, non-obvious facts: a gotcha, a convention, why something is the way it
+  is. Never what the code or the diff already shows.
+- **How.** Edit or replace the line that covers it rather than append a new one, and delete
+  what's no longer true.
+- **Where.** Keep the root `CLAUDE.md` a short map, under about 200 lines. Knowledge about one
+  area goes in a `CLAUDE.md` in that directory, loaded only when a run works there; decisions
+  and their reasons go in `docs/adr/`.
