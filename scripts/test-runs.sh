@@ -39,7 +39,7 @@ NIGHTSHIFT_REPO=o/r"
   expect_line "its log: the comment and its stage" "$log" "^0	[0-9:]* commented (questions)$"
   expect_line "its log: how it ended" "$log" "^0	=== [0-9:]* run done in [0-9]*s$"
   expect_line "watch.log: the run, with the issue" "$(cat "$NS/watch.log")" "o/r#7: run done in"
-  expect "the status labels are created" "$(sort "$(gh_dir o/r)/labels" | tr '\n' ,)" \
+  expect "the status labels are created" "$(LC_ALL=C sort "$(gh_dir o/r)/labels" | tr '\n' ,)" \
     "nightshift: PR open,nightshift: building,nightshift: needs you,nightshift: planning,nightshift: queued,nightshift: stopped,nightshift: thinking,nightshift: updating,"
   poll
   expect "nothing new: no run" "$(runs)" 1
