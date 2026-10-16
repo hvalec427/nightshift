@@ -89,8 +89,12 @@ For React Native repos (required once a watched repo's `package.json` has
 | Merge its pull request, or close the issue | It's done: a last comment says what its runs cost (dollars at API prices, tokens, time), `nightshift status` leaves it out, and its state and branch are cleaned up |
 
 Each issue gets its own worktree (in the repo's clone, `.claude/worktrees/issue-<n>`,
-branch `nightshift/issue-<n>`) and one Claude session that every run continues, so
-it remembers the whole conversation. Once the pull request is open, the worktree is
+branch `nightshift/issue-<n>`) and a Claude session that its runs continue. When
+you approve the plan, the build starts in a fresh one, given the issue, the plan and
+your approval, so it doesn't carry (and pay for) the planning conversation: a reply
+of just **go** starts it straight away, and any other approval once the planning
+session has read it. Later runs (your comments, updates) continue the build session.
+Once the pull request is open, the worktree is
 removed; the branch stays. Once it's done (its pull request merged, or the issue
 closed with nothing to resume), only its log and what it needs to come back stay
 in `~/.nightshift`. A merged branch is deleted, here and on GitHub, unless it has

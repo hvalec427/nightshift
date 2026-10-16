@@ -84,9 +84,10 @@ guidance is in that skill, not here.
    skill: it writes the plan, with the spec and ticket guidance.
 3. **A plan, and the user asked for changes.** Invoke `nightshift:plan` too, for a revised
    plan, then wait again.
-4. **A plan the user approved** ("go", or anything that clearly means build it). Invoke
-   the `nightshift:build` skill: it builds the tickets test-first and opens the pull
-   request.
+4. **A plan the user approved** ("go", or anything that clearly means build it). Run
+   `nightshift build` first: when it says a fresh session builds it, end the run there,
+   with no comment. Otherwise invoke the `nightshift:build` skill: it builds the tickets
+   test-first and opens the pull request.
 5. **An update run:** the watcher's news says the default branch moved under this pull
    request. Invoke the `nightshift:update` skill: it rebases the branch and adapts the
    change to what merged.

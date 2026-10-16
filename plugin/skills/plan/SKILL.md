@@ -13,7 +13,9 @@ Pocock's `to-spec` and `to-tickets` skills (see `THIRD_PARTY.md` in the plugin).
 ## The plan comment
 
 Write the plan as one `plan` comment, short enough to
-read in a minute:
+read in a minute. The build runs in a fresh session that sees the issue and this comment,
+not this conversation, so the plan holds everything the build needs: the answers, the
+decisions, the constraints you found.
 
 - **On top:** what gets built, in two or three lines; the decisions the user should see;
   the tickets, one line each, in build order (`**T1: <title>.** <what it delivers>`); and

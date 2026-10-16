@@ -10,11 +10,14 @@
 #   nightshift logs [<owner/repo>#<n>] [-f] [-v…]  what every issue (or one) does, at a level
 #   nightshift add <owner/repo> <clone>  watch a repo, using this clone of it
 #   nightshift label <status>            (in a run) set its issue's status label
+#   nightshift build                     (in a run) build the approved plan, in a fresh session if it's the planning one
 #   nightshift doctor                    check the tools and setup it needs on this machine
 #   nightshift --version                 the version that runs
 #
 # State lives in $NIGHTSHIFT_HOME (default ~/.nightshift): `config`, and per
-# issue `issues/<owner>_<repo>_<n>/` with `session` (the Claude session id),
+# issue `issues/<owner>_<repo>_<n>/` with `session` (the Claude session id
+# runs resume), `plan-session` (the planning one, once the build has its own),
+# `build` (the approval, while a fresh build session waits to start),
 # `seen` (the last comment handed to the agent), `pid` while it runs,
 # `finished` once a run ended, `pr` once it opened one, `off` (why) while it has
 # no label or is closed, `interrupted` if that stopped a run, `after` (the issues
@@ -23,8 +26,8 @@
 # branch's commit its pull request was last updated for), `log` (readable,
 # live) and `out.jsonl` (the last run's raw stream-json), `cost` (what its
 # runs cost, added up), and `done` (why) once its pull request merged or it
-# closed, when only `log`, `session`, `seen`, `started`, `pr` and `cost`
-# stay (`revived`, the merged pull request a comment brought it back from);
+# closed, when only `log`, `session`, `plan-session`, `seen`, `started`, `pr`
+# and `cost` stay (`revived`, the merged pull request a comment brought it back from);
 # `label`, its status label (see STATUSES); `skill`, the last nightshift skill
 # its run invoked (see SKILL_STATUSES); `type`, its type label as the
 # last run left it (see TYPES); and per repo, `merged/<owner>_<repo>`, the
@@ -216,6 +219,7 @@ set_status() {
 # The status of an issue with nothing running, from its log's last run: how it
 # ended, and the stage of the last comment it posted.
 idle_status() {
+  [ -f "$1/build" ] && { echo queued; return; }
   # shellcheck disable=SC2016 # awk's $0, not the shell's
   ended=$(awk '
     /^0\t=== [0-9-]+ [0-9:]+ run$/ { end = ""; stage = "" }
@@ -389,7 +393,15 @@ run_agent() {
   }
   echo "$wt" >"$dir/worktree"
   why=$(cat "$dir/interrupted" 2>/dev/null) && rm -f "$dir/interrupted"
-  if [ ! -s "$dir/session" ]; then
+  build=0
+  if [ -f "$dir/build" ]; then
+    build=1
+    # The plan is approved: built in a fresh session, the planning one kept.
+    intro=$(build_intro "$repo" "$n" "$dir")
+    mv "$dir/session" "$dir/plan-session"
+    rm -f "$dir/build"
+    resume=""
+  elif [ ! -s "$dir/session" ]; then
     intro="This is your first run for this issue."
     resume=""
   else
@@ -410,7 +422,7 @@ $intro"
   mode=$(setting permission_mode auto)
   # The run says when it plans or builds (`nightshift label`); until then:
   if [ -f "$dir/updating" ]; then set_status "$repo" "$n" updating
-  elif [ -f "$dir/pr" ]; then set_status "$repo" "$n" building
+  elif [ -f "$dir/pr" ] || [ "$build" = 1 ]; then set_status "$repo" "$n" building
   else set_status "$repo" "$n" thinking
   fi
   log "$repo#$n: run starting"
@@ -480,6 +492,17 @@ $intro"
     fi
   fi
   set_status "$repo" "$n" "$(idle_status "$dir")"
+}
+
+# What a build session's first run is told, for $1#$2 (its dir $3): the issue,
+# the approved plan (the last nightshift `plan` comment) and the approval.
+build_intro() {
+  issue=$(gh api "repos/$1/issues/$2" --jq '.title + "\n\n" + (.body // "")' 2>/dev/null)
+  plan=$(gh api --paginate "repos/$1/issues/$2/comments?per_page=100" \
+    --jq ".[] | select(.body | contains(\"$MARKER\") and contains(\"nightshift:plan -->\")) | .body | @json" 2>/dev/null | tail -1 | jq -r . 2>/dev/null)
+  printf '%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s' \
+    "The plan is approved: build it with the nightshift:build skill. This is a fresh session: the plan holds what was settled before it, so read the thread only for what came after it." \
+    "The issue:" "$issue" "The approved plan:" "$plan" "The approval:" "$(cat "$3/build")"
 }
 
 # What a run is told of its issue's type: its type label, or that it has none,
@@ -650,7 +673,7 @@ retire() {
   # Dated when it closed, if it already had (a merge closes the issue too).
   echo "$5" >"$4/done"
   [ -f "$4/off" ] && touch -r "$4/off" "$4/done"
-  find "$4" -mindepth 1 -maxdepth 1 ! -name "done" ! -name log ! -name session ! -name seen ! -name started ! -name pr ! -name cost -exec rm -rf {} +
+  find "$4" -mindepth 1 -maxdepth 1 ! -name "done" ! -name log ! -name session ! -name plan-session ! -name seen ! -name started ! -name pr ! -name cost -exec rm -rf {} +
   comment_cost "$1" "$2" "$4"
   log "$1#$2: done ($5)$gone"
 }
@@ -778,7 +801,7 @@ poll_repo() {
     count=$((count + 1))
     d=$(issue_dir "$repo" "$n")
     running "$d" && { did="$did, #$n running"; continue; }
-    [ ! -f "$d/update" ] && [ -f "$d/updated" ] && [ "$(cat "$d/updated")" = "$updated" ] && continue
+    [ ! -f "$d/update" ] && [ ! -f "$d/build" ] && [ -f "$d/updated" ] && [ "$(cat "$d/updated")" = "$updated" ] && continue
     if [ ! -d "$d" ]; then
       # Only a label added by an allowed user starts work.
       by=$(gh api --paginate "repos/$repo/issues/$n/events" \
@@ -798,7 +821,11 @@ poll_repo() {
     last=$(gh api --paginate "repos/$repo/issues/$n/comments?per_page=100" --jq "$filter | .id" 2>/dev/null | tail -1)
     first_run=0
     [ -s "$d/session" ] || [ -f "$d/started" ] || first_run=1
-    if [ $first_run -eq 0 ] && [ -z "$news" ] && [ ! -f "$d/interrupted" ] && [ ! -f "$d/update" ]; then
+    # A plain "go" to the plan: build it in a fresh session (see run_agent).
+    if [ -n "$news" ] && handoff_ok "$d" && approves "$repo" "$n" "$filter"; then
+      printf '%s' "$news" >"$d/build"
+    fi
+    if [ $first_run -eq 0 ] && [ -z "$news" ] && [ ! -f "$d/interrupted" ] && [ ! -f "$d/update" ] && [ ! -f "$d/build" ]; then
       echo "$updated" >"$d/updated"
       continue
     fi
@@ -841,6 +868,19 @@ This is an update run: the update skill's job.
   # `once` waits for the runs it started (they're children of this pipeline).
   if [ "${NIGHTSHIFT_WAIT:-}" = 1 ]; then wait; fi
   }
+}
+
+# Whether issue dir $1 can still hand off to a build session: it has a
+# planning session, and no build session or pull request yet.
+handoff_ok() { [ -s "$1/session" ] && [ ! -f "$1/plan-session" ] && [ ! -f "$1/pr" ] && [ ! -f "$1/build" ]; }
+
+# Whether the new comments on $1#$2 ($3, the jq filter for them) are a plain
+# "go", replying to a plan: the last nightshift comment.
+approves() {
+  [ "$(gh api --paginate "repos/$1/issues/$2/comments?per_page=100" \
+    --jq "$3 | .body | ascii_downcase | test(\"^\\\\s*go[.!]*\\\\s*$\")" 2>/dev/null)" = true ] || return 1
+  gh api --paginate "repos/$1/issues/$2/comments?per_page=100" \
+    --jq ".[] | select(.body | contains(\"$MARKER\")) | .body | contains(\"nightshift:plan -->\")" 2>/dev/null | tail -1 | grep -qx true
 }
 
 poll() {
@@ -974,6 +1014,7 @@ cmd_status() {
     elif [ -f "$d/off" ] && [ -f "$d/pr" ]; then what="PR $(cat "$d/pr") · $(cat "$d/off")"
     elif [ -f "$d/off" ]; then what="$(cat "$d/off") $(age "$d/off") ago"
     elif [ -f "$d/interrupted" ]; then what="queued to resume"
+    elif [ -f "$d/build" ]; then what="queued to build"
     elif [ -f "$d/update" ]; then what="PR $(cat "$d/pr") · queued: $(head -1 "$d/update")"
     elif [ -f "$d/pr" ] && [ "$(label_or "$d" "PR open")" = "PR open" ]; then what="PR $(cat "$d/pr")$(after_note "$d")$(skill_note "$d")$(waited "$d" " · waiting ")"
     elif [ -f "$d/pr" ]; then what="PR $(cat "$d/pr")$(after_note "$d") · $(cat "$d/label")$(skill_note "$d")$(waited "$d" " · ")"
@@ -1336,6 +1377,20 @@ cmd_label() {
   set_status "$NIGHTSHIFT_REPO" "$NIGHTSHIFT_ISSUE" "$1" || die "couldn't set the label: see nightshift logs"
 }
 
+# `build`: a run about to build the approved plan. In the planning session,
+# the build gets a fresh one, with the comments this run was given (see
+# run_agent), and the run ends; otherwise it builds here.
+cmd_build() {
+  [ -n "${NIGHTSHIFT_REPO:-}" ] && [ -n "${NIGHTSHIFT_ISSUE:-}" ] || die "nightshift build only works in a nightshift run"
+  bd=$(issue_dir "$NIGHTSHIFT_REPO" "$NIGHTSHIFT_ISSUE")
+  if handoff_ok "$bd" && [ ! -f "$bd/updating" ]; then
+    cp "$bd/news" "$bd/build" 2>/dev/null || : >"$bd/build"
+    echo "A fresh session builds it, with the issue, the plan and the approval: end this run now, with no comment."
+  else
+    echo "Build it in this session: invoke the nightshift:build skill."
+  fi
+}
+
 # `_skill <repo> <n> nightshift:<name>`: a run invoked the skill; keep it, and
 # set the status it maps to.
 cmd_skill() {
@@ -1344,7 +1399,7 @@ cmd_skill() {
   printf '%s\n' "$3" >"$(issue_dir "$1" "$2")/skill"
 }
 
-usage() { sed -n '2,14s/^# \{0,1\}//p' "$SELF"; }
+usage() { sed -n '2,15s/^# \{0,1\}//p' "$SELF"; }
 
 # Sourced for its functions (the tests): stop here.
 [ "${NIGHTSHIFT_LIB:-}" = 1 ] && return 0
@@ -1360,6 +1415,7 @@ stop) shift; cmd_stop "${1:-}" ;;
 logs) shift; cmd_logs "$@" ;;
 add) shift; cmd_add "$@" ;;
 label) shift; cmd_label "$*" ;;
+build) cmd_build ;;
 _skill) shift; cmd_skill "$@" ;;
 doctor) cmd_doctor ;;
 -V | --version | version) echo "nightshift $VERSION" ;;
