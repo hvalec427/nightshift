@@ -97,7 +97,7 @@ in `~/.nightshift`. A merged branch is deleted, here and on GitHub, unless it ha
 commits the pull request didn't (a failed delete on GitHub is logged, not fatal). A comment on a done issue (open and labelled) picks it up again.
 
 Each run starts in the plugin's `issue` skill, which reads the thread and hands the
-stage to a skill of its own: `questions`, `plan`, `build` (then `finish`), `update`, or
+stage to a skill of its own: `questions`, `plan`, `build` (then `review` and `finish`), `update`, or
 `answer` for question and duplicate issues. Invoking a skill loads all of its guidance,
 so no stage runs without it. The status label follows the skill, `nightshift logs`
 shows each one a run invokes, and each comment names the skill that wrote it
