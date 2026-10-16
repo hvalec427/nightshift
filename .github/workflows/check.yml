@@ -25,3 +25,5 @@ jobs:
         run: shellcheck -S warning nightshift install.sh scripts/*.sh
       - name: Release script tests
         run: bash scripts/test-release.sh
+      - name: Instructions tests
+        run: bash scripts/test-instructions.sh

@@ -251,7 +251,8 @@ ALLOWED_TOOLS='Bash(gh issue *) Bash(gh pr *) Bash(gh repo view *) Bash(gh api *
 # no user-level skills, settings, plugins or hooks, only the repo's own and
 # nightshift's plugin (its copy in $NS/plugin, which install.sh keeps), plus
 # rn-agent when it's installed. Attribution in commits and pull requests is
-# off; ~/.nightshift/instructions.md, when there is one, says what else to do.
+# off; the plugin's instructions.md and ~/.nightshift/instructions.md say what
+# else to do (see run_claude).
 RUN_SETTINGS='{"attribution":{"commit":"","pr":""}}'
 
 # rn-agent's plugin directory, if it's installed and enabled.
@@ -276,7 +277,14 @@ run_claude() {
     set -- "$@" --setting-sources project,local --settings "$RUN_SETTINGS" --plugin-dir "$NS/plugin"
     rn=$(rn_agent_dir) && set -- "$@" --plugin-dir "$rn"
   fi
-  [ -s "$NS/instructions.md" ] && set -- "$@" --append-system-prompt-file "$NS/instructions.md"
+  # nightshift's defaults and this machine's instructions.md (the plugin's
+  # SessionStart hook skips runs); without the plugin's copy, the latter alone.
+  if [ -f "$NS/plugin/hooks/instructions.sh" ]; then
+    ins=$(NIGHTSHIFT_HOME=$NS sh "$NS/plugin/hooks/instructions.sh")
+  else
+    ins=$(cat "$NS/instructions.md" 2>/dev/null)
+  fi
+  [ -n "$ins" ] && set -- "$@" --append-system-prompt "$ins"
   exec claude "$@" </dev/null
 }
 
@@ -1016,7 +1024,13 @@ cmd_doctor() {
     if [ -f "$NS/plugin/skills/issue/SKILL.md" ]; then pass "nightshift's plugin for runs ($NS/plugin)"
     else fail missing "nightshift's plugin for runs ($NS/plugin)" "run install.sh again"
     fi
-  else plugin nightshift "nightshift's plugin (installed in Claude Code)" "run install.sh again"
+  fi
+  # Your own sessions get the instructions from the plugin's SessionStart hook.
+  plugin nightshift "nightshift's plugin in Claude Code (your own sessions get the instructions)" "run install.sh again"
+  mine="(no $NS/instructions.md)"
+  [ -s "$NS/instructions.md" ] && mine="+ $NS/instructions.md"
+  if [ -s "$NS/plugin/instructions.md" ]; then pass "instructions: nightshift's defaults $mine"
+  else fail missing "nightshift's default instructions ($NS/plugin/instructions.md)" "run install.sh again"
   fi
 
   echo "repos"

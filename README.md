@@ -192,9 +192,16 @@ permission_mode=auto
   requests get no Claude attribution. `false` runs with your whole setup, as
   your own sessions do.
 
-Your own rules for every run (commit style, say) go in
-`~/.nightshift/instructions.md`, which each run gets on top of its system
-prompt, isolated or not. Each machine has its own.
+Every run, isolated or not, and every Claude session of yours where the
+nightshift plugin is enabled get nightshift's default instructions:
+[`plugin/instructions.md`](plugin/instructions.md) (installed at
+`~/.nightshift/plugin/instructions.md`), its rules for commit messages and pull
+requests, Conventional Commits and no AI attribution included. Runs get them in
+their system prompt, your own sessions from the plugin's `SessionStart` hook.
+To add to them, or override them, write your own rules in
+`~/.nightshift/instructions.md`: they come after the defaults and win where the
+two disagree. Each machine has its own; `nightshift doctor` says which ones
+apply.
 
 ## A dedicated machine
 
