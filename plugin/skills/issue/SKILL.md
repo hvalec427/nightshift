@@ -26,6 +26,14 @@ Write every comment with `gh issue comment <n> --body-file <file>`, as:
 `<!-- nightshift -->` is how the watcher tells your comments from the user's; keep it in
 every one. The stages are `questions`, `plan`, `progress`, `done` and `blocked`.
 
+## Status label
+
+The issue carries a `nightshift: <status>` label the user can see from the issue list. The
+watcher sets it when a run starts and ends; you set it when you move to a step it can't
+see, with `nightshift label <status>`: `planning` as you start writing or revising a plan,
+`building` as you start building the tickets. If the command isn't there (an older
+nightshift), skip it.
+
 ## Where the issue stands
 
 Read the thread first (`gh issue view <n> --comments`), then do the first of these that
@@ -36,8 +44,8 @@ applies, and end the run after its comment:
    go in one `questions` comment: numbered, each with your recommended answer, so the user
    can reply "1 yes, 2 b". Ask the questions that change what gets built; settle the rest
    yourself and say how. This is Matt Pocock's grilling, batched for an issue.
-2. **No plan yet, nothing open** (or the answers are in). Write the plan as one `plan`
-   comment:
+2. **No plan yet, nothing open** (or the answers are in). `nightshift label planning`,
+   then write the plan as one `plan` comment:
    - **Spec**, following `~/.claude/skills/to-spec/SKILL.md` (problem, solution, user
      stories, implementation and testing decisions), sized to the issue: a small change
      gets a few lines.
@@ -50,9 +58,10 @@ applies, and end the run after its comment:
 
    Read those two files as instructions; they're the user's own skills, and only the user
    can invoke them. If they aren't there, use the same structure.
-3. **A plan, and the user asked for changes.** A revised `plan` comment, then wait again.
-4. **A plan the user approved** ("go", or anything that clearly means build it). Build the
-   tickets in order, in this worktree:
+3. **A plan, and the user asked for changes.** `nightshift label planning`, a revised
+   `plan` comment, then wait again.
+4. **A plan the user approved** ("go", or anything that clearly means build it).
+   `nightshift label building`, then build the tickets in order, in this worktree:
    - Each ticket test-first where it has logic to test (the `tdd` skill), checked the way
      the repo is checked: in a React Native app, on its own simulator with the run-app
      skill; elsewhere with the project's build, typecheck, lint and tests.
