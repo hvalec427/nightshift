@@ -24,6 +24,28 @@ cost() { state "$1" cost | awk '{ $5 = "S"; print }'; }
   expect "a failed run: counted" "$(cost 7)" "2.1 1111 2221 777 S 3 -"
   expect_no_unexpected)
 
+# A resumed run's result has the session's totals, its earlier runs' too:
+# each run adds what it spent itself.
+(world
+  gh_issue o/r 7 alice agent
+  runs_do 'costs 1 opus 10 10 10 10; comment questions'
+  poll
+  rm "$(idir 7)/usage"
+  gh_comment o/r 7 alice "1 yes" >/dev/null
+  runs_do 'costs 1 opus 10 10 10 10; comment plan'
+  poll
+  expect "no totals kept (from before they were): the last run's out.jsonl's" "$(cost 7)" "2 20 20 40 S 2 -"
+  gh_comment o/r 7 alice "2 no" >/dev/null
+  runs_do 'forget; costs 0.5 opus 1 1 1 1; comment plan'
+  poll
+  expect "totals lower than the last: all of them" "$(cost 7)" "2.5 21 21 42 S 3 -"
+  rm "$(idir 7)/session"
+  gh_comment o/r 7 alice "go" >/dev/null
+  runs_do 'costs 5 opus 100 100 100 100; comment progress'
+  poll
+  expect "a new session: all of its totals" "$(cost 7)" "7.5 121 121 242 S 4 -"
+  expect_no_unexpected)
+
 (world
   gh_issue o/r 7 alice agent
   runs_do 'comment questions'
