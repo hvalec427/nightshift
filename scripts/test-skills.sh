@@ -13,10 +13,6 @@ STAGES="questions plan build update answer"
 
 # The value of the frontmatter field $2 in the skill file $1.
 field() { sed -n '/^---$/,/^---$/p' "$1" | sed -n "s/^$2: *//p"; }
-# The file $1 as one line, so a phrase matches however the prose wraps.
-flat() { tr -s ' \n' ' ' <"$1"; }
-# The number of the first line in $1 matching the grep pattern $2, or 0.
-line_of() { grep -n -m1 -- "$2" "$1" | cut -d: -f1 || echo 0; }
 
 for s in $STAGES; do
   f="$SKILLS/$s/SKILL.md"
