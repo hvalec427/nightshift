@@ -514,9 +514,12 @@ $(type_note "$repo" "$n" "$dir")
 $(merge_note "$repo")
 
 $intro"
-  # The run says when it plans or builds (`nightshift label`); until then:
+  # The run says when it plans or builds (`nightshift label`); until then
+  # (a resumed session has its last skill loaded already):
   if [ -f "$dir/updating" ]; then set_status "$repo" "$n" updating
   elif [ -f "$dir/pr" ] || [ "$build" = 1 ]; then set_status "$repo" "$n" building
+  elif [ -n "$resume" ] && s=$(skill_status "$(cat "$dir/skill" 2>/dev/null)") && [ -n "$s" ]; then
+    set_status "$repo" "$n" "$s"
   else set_status "$repo" "$n" thinking
   fi
   log "$repo#$n: run starting"
@@ -529,8 +532,9 @@ $intro"
   rm -f "$dir/stream" && mkfifo "$dir/stream"
   # Kept from before `usage` was: the session's totals, from the last run's.
   [ -s "$dir/usage" ] || [ ! -f "$dir/out.jsonl" ] || save_usage "$dir"
-  # A skill the run invokes sets its status (`_skill`) as it goes by.
-  rm -f "$dir/skill"
+  # A skill the run invokes sets its status (`_skill`) as it goes by; a fresh
+  # session starts with none.
+  [ -n "$resume" ] || rm -f "$dir/skill"
   tee "$dir/out.jsonl" <"$dir/stream" | render | awk -v own="$dir/log" -v all="$NS/watch.log" -v who="$repo#$n:" \
     -v skill="'$SELF' _skill '$repo' '$n' " '
     /^[0-3]\t[0-9-]+ [0-9:]+ / {
@@ -1644,10 +1648,13 @@ cmd_build() {
   fi
 }
 
+# The status a skill (`nightshift:<name>`) sets, if any (see SKILL_STATUSES).
+skill_status() { printf '%s\n' "$SKILL_STATUSES" | sed -n "s/^${1#nightshift:}|//p"; }
+
 # `_skill <repo> <n> nightshift:<name>`: a run invoked the skill; keep it, and
 # set the status it maps to.
 cmd_skill() {
-  s=$(printf '%s\n' "$SKILL_STATUSES" | sed -n "s/^${3#nightshift:}|//p")
+  s=$(skill_status "$3")
   [ -z "$s" ] || set_status "$1" "$2" "$s"
   printf '%s\n' "$3" >"$(issue_dir "$1" "$2")/skill"
 }
