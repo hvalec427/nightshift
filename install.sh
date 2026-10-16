@@ -2,11 +2,13 @@
 # Install nightshift: the `nightshift` command (into ~/.nightshift/bin) and its
 # Claude Code plugin, at the latest release; with --master, at master instead
 # (for testing); with --service, also run `nightshift watch` in the background
-# whenever you're logged in.
+# whenever you're logged in; with --auto-update, also have that watch install
+# each new release itself (auto_update=true in ~/.nightshift/config).
 #
 #   curl -fsSL https://raw.githubusercontent.com/hvalec427/nightshift/master/install.sh | sh
 #   … | sh -s -- --master
 #   … | sh -s -- --service
+#   … | sh -s -- --auto-update
 #
 # Run it again to update. Run from a clone, it installs the clone's files.
 # A watch with auto_update=true runs it itself, with NIGHTSHIFT_UPDATING=1:
@@ -18,12 +20,13 @@ NS="$HOME/.nightshift"
 BIN="$NS/bin"
 SERVICE="gui/$(id -u)/${NIGHTSHIFT_LABEL:-com.nightshift.watch}" # NIGHTSHIFT_LABEL is for tests
 
-service=0 master=0
+service=0 master=0 auto=0
 for arg in "$@"; do
   case "$arg" in
   --service) service=1 ;;
   --master) master=1 ;;
-  *) echo "unknown option: $arg (options: --master, --service)" >&2; exit 2 ;;
+  --auto-update) auto=1 ;;
+  *) echo "unknown option: $arg (options: --master, --service, --auto-update)" >&2; exit 2 ;;
   esac
 done
 
@@ -105,6 +108,12 @@ if command -v claude >/dev/null 2>&1; then
   claude plugin update nightshift@nightshift >/dev/null 2>&1 || true
 else
   echo "Claude Code isn't installed: install it and run this again."
+fi
+
+if [ $auto -eq 1 ]; then
+  { grep -v '^auto_update=' "$NS/config" 2>/dev/null || true; echo auto_update=true; } >"$NS/config.new"
+  mv "$NS/config.new" "$NS/config"
+  echo "auto_update=true in $NS/config: the service installs each new release itself, between runs"
 fi
 
 # What's missing on this machine, and how to get it. `nightshift start` writes

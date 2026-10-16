@@ -1172,11 +1172,21 @@ latest_release() {
     sed -n 's|.*/releases/tag/v\([0-9][0-9.]*\)$|\1|p'
 }
 
-# doctor's first line: the version that runs, and the newer release if there's
-# one (a release install only; never a problem).
+# doctor's first lines: the version that runs, whether it updates itself
+# (auto_update), and the newer release if there's one (a release install only;
+# never a problem).
 version_line() {
   echo "nightshift $VERSION"
-  case "$VERSION" in [0-9]*) ;; *) return 0 ;; esac
+  auto=$(setting auto_update false)
+  case "$VERSION" in
+  [0-9]*) ;;
+  *)
+    [ "$auto" = true ] && printf '  %-7s %s\n' hint "auto_update is on, but only a release install updates itself: $INSTALL"
+    return 0 ;;
+  esac
+  if [ "$auto" = true ]; then pass "auto-update: each new release installs itself, between runs"
+  else printf '  %-7s %s\n' hint "auto-update is off: $INSTALL -s -- --auto-update, to have new releases install themselves"
+  fi
   latest=$(latest_release)
   if [ -n "$latest" ] && ! version_ge "$VERSION" "$latest"; then
     printf '  %-7s v%s is out: %s\n' newer "$latest" "$INSTALL"

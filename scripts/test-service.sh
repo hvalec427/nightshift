@@ -120,6 +120,17 @@ install() { env SHELL=/bin/zsh sh "$ROOT/install.sh" "$@"; }
   expect_ok "install in update mode: no LaunchAgent written" test ! -e "$HOME/Library/LaunchAgents/$NIGHTSHIFT_LABEL.plist")
 
 (healthy
+  mkdir -p "$HOME/.nightshift"
+  printf 'repo o/r %s\nauto_update=false\n' "$CLONE" >"$HOME/.nightshift/config"
+  try install --auto-update
+  expect "install --auto-update: works" "$ST" 0
+  expect_line "install --auto-update: says so" "$OUT" "^auto_update=true in $HOME/.nightshift/config: "
+  expect "install --auto-update: the setting, once, the rest kept" "$(cat "$HOME/.nightshift/config")" "repo o/r $CLONE
+auto_update=true"
+  install --auto-update >/dev/null 2>&1
+  expect "install --auto-update again: still once" "$(grep -c '^auto_update=' "$HOME/.nightshift/config")" 1)
+
+(healthy
   echo '[{"name":"nightshift","repo":"hvalec427/nightshift","ref":"v0.1.0"}]' >"$CLAUDE_FAKE/marketplaces.json"
   install >/dev/null 2>&1
   expect_line "install, pinned to another ref: removes it" "$(cat "$CLAUDE_FAKE/calls")" "^plugin marketplace remove nightshift $"
@@ -136,7 +147,7 @@ install() { env SHELL=/bin/zsh sh "$ROOT/install.sh" "$@"; }
 
 (healthy
   try install --frobnicate
-  expect "install, an unknown option: fails" "$ST $OUT" "2 unknown option: --frobnicate (options: --master, --service)")
+  expect "install, an unknown option: fails" "$ST $OUT" "2 unknown option: --frobnicate (options: --master, --service, --auto-update)")
 
 (world
   try install

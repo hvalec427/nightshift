@@ -163,4 +163,21 @@ checks() { cat "$CURL_FAKE/calls" 2>/dev/null | grep -c 'releases/latest' || tru
   "$NS/bin/nightshift" once
   expect "once: doesn't update" "$(checks)" 0)
 
+# --- doctor ---------------------------------------------------------------------
+
+(world
+  release_ns 0.5.1
+  set_config auto_update true
+  out=$("$NS/bin/nightshift" doctor 2>&1 || true)
+  expect_line "doctor, on: says so" "$out" "^  ok      auto-update: each new release installs itself, between runs$"
+  : >"$NS/config"
+  out=$("$NS/bin/nightshift" doctor 2>&1 || true)
+  expect_line "doctor, off: how to turn it on" "$out" "^  hint    auto-update is off: curl .*install.sh | sh -s -- --auto-update, "
+  set_config auto_update true
+  out=$(ns doctor 2>&1 || true)
+  expect_line "doctor, on in a dev install: it won't update" "$out" "^  hint    auto_update is on, but only a release install updates itself: "
+  : >"$NS/config"
+  out=$(ns doctor 2>&1 || true)
+  expect_line "doctor, off in a dev install: nothing" "$out" "auto.update" no)
+
 report
