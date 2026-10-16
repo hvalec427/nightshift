@@ -176,6 +176,18 @@ auto_update=true"
   try env PATH="$HOME/.nightshift/bin:$PATH" SHELL=/bin/zsh sh "$ROOT/install.sh"
   expect_ok "install, already on PATH: no PATH line" test ! -e "$HOME/.zshrc")
 
+# Piped (curl … | sh), from inside a clone: $0 is the shell, not install.sh,
+# so it installs the latest release (this clone's files, as its tarball).
+(healthy
+  echo v0.6.0 >"$CURL_FAKE/latest"
+  tar -czf "$CURL_FAKE/src.tar.gz" -C "$(dirname "$ROOT")" "$(basename "$ROOT")/nightshift" "$(basename "$ROOT")/plugin"
+  (cd "$ROOT" && env SHELL=/bin/zsh sh <install.sh >/dev/null 2>&1) || true
+  expect "install, piped from inside a clone: the release" "$("$HOME/.nightshift/bin/nightshift" --version 2>&1)" "nightshift 0.6.0")
+
+(healthy
+  (cd "$ROOT" && env SHELL=/bin/zsh sh install.sh >/dev/null 2>&1) || true
+  expect "install, sh install.sh in a clone: the clone" "$("$HOME/.nightshift/bin/nightshift" --version 2>&1)" "nightshift dev ($(git -C "$ROOT" rev-parse --short HEAD))")
+
 (healthy
   try install --frobnicate
   expect "install, an unknown option: fails" "$ST $OUT" "2 unknown option: --frobnicate (options: --master, --service, --auto-update)")

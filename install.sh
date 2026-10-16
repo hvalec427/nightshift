@@ -10,7 +10,8 @@
 #   … | sh -s -- --service
 #   … | sh -s -- --auto-update
 #
-# Run it again to update. Run from a clone, it installs the clone's files.
+# Run it again to update. Run from a clone (sh install.sh), it installs the
+# clone's files; piped, even from inside a clone, it installs a release.
 # A watch with auto_update=true runs it itself, with NIGHTSHIFT_UPDATING=1:
 # then it leaves the service as it is (the watch restarts itself).
 set -e
@@ -32,8 +33,12 @@ done
 
 # What to install: the clone this runs from, or a ref of $REPO (the latest
 # release's tag, or master), and the version that `nightshift --version` says.
-here=$(cd "$(dirname "$0")" 2>/dev/null && pwd -P)
-if [ -f "$here/nightshift" ] && [ -f "$here/.claude-plugin/marketplace.json" ]; then
+# Piped (curl … | sh), $0 is the shell's name, not this file: a release.
+here=""
+if [ -f "$0" ] && [ "$(basename "$0")" = install.sh ]; then
+  here=$(cd "$(dirname "$0")" 2>/dev/null && pwd -P)
+fi
+if [ -n "$here" ] && [ -f "$here/nightshift" ] && [ -f "$here/.claude-plugin/marketplace.json" ]; then
   ref=master
   version="dev ($(git -C "$here" rev-parse --short HEAD 2>/dev/null || echo "?"))"
 else
