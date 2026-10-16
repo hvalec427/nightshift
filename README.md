@@ -43,11 +43,15 @@ Then:
 | Merge another pull request | Rebases and updates the ones it affects (below) |
 | Remove the label, or close the issue | Stops it; `nightshift status` says so and why |
 | Add the label back, or reopen it | Picks up the stopped run where it left off |
+| Merge its pull request, or close the issue | It's done: `nightshift status` leaves it out, and its state and branch are cleaned up |
 
 Each issue gets its own worktree (in the repo's clone, `.claude/worktrees/issue-<n>`,
 branch `nightshift/issue-<n>`) and one Claude session that every run continues, so
 it remembers the whole conversation. Once the pull request is open, the worktree is
-removed; the branch stays.
+removed; the branch stays. Once it's done (its pull request merged, or the issue
+closed with nothing to resume), only its log and what it needs to come back stay
+in `~/.nightshift`. A merged branch is deleted, unless it has commits the pull
+request didn't. A comment on a done issue (open and labelled) picks it up again.
 
 Its comments start with **🤖 nightshift** and carry a hidden `<!-- nightshift -->`
 marker, which is how it tells them from yours: it runs as your GitHub account, so
@@ -55,7 +59,8 @@ on GitHub they're yours. It only acts on the label when you added it, and only o
 comments from you (`allowed_users` below).
 
 ```sh
-nightshift status                   # the service, the issues it knows, what each is doing (or why it stopped), for how long, and merge order
+nightshift status                   # the service, the issues in progress, what each is doing (or why it stopped), for how long, and merge order
+nightshift status --all             # the done ones too: when their pull request merged, or the issue closed
 nightshift start                    # run the service: nightshift watch, in the background whenever you're logged in
 nightshift stop                     # stop the service, and the runs in flight, until nightshift start
 nightshift stop <owner/repo>#<n>    # stop one
