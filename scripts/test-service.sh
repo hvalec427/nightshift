@@ -77,13 +77,12 @@ if ! launchctl print "gui/$(id -u)" >/dev/null 2>&1; then
   echo "skip the LaunchAgent: no GUI launchd domain here (gui/$(id -u))"
 else
   (healthy
-    # One label for every run of these tests: launchctl remembers each label
-    # disabled or enabled.
-    export NIGHTSHIFT_LABEL=com.nightshift.test
+    # A label from the pool (a previous run may have left it loaded).
+    claim_label
     plist="$HOME/Library/LaunchAgents/$NIGHTSHIFT_LABEL.plist"
     domain="gui/$(id -u)"
     stop_it() { launchctl bootout "$domain/$NIGHTSHIFT_LABEL" 2>/dev/null || true; }
-    trap 'stop_it; end_world' EXIT
+    trap 'stop_it; release_label; end_world' EXIT
     stop_it
     try ns start
     expect "start: starts" "$ST" 0
