@@ -9,8 +9,8 @@
 #
 # State lives in $NIGHTSHIFT_HOME (default ~/.nightshift): `config`, and per
 # issue `issues/<owner>_<repo>_<n>/` with `session` (the Claude session id),
-# `seen` (the last comment handed to the agent), `pid` while it runs, `pr`
-# once it opened one, and `log`.
+# `seen` (the last comment handed to the agent), `pid` while it runs,
+# `finished` once a run ended, `pr` once it opened one, and `log`.
 set -u
 
 NS="${NIGHTSHIFT_HOME:-$HOME/.nightshift}"
@@ -43,6 +43,16 @@ allowed_json() { printf '["%s"]' "$(allowed_users | sed 's/[ ,][ ,]*/","/g')"; }
 issue_dir() { printf '%s/issues/%s_%s' "$NS" "$(echo "$1" | tr '/' '_')" "$2"; }
 
 running() { [ -f "$1/pid" ] && kill -0 "$(cat "$1/pid")" 2>/dev/null; }
+
+# How long ago a file was last modified, in its two largest units: 45s, 12m, 2h 5m, 3d 4h.
+age() {
+  s=$(($(date +%s) - $(date -r "$1" +%s)))
+  if [ $s -lt 60 ]; then echo "${s}s"
+  elif [ $s -lt 3600 ]; then echo "$((s / 60))m"
+  elif [ $s -lt 86400 ]; then echo "$((s / 3600))h $((s % 3600 / 60))m"
+  else echo "$((s / 86400))d $((s % 86400 / 3600))h"
+  fi
+}
 
 count_running() {
   n=0
@@ -243,14 +253,22 @@ cmd_status() {
     n=${name##*_}
     repo=$(echo "${name%_*}" | sed 's/_/\//')
     if [ -f "$d/ignored" ]; then what="ignored (labelled by someone else)"
-    elif running "$d"; then what="running (pid $(cat "$d/pid"))"
-    elif [ -f "$d/pr" ]; then what="PR $(cat "$d/pr")"
-    elif [ -s "$d/session" ]; then what="waiting for a reply"
+    elif running "$d"; then what="running $(age "$d/pid") (pid $(cat "$d/pid"))"
+    elif [ -f "$d/pr" ]; then what="PR $(cat "$d/pr")$(waited "$d" " · waiting ")"
+    elif [ -s "$d/session" ]; then what="waiting for a reply$(waited "$d" " · ")"
     else what="queued"
     fi
     printf '%-40s %s\n' "$repo#$n" "$what"
   done
   [ $found -eq 1 ] || echo "no issues yet"
+}
+
+# How long an issue has waited since its last run ended, after a prefix; nothing
+# if it never ran. Runs from before `finished` was written fall back to `log`.
+waited() {
+  for f in "$1/finished" "$1/log"; do
+    [ -f "$f" ] && { printf '%s%s' "$2" "$(age "$f")"; return; }
+  done
 }
 
 cmd_stop() {
@@ -276,7 +294,7 @@ mkdir -p "$NS/issues"
 case "${1:-}" in
 watch) cmd_watch ;;
 once) NIGHTSHIFT_WAIT=1; export NIGHTSHIFT_WAIT; poll ;;
-_run) shift; run_agent "$@"; rm -f "$(issue_dir "$1" "$2")/pid" ;;
+_run) shift; run_agent "$@"; rm -f "$(issue_dir "$1" "$2")/pid"; touch "$(issue_dir "$1" "$2")/finished" ;;
 status) cmd_status ;;
 stop) shift; cmd_stop "${1:-}" ;;
 add) shift; cmd_add "$@" ;;

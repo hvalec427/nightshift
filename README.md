@@ -52,7 +52,7 @@ on GitHub they're yours. It only acts on the label when you added it, and only o
 comments from you (`allowed_users` below).
 
 ```sh
-nightshift status                   # the issues it knows, and what each is doing
+nightshift status                   # the issues it knows, what each is doing, and for how long
 nightshift stop <owner/repo>#<n>    # stop one
 tail -f ~/.nightshift/watch.log     # what the watcher does
 ```
