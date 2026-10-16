@@ -23,11 +23,12 @@
 # branch's commit its pull request was last updated for), `log` (readable,
 # live) and `out.jsonl` (the last run's raw stream-json), `cost` (what its
 # runs cost, added up), and `done` (why) once its pull request merged or it
-# closed, when only `log`, `session`, `seen`, `started` and `pr` stay (`revived`, the merged pull request a
-# comment brought it back from); `label`, its status label (see STATUSES);
-# `type`, its type label as the last run left it (see TYPES); and
-# per repo, `merged/<owner>_<repo>`, the merged nightshift pull requests seen,
-# and `labels/<owner>_<repo>`, the version of the status labels created there.
+# closed, when only `log`, `session`, `seen`, `started`, `pr` and `cost`
+# stay (`revived`, the merged pull request a comment brought it back from);
+# `label`, its status label (see STATUSES); `type`, its type label as the
+# last run left it (see TYPES); and per repo, `merged/<owner>_<repo>`, the
+# merged nightshift pull requests seen, and `labels/<owner>_<repo>`, the
+# version of the status labels created there.
 set -u
 
 # install.sh writes the version in: X.Y.Z for a release, `master (<sha>)` or
@@ -626,8 +627,24 @@ retire() {
   # Dated when it closed, if it already had (a merge closes the issue too).
   echo "$5" >"$4/done"
   [ -f "$4/off" ] && touch -r "$4/off" "$4/done"
-  find "$4" -mindepth 1 -maxdepth 1 ! -name "done" ! -name log ! -name session ! -name seen ! -name started ! -name pr -exec rm -rf {} +
+  find "$4" -mindepth 1 -maxdepth 1 ! -name "done" ! -name log ! -name session ! -name seen ! -name started ! -name pr ! -name cost -exec rm -rf {} +
+  comment_cost "$1" "$2" "$4"
   log "$1#$2: done ($5)$gone"
+}
+
+# What a done issue's runs cost, as a comment on it, if they were counted.
+comment_cost() {
+  words=$(cost_words "$3") || return 0
+  # shellcheck disable=SC2086 # a word each
+  set -- "$1" "$2" $words
+  runs="$9 runs"
+  [ "$9" = 1 ] && runs="1 run"
+  [ "${10}" = - ] || runs="$runs (counted since ${10})"
+  gh issue comment "$2" --repo "$1" --body "🤖 **nightshift** · cost
+
+**$3** at API prices · **$4 tokens** ($5 in, $6 out, $7 cache) · **$(duration "$8")** over $runs
+
+$MARKER <!-- nightshift:cost -->" >/dev/null 2>&1 || log "$1#$2: couldn't comment the cost"
 }
 
 # A merged issue's branch on GitHub, if it's still there and all of it was in

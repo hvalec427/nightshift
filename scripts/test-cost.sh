@@ -63,4 +63,50 @@ cost() { state "$1" cost | awk '{ $5 = "S"; print }'; }
   rm "$(idir 7)/cost"
   expect_line "status: nothing counted, nothing shown" "$(ns status)" '^o/r#7  *needs you · [0-9]*s$')
 
+# Posted once it's done.
+COMMENT="🤖 \*\*nightshift\*\* · cost"
+(world
+  gh_issue o/r 7 alice agent
+  runs_do 'costs 2.5 opus 12000 85000 1700000 0; commit feature.txt; open_pr; comment done'
+  poll
+  echo "4.123 12000 85000 1700000 6000 12 -" >"$(idir 7)/cost"
+  gh_pr_set o/r "$(state 7 pr | sed 's|.*/||')" state '"MERGED"'
+  poll
+  expect "merged: done" "$(state 7 "done")" "PR merged"
+  comments=$(gh_comments o/r 7)
+  expect_line "merged: a cost comment" "$comments" "^$COMMENT$"
+  expect_line "it says the dollars, tokens and time" "$comments" \
+    '^\*\*\$4\.12\*\* at API prices · \*\*1\.8M tokens\*\* (12k in, 85k out, 1\.7M cache) · \*\*1h 40m\*\* over 12 runs$'
+  expect_line "it has the marker" "$comments" "^<!-- nightshift --> <!-- nightshift:cost -->$"
+  expect "its cost stays" "$(state 7 cost)" "4.123 12000 85000 1700000 6000 12 -"
+  expect_line "status --all: what it spent" "$(ns status --all)" '^o/r#7  *done · PR .* merged .* ago · spent \$4\.12, 1\.8M tokens, 1h 40m$'
+  poll
+  expect "posted once" "$(gh_comments o/r 7 | grep -c "^$COMMENT$")" 1
+  expect "its own comment starts no run" "$(runs)" 1
+  gh_comment o/r 7 alice "one more thing" >/dev/null
+  runs_do 'costs 1 opus 1 1 1 1; comment progress'
+  poll
+  expect "brought back: it adds up still" "$(cost 7)" "5.123 12001 85001 1700002 S 13 -"
+  expect_no_unexpected)
+
+(world
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  echo "0.5 10 20 30 61 1 2026-10-01" >"$(idir 7)/cost"
+  gh_state o/r 7 closed
+  poll
+  expect "closed: done" "$(state 7 "done")" "issue closed"
+  expect_line "closed: a cost comment, one run, since it was counted" "$(gh_comments o/r 7)" \
+    '^\*\*\$0\.50\*\* at API prices · \*\*60 tokens\*\* (10 in, 20 out, 30 cache) · \*\*1m\*\* over 1 run (counted since 2026-10-01)$')
+
+(world
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  rm "$(idir 7)/cost"
+  gh_state o/r 7 closed
+  poll
+  expect "nothing counted: no cost comment" "$(gh_comments o/r 7 | grep -c "^$COMMENT$" || true)" 0)
+
 report
