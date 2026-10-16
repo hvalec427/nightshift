@@ -237,6 +237,18 @@ resumed_label() {
   expect "CLAUDE.local.md stays out of the worktree's git status" "$(git -C "$CLONE/.claude/worktrees/issue-7" status --porcelain)" ""
   expect_line "the allowed tools: nightshift label" "$(run_args)" "^Bash(nightshift$")
 
+# The plugins a repo line names: loaded, after nightshift's own.
+# The --plugin-dir values of the last run, space-separated.
+plugin_dirs() { run_args | grep -A1 -x -- --plugin-dir | grep -v -x -e --plugin-dir -e -- | tr '\n' ' '; }
+# Plugin $1 (an id, name@marketplace) installed in $W/<name>, enabled unless $2 is false.
+plugin() {
+  mkdir -p "$W/${1%@*}"
+  [ -f "$CLAUDE_FAKE/plugins.json" ] || echo '[]' >"$CLAUDE_FAKE/plugins.json"
+  # shellcheck disable=SC2016 # a jq program: $ is jq's
+  jq -c --arg id "$1" --arg p "$W/${1%@*}" --argjson e "${2:-true}" '. + [{id: $id, enabled: $e, installPath: $p}]' \
+    "$CLAUDE_FAKE/plugins.json" >"$W/plugins.json" && mv "$W/plugins.json" "$CLAUDE_FAKE/plugins.json"
+}
+
 (world
   cp -R "$ROOT/plugin" "$NS/plugin"
   gh_issue o/r 7 alice agent
@@ -327,11 +339,60 @@ Run make check.")
 
 (world
   cp -R "$ROOT/plugin" "$NS/plugin"
-  mkdir -p "$W/rn-agent"
-  printf '[{"id":"rn-agent@hvalec427","enabled":true,"installPath":"%s"}]\n' "$W/rn-agent" >"$CLAUDE_FAKE/plugins.json"
+  plugin rn-agent@hvalec427
   gh_issue o/r 7 alice agent
   poll
-  expect "rn-agent installed: its plugin too" "$(run_args | grep -A1 -x -- --plugin-dir | grep -v -- -- | tr '\n' ' ')" "$NS/plugin $W/rn-agent ")
+  expect "a plugin installed but not named: not loaded" "$(plugin_dirs)" "$NS/plugin ")
+
+(world
+  cp -R "$ROOT/plugin" "$NS/plugin"
+  plugin rn-agent@hvalec427
+  printf 'repo %s %s plugins=rn-agent\n' "$REPO" "$CLONE" >"$NS/config"
+  gh_issue o/r 7 alice agent
+  poll
+  expect "plugins=rn-agent: its plugin too" "$(plugin_dirs)" "$NS/plugin $W/rn-agent "
+  expect "plugins=: the clone path without the option" "$(cat "$CLAUDE_FAKE/runs/1/cwd")" "$CLONE/.claude/worktrees/issue-7")
+
+(world
+  cp -R "$ROOT/plugin" "$NS/plugin"
+  plugin rn-agent@hvalec427
+  plugin web@other
+  printf 'repo %s %s  instructions=x.md   plugins=rn-agent,web@other \n' "$REPO" "$CLONE" >"$NS/config"
+  gh_issue o/r 7 alice agent
+  poll
+  expect "two plugins, after another option: both load" "$(plugin_dirs)" "$NS/plugin $W/rn-agent $W/web "
+  expect "options spaced out: the clone path without them" "$(cat "$CLAUDE_FAKE/runs/1/cwd")" "$CLONE/.claude/worktrees/issue-7")
+
+(world
+  cp -R "$ROOT/plugin" "$NS/plugin"
+  plugin rn-agent@hvalec427
+  plugin old@m false
+  printf 'repo %s %s plugins=nope,old,rn-agent@other\n' "$REPO" "$CLONE" >"$NS/config"
+  gh_issue o/r 7 alice agent
+  poll
+  expect "missing, disabled or another marketplace's: skipped" "$(plugin_dirs)" "$NS/plugin "
+  log=$(cat "$(idir 7)/log")
+  expect_line "its log: a missing plugin" "$log" "^0	=== plugin nope isn't installed: this run goes without it$"
+  expect_line "its log: a disabled plugin" "$log" "^0	=== plugin old isn't enabled: this run goes without it$"
+  expect_line "its log: another marketplace's" "$log" "^0	=== plugin rn-agent@other isn't installed: this run goes without it$")
+
+(world
+  cp -R "$ROOT/plugin" "$NS/plugin"
+  plugin rn-agent@hvalec427
+  mv "$CLONE" "$W/my clone"
+  printf 'repo %s %s plugins=rn-agent\n' "$REPO" "$W/my clone" >"$NS/config"
+  gh_issue o/r 7 alice agent
+  poll
+  expect "a clone path with a space: the run works in its worktree" "$(cat "$CLAUDE_FAKE/runs/1/cwd")" "$W/my clone/.claude/worktrees/issue-7"
+  expect "a clone path with a space: its plugins load" "$(plugin_dirs)" "$NS/plugin $W/rn-agent ")
+
+(world
+  plugin rn-agent@hvalec427
+  printf 'repo %s %s plugins=rn-agent\n' "$REPO" "$CLONE" >"$NS/config"
+  set_config isolated false
+  gh_issue o/r 7 alice agent
+  poll
+  expect "isolated false: the named plugins still load" "$(plugin_dirs)" "$W/rn-agent ")
 
 (world
   cp -R "$ROOT/plugin" "$NS/plugin"

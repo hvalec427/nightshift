@@ -369,10 +369,10 @@ ALLOWED_TOOLS='Bash(gh issue *) Bash(gh pr *) Bash(gh repo view *) Bash(gh api *
 
 # Runs are isolated from the machine's own Claude setup:
 # no user-level skills, settings, plugins or hooks, only the repo's own and
-# nightshift's plugin (its copy in $NS/plugin, which install.sh keeps), plus
-# rn-agent when it's installed. Attribution in commits and pull requests is
-# off; the plugin's instructions.md, in the worktree's CLAUDE.local.md, says
-# what else to do (see write_instructions).
+# nightshift's plugin (its copy in $NS/plugin, which install.sh keeps). Every
+# run also gets the plugins its repo line names (plugins=). Attribution in
+# commits and pull requests is off; the plugin's instructions.md, in the
+# worktree's CLAUDE.local.md, says what else to do (see write_instructions).
 # A settings JSON member, joined into the run's --settings.
 ATTRIBUTION_OFF='"attribution":{"commit":"","pr":""}'
 
@@ -381,10 +381,18 @@ ATTRIBUTION_OFF='"attribution":{"commit":"","pr":""}'
 # clone's personal notes shouldn't change runs. A settings JSON member.
 md_excludes() { printf '"claudeMdExcludes":["%s/CLAUDE.md","%s/.claude/CLAUDE.md","%s/CLAUDE.local.md"]' "$1" "$1" "$1"; }
 
-# rn-agent's plugin directory, if it's installed and enabled.
-rn_agent_dir() {
-  d=$(claude plugin list --json 2>/dev/null | jq -r 'first(.[] | select((.id | startswith("rn-agent@")) and .enabled) | .installPath) // empty' 2>/dev/null)
-  [ -n "$d" ] && [ -d "$d" ] && printf '%s' "$d"
+# Plugin $1's directory (`name`: from any marketplace; `name@marketplace`:
+# that one), if it's installed and enabled. Else 1 if it isn't installed, 2 if
+# it isn't enabled.
+plugin_dir() {
+  # shellcheck disable=SC2016 # a jq program: $ is jq's
+  m='.[] | select(.id == $n or (.id | startswith($n + "@")))'
+  l=$(claude plugin list --json 2>/dev/null)
+  d=$(printf '%s' "$l" | jq -r --arg n "$1" "first($m | select(.enabled) | .installPath) // empty" 2>/dev/null)
+  if [ -n "$d" ] && [ -d "$d" ]; then printf '%s' "$d"
+  elif [ -z "$d" ] && printf '%s' "$l" | jq -e --arg n "$1" "any($m; true)" >/dev/null 2>&1; then return 2
+  else return 1
+  fi
 }
 
 # Claude, for a run of $repo#$n with $resume, in the current
@@ -407,8 +415,14 @@ run_claude() {
   else
     settings="$ATTRIBUTION_OFF,$settings"
     set -- "$@" --setting-sources project,local --plugin-dir "$NS/plugin"
-    rn=$(rn_agent_dir) && set -- "$@" --plugin-dir "$rn"
   fi
+  # The plugins the repo line names; one that isn't there: without it.
+  for p in $(repo_option "$repo" plugins | tr ',' ' '); do
+    if pd=$(plugin_dir "$p"); then set -- "$@" --plugin-dir "$pd"
+    elif [ $? = 2 ]; then printf "0\t=== plugin %s isn't enabled: this run goes without it\n" "$p" >>"$dir/log"
+    else printf "0\t=== plugin %s isn't installed: this run goes without it\n" "$p" >>"$dir/log"
+    fi
+  done
   set -- "$@" --settings "{$settings}"
   exec claude "$@" </dev/null
 }

@@ -234,7 +234,7 @@ that goes after another waits for it, then merges after that update run.
 
 ```
 repo hvalec427/nightshift /Users/me/dev/nightshift
-repo me/app /Users/me/dev/app instructions=/Users/me/notes/app.md
+repo me/app /Users/me/dev/app instructions=/Users/me/notes/app.md plugins=rn-agent
 repo hvalec427/other /Users/me/dev/other auto_merge=false
 allowed_users=hvalec427
 max_parallel=2
@@ -243,13 +243,19 @@ model=opus
 effort=high
 ```
 
-- `repo <owner/repo> <clone> [key=value …]`: a watched repo, its clone, then
-  its options in any order. `instructions=` names a file of the project's own
-  rules for runs (below); `nightshift doctor` says when it's missing.
-  `auto_merge=false` makes its pull requests wait for you to merge; without
-  it, nightshift merges them on its own. It's on by default, so repos added
-  before it start merging on their own after an upgrade. `status` and `doctor`
-  say which repos have it off.
+- `repo <owner/repo> <clone path> [key=value …]`: a watched repo and its clone
+  (spaces in the path are fine), then its options, in any order:
+  - `instructions`: a file of the project's own rules for runs (below);
+    `nightshift doctor` says when it's missing.
+  - `auto_merge=false` makes its pull requests wait for you to merge; without
+    it, nightshift merges them on its own. It's on by default, so repos added
+    before it start merging on their own after an upgrade. `status` and
+    `doctor` say which repos have it off.
+  - `plugins`: the Claude Code plugins its runs load, comma-separated:
+    `plugins=rn-agent,other@marketplace`. A name matches that plugin from any
+    marketplace; `name@marketplace`, that one. Each must be installed and
+    enabled (`claude plugin install …`); one that isn't, the run goes without,
+    and its log says so. Without `plugins=`, runs get only nightshift's plugin.
 - `allowed_users`: whose labels and comments count (default: your gh account).
 - `max_parallel`: issues worked at once (each may run a simulator).
 - `interval`: seconds between polls (default 5). A poll that finds nothing new
@@ -278,8 +284,8 @@ machine's own user-level setup, so every machine works an issue the same way: no
 skills from `~/.claude/skills`, no `~/.claude/settings.json`,
 `~/.claude/CLAUDE.md`, plugins, hooks or MCP servers of yours. A run loads the
 repo's own `.claude` setup, nightshift's plugin (its copy in
-`~/.nightshift/plugin`, which the install keeps up to date) and, when it's
-installed, rn-agent; commits and pull requests get no Claude attribution.
+`~/.nightshift/plugin`, which the install keeps up to date) and the plugins
+its repo line names; commits and pull requests get no Claude attribution.
 `isolated=` and `permission_mode=` lines from older versions are ignored
 (`nightshift doctor` notes them).
 
