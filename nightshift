@@ -11,6 +11,7 @@
 #   nightshift add <owner/repo> <clone>  watch a repo, using this clone of it
 #   nightshift label <status>            (in a run) set its issue's status label
 #   nightshift doctor                    check the tools and setup it needs on this machine
+#   nightshift --version                 the version that runs
 #
 # State lives in $NIGHTSHIFT_HOME (default ~/.nightshift): `config`, and per
 # issue `issues/<owner>_<repo>_<n>/` with `session` (the Claude session id),
@@ -28,6 +29,11 @@
 # and `labels/<owner>_<repo>`, the version of the status labels created there.
 set -u
 
+# install.sh writes the version in: X.Y.Z for a release, `master (<sha>)` or
+# `dev (<sha>)` otherwise.
+VERSION=dev
+REPO=hvalec427/nightshift
+INSTALL="curl -fsSL https://raw.githubusercontent.com/$REPO/master/install.sh | sh"
 NS="${NIGHTSHIFT_HOME:-$HOME/.nightshift}"
 SELF="$(cd "$(dirname "$0")" && pwd -P)/$(basename "$0")"
 CONFIG="$NS/config"
@@ -279,6 +285,7 @@ run_claude() {
 # the agent's text, tool calls and failed results, then thinking and every
 # result. Raw lines (and everything without jq) stay untagged. `run` writes
 # them to the issue's log and to watch.log.
+# shellcheck disable=SC2016 # a jq program: $ is jq's
 RENDER='def line: tostring | gsub("\\s+"; " ") | if length > 300 then .[0:300] + "…" else . end;
   def tag($l): "\($l)\t" + (now | strflocaltime("%Y-%m-%d %H:%M:%S "));
   def stage: (capture("nightshift:(?<s>[a-z]+) -->").s)? // null;
@@ -958,6 +965,26 @@ plugin() {
   fi
 }
 
+# The latest release's version (X.Y.Z), from where github.com's
+# releases/latest redirects (no API, no token); nothing if there's none or
+# GitHub can't be reached.
+latest_release() {
+  curl -fsS -o /dev/null -w '%{redirect_url}' --max-time 5 "https://github.com/$REPO/releases/latest" 2>/dev/null |
+    sed -n 's|.*/releases/tag/v\([0-9][0-9.]*\)$|\1|p'
+}
+
+# doctor's first line: the version that runs, and the newer release if there's
+# one (a release install only; never a problem).
+version_line() {
+  echo "nightshift $VERSION"
+  case "$VERSION" in [0-9]*) ;; *) return 0 ;; esac
+  latest=$(latest_release)
+  if [ -n "$latest" ] && ! version_ge "$VERSION" "$latest"; then
+    printf '  %-7s v%s is out: %s\n' newer "$latest" "$INSTALL"
+  fi
+  return 0
+}
+
 # A clone whose app is React Native.
 is_rn() { grep -q '"react-native" *:' "$1/package.json" 2>/dev/null; }
 
@@ -965,6 +992,7 @@ is_rn() { grep -q '"react-native" *:' "$1/package.json" 2>/dev/null; }
 # to get it. Fails when something required is.
 cmd_doctor() {
   problems=0 required=1
+  version_line
   echo "always needed"
   tool git "$(git --version 2>/dev/null | awk '{print $3}')" $MIN_GIT \
     "xcode-select --install, or brew install git" "brew install git"
@@ -1052,7 +1080,7 @@ cmd_label() {
   set_status "$NIGHTSHIFT_REPO" "$NIGHTSHIFT_ISSUE" "$1" || die "couldn't set the label: see nightshift logs"
 }
 
-usage() { sed -n '2,13s/^# \{0,1\}//p' "$SELF"; }
+usage() { sed -n '2,14s/^# \{0,1\}//p' "$SELF"; }
 
 mkdir -p "$NS/issues"
 case "${1:-}" in
@@ -1066,6 +1094,7 @@ logs) shift; cmd_logs "$@" ;;
 add) shift; cmd_add "$@" ;;
 label) shift; cmd_label "$*" ;;
 doctor) cmd_doctor ;;
+-V | --version | version) echo "nightshift $VERSION" ;;
 -h | --help | help) usage; echo; echo "nightshift logs --help: the log levels and their flags" ;;
 *) usage >&2; exit 2 ;;
 esac

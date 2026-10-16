@@ -1,0 +1,27 @@
+name: Check
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  # Pull requests are squash-merged, so the title becomes the commit that
+  # versions the next release.
+  title:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Conventional Commit title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: bash scripts/commit-lint.sh --title "$TITLE"
+
+  scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Warnings and errors: info notes vary between shellcheck versions.
+      - name: shellcheck
+        run: shellcheck -S warning nightshift install.sh scripts/*.sh
+      - name: Release script tests
+        run: bash scripts/test-release.sh

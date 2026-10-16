@@ -1,0 +1,27 @@
+name: Release
+
+# Every push to master that has a feat, fix, perf or breaking change since the
+# last release gets a vX.Y.Z tag and a GitHub release (scripts/release.sh).
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: write
+
+# One release at a time, in push order: a queued run is never cancelled.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the tags and the commits since the last one
+      - name: Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/release.sh

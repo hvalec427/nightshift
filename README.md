@@ -17,12 +17,19 @@ screenshots and a recording.
 curl -fsSL https://raw.githubusercontent.com/hvalec427/nightshift/master/install.sh | sh -s -- --service
 ```
 
-It installs the `nightshift` command (`~/.nightshift/bin`) and its Claude Code
-plugin (also copied to `~/.nightshift/plugin`, for runs), and with `--service` runs `nightshift watch` in the background whenever
-you're logged in (a LaunchAgent, through `nightshift start`). Leave out
-`--service` to run it by hand. Run it again to update; a running service is
-restarted on the new version. It ends with `nightshift doctor` (below), and
-only starts the service once nothing required is missing.
+It installs the latest release: the `nightshift` command (`~/.nightshift/bin`)
+and its Claude Code plugin (also copied to `~/.nightshift/plugin`, for runs),
+both at that release's tag, and with `--service` runs `nightshift watch` in the
+background whenever you're logged in (a LaunchAgent, through `nightshift start`).
+Leave out `--service` to run it by hand. Run it again to update to the latest
+release; a running service is restarted on the new version. It ends with
+`nightshift doctor` (below), and only starts the service once nothing required
+is missing.
+
+To test what's on `master` instead, add `--master` (`… | sh -s -- --master`);
+run from a clone (`./install.sh`), it installs the clone's files.
+`nightshift --version` says which one runs: `0.2.0` for a release,
+`master (<commit>)`, or `dev (<commit>)` from a clone.
 
 Then:
 
@@ -35,10 +42,12 @@ Then:
 
 ## What it needs
 
-`nightshift doctor` checks all of it on this machine: what's installed and its
-version, gh's login, a Claude token, nightshift's plugin, and each watched repo's
-clone and `agent` label (with a hint when GitHub keeps merged branches there). It
-says what's missing and how to get it, and fails when something required is; `nightshift start` won't start the service until
+`nightshift doctor` checks all of it on this machine, starting with the
+nightshift version that runs (and, on a release, whether a newer one is out):
+what's installed and its version, gh's login, a Claude token, nightshift's
+plugin, and each watched repo's clone and `agent` label (with a hint when GitHub
+keeps merged branches there). It says what's missing and how to get it, and
+fails when something required is; `nightshift start` won't start the service until
 nothing is.
 
 Always:
@@ -119,6 +128,7 @@ nightshift logs -f                  # every issue, as it happens: picked up, run
 nightshift logs <owner/repo>#<n> -f # the same for one issue
 nightshift logs -f -vv              # more: -v Claude's messages, -vv its tool calls, -vvv everything
 nightshift doctor                   # what this machine is missing, and how to get it
+nightshift --version                # the version that runs
 ```
 
 `logs` shows a level and the ones above it, with or without an issue:
@@ -201,6 +211,30 @@ The plugin's `finish` skill works in any Claude Code session too: in a
 `claude --worktree <name>` session, say **finish** and it commits, pushes, opens
 the pull request (with screenshots and a recording when the app is running there)
 and removes the worktree.
+
+## Releases
+
+Pull requests are squash-merged, so each title becomes a commit on `master`, and
+titles are [Conventional Commits](https://www.conventionalcommits.org):
+`type(scope): description`. Every push to `master` releases what the commits
+since the last release call for (`.github/workflows/release.yml`):
+
+| Commits | Release |
+|---|---|
+| `fix`, `perf` | patch: 0.4.1 → 0.4.2 |
+| `feat` | minor: 0.4.1 → 0.5.0 |
+| `!` after the type, or a `BREAKING CHANGE:` footer | major from 1.0 on; minor until then (1.0.0 is cut by hand) |
+| only `docs`, `chore`, `ci`, `refactor`, `test`, … | none |
+
+A release is a `vX.Y.Z` tag and a GitHub release, its notes grouped into
+Breaking changes, Features and Fixes, each line linking its pull request.
+`scripts/release.sh --dry-run` prints what the next one would be.
+
+Each pull request is checked (`.github/workflows/check.yml`): its title must be a
+Conventional Commit (`scripts/commit-lint.sh`), `shellcheck` must pass on the
+scripts, and so must `scripts/test-release.sh`. To keep a pull request with a bad
+title from merging, make the `title` check required: Settings → Branches (or
+Rules) → a rule for `master` → Require status checks to pass → `title`.
 
 ## Credits
 
