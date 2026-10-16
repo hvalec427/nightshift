@@ -38,9 +38,9 @@ it alone.
 
 # Runs
 
-When nightshift runs you on an issue, the run is one headless turn.
-A run ends when you stop: nothing wakes you when a background task finishes, so whatever
-you left waiting stays undone. Run checks (tests, builds, linters) in the foreground and
-wait for them, even when they're slow. When one outlasts the tool's timeout and moves to
-the background, wait on it in the same turn (a loop that polls its output until it ends).
-Never end a run to wait for something.
+When nightshift runs you on an issue, the run is one headless turn. A run ends when you
+stop: nothing wakes you when a background task finishes, so whatever you left waiting
+stays undone. Run checks (tests, builds, linters) in the foreground and wait for them,
+even when they're slow. When one outlasts the tool's timeout and moves to the background,
+wait on it in the same turn (a loop that polls its output until it ends). Never end a run
+to wait for something.

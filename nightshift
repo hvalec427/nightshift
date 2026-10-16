@@ -491,22 +491,20 @@ $news}"
     intro="New on the issue since your last run:
 
 $news"
+    lead=""
     # A run the label's removal (or closing the issue) stopped, now resumed;
     # or one the watcher's stopping did.
     if [ "$why" = "watch stopped" ]; then
-      intro="Your last run was stopped partway because nightshift stopped (it was restarted or upgraded); carry on from where it stopped.${news:+
-
-$intro}"
+      lead="Your last run was stopped partway because nightshift stopped (it was restarted or upgraded); carry on from where it stopped."
     elif [ -n "$why" ]; then
-      intro="Your last run was stopped partway because the $(echo "$why" | sed 's/^label/agent label was/; s/^issue/issue was/; s/ label added$/ label was added/'); that's undone now, so carry on from where it stopped.${news:+
-
-$intro}"
+      lead="Your last run was stopped partway because the $(echo "$why" | sed 's/^label/agent label was/; s/^issue/issue was/; s/ label added$/ label was added/'); that's undone now, so carry on from where it stopped."
     # A run that stalled (see stalled_run), now resumed.
     elif [ -f "$dir/stalled" ]; then
-      intro="Your last run ended without finishing (it stopped, maybe to wait on something, but a run ends when you stop); carry on from where it stopped.${news:+
+      lead="Your last run ended without finishing (it stopped, maybe to wait on something, but a run ends when you stop); carry on from where it stopped."
+    fi
+    [ -z "$lead" ] || intro="$lead${news:+
 
 $intro}"
-    fi
     resume="--resume $(cat "$dir/session")"
   fi
   prompt="You are nightshift, working GitHub issue #$n in $repo, unattended: nobody is at a terminal, and you talk to the user only through the issue. Use the issue skill.
@@ -579,22 +577,20 @@ $intro"
     log "$repo#$n: run failed ($status) after $took$note"
     comment_failure "$repo" "$n" "$(show_level 3 <"$dir/log" | tail -15)"
     rm -f "$dir/stalled"
+  # A stall is resumed once; a second in a row asks the user.
+  elif stalled_run "$dir" && [ -f "$dir/stalled" ]; then
+    run_end "stalled twice after $took$note"
+    log "$repo#$n: stalled twice while $(cat "$dir/label"): asking you"
+    comment_stalled "$repo" "$n"
+    rm -f "$dir/stalled"
   else
-    # A stall is resumed once; a second in a row asks the user.
-    if stalled_run "$dir" && [ -f "$dir/stalled" ]; then
-      run_end "stalled twice after $took$note"
-      log "$repo#$n: stalled twice while $(cat "$dir/label"): asking you"
-      comment_stalled "$repo" "$n"
-      rm -f "$dir/stalled"
+    run_end "done in $took$note"
+    log "$repo#$n: run done in $took$note"
+    if stalled_run "$dir"; then
+      : >"$dir/stalled"
+      log "$repo#$n: stalled while $(cat "$dir/label"): resuming it"
     else
-      run_end "done in $took$note"
-      log "$repo#$n: run done in $took$note"
-      if [ ! -f "$dir/stalled" ] && stalled_run "$dir"; then
-        : >"$dir/stalled"
-        log "$repo#$n: stalled while $(cat "$dir/label"): resuming it"
-      else
-        rm -f "$dir/stalled"
-      fi
+      rm -f "$dir/stalled"
     fi
   fi
   # Once there's a pull request, the worktree's work is on GitHub: remove it

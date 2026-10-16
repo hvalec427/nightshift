@@ -99,6 +99,8 @@ you approve the plan, the build starts in a fresh one, given the issue, the plan
 your approval, so it doesn't carry (and pay for) the planning conversation: a reply
 of just **go** starts it straight away, and any other approval once the planning
 session has read it. Later runs (your comments, updates) continue the build session.
+A build or update run that ends without commenting (it stopped to wait on
+something) is resumed once by itself; a second in a row asks you in a comment.
 Once the pull request is open, the worktree is
 removed; the branch stays. Once it's done (its pull request merged, or the issue
 closed with nothing to resume), only its log and what it needs to come back stay
@@ -151,7 +153,7 @@ waiting on you:
 | `nightshift: updating` | a run is updating the pull request after a merge |
 | `nightshift: merging` | a run is checking the pull request and merging it |
 | `nightshift: answering` | a run is answering a `question` or `duplicate` issue |
-| `nightshift: needs you` | waiting on your reply: questions, an answer, a plan, blocked, a pull request to look at before it merges, or a failed run |
+| `nightshift: needs you` | waiting on your reply: questions, an answer, a plan, blocked, a pull request to look at before it merges, a failed run, or one that stalled twice |
 | `nightshift: PR open` | the pull request is open, nothing running |
 | `nightshift: stopped` | a run was stopped partway |
 
@@ -284,10 +286,11 @@ installed, rn-agent; commits and pull requests get no Claude attribution.
 Every run and every Claude session of yours where the nightshift plugin is
 enabled get nightshift's default instructions:
 [`plugin/instructions.md`](plugin/instructions.md) (installed at
-`~/.nightshift/plugin/instructions.md`), its rules for commit messages and pull
-requests, Conventional Commits and no AI attribution included, and for keeping a
-project's `CLAUDE.md` small and true. Your own sessions get them from the
-plugin's `SessionStart` hook. Runs get them in the worktree's `CLAUDE.local.md`,
+`~/.nightshift/plugin/instructions.md`): its rules for commit messages and pull
+requests, Conventional Commits and no AI attribution included, for keeping a
+project's `CLAUDE.md` small and true, and that a run ends when the agent stops, so
+it waits for its checks instead of leaving them running. Your own sessions get them
+from the plugin's `SessionStart` hook. Runs get them in the worktree's `CLAUDE.local.md`,
 which every agent and subagent loads: nightshift writes it before each run, kept
 out of git (in the clone's `info/exclude`), so a change applies from the next
 run. Then come the repo's `instructions=` file, if it names one, which wins where
