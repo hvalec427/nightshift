@@ -1,8 +1,8 @@
 # The tickets
 
 Adapted from Matt Pocock's `to-tickets` skill (see `THIRD_PARTY.md` in the plugin). They're
-the second part of the `plan` comment, numbered `T1`, `T2`, … in build order, all in that
-comment (no new issues). The user approves them with the plan.
+in the `plan` comment, numbered `T1`, `T2`, … in build order, all in that comment (no new
+issues): one line each on top, and in full (below) in its collapsed block. The user approves them with the plan.
 
 Look for prefactoring first: make the change easy, then make the easy change. Then break
 the work into **tracer bullets**:

@@ -1,9 +1,9 @@
 # The spec
 
-Adapted from Matt Pocock's `to-spec` skill (see `THIRD_PARTY.md` in the plugin). It's the
-first part of the `plan` comment, synthesised from the issue, the answers and the code: no
-further interview. Size it to the issue; a small change gets a few lines under each
-heading.
+Adapted from Matt Pocock's `to-spec` skill (see `THIRD_PARTY.md` in the plugin). It goes in
+the `plan` comment's collapsed block, synthesised from the issue, the answers and the code:
+no further interview. Size it to the issue: a line or two under each heading, a single
+line for a small change, and drop a heading that has nothing to say.
 
 Before writing it, explore the code to know its current state, and use the project's own
 vocabulary (a `GLOSSARY.md` if it has one) and its ADRs in the area you touch. Sketch the

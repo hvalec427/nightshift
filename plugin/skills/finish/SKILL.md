@@ -29,8 +29,9 @@ own check; stop and say so at the first one that fails, leaving everything in pl
 4. **Push.** `git push -u origin HEAD`. Done when it succeeds.
 5. **Pull request.** `gh pr create` against the repo's default branch
    (`gh repo view --json defaultBranchRef -q .defaultBranchRef.name`), following the user's
-   PR conventions. The title says the change; the body says what changed and how it was
-   verified (screens seen, checks run), and names anything left open. Place each media file
+   PR conventions. The title says the change; the body is a few lines: what changed (not
+   a summary of the diff), how it was verified (screens seen, checks run), and anything
+   left open. Place each media file
    where it belongs in the body by its path (`![Price list](.signalbox/media/price-list.jpg)`)
    and pass each with `--attach <path>`: gh uploads them and swaps in their URLs, so they
    show inline and videos play. An existing PR for this branch (`gh pr view`) gets the push,
