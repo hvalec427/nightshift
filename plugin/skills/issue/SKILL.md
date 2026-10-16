@@ -26,6 +26,17 @@ Write every comment with `gh issue comment <n> --body-file <file>`, as:
 `<!-- nightshift -->` is how the watcher tells your comments from the user's; keep it in
 every one. The stages are `questions`, `answer`, `plan`, `progress`, `done` and `blocked`.
 
+Keep every comment as short as it can be: the user reads them between other things. Lead
+with what they need to know or decide, cut what they already know (the issue, earlier
+comments, what the diff shows), and fold detail they may want into a collapsed
+`<details>` block. Lengths to aim for:
+
+- `questions`: one line per question or option ([questions.md](questions.md));
+- `plan`: a minute to read, the full spec collapsed (below);
+- `progress`, `done`, `blocked`: one or two lines, e.g. "T2 done: short comments in the
+  issue skill. Tests and shellcheck pass.";
+- `answer`: the answer first, in a few lines, then where it comes from.
+
 ## Status label
 
 The issue carries a `nightshift: <status>` label the user can see from the issue list. The
