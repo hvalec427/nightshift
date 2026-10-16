@@ -227,6 +227,8 @@ that goes after another waits for it, then merges after that update run.
 Each skill and subagent runs on its own model and effort, set in the frontmatter
 of the plugin's skills (`plugin/skills/*/SKILL.md`) and agents (`plugin/agents/*.md`).
 Once a run invokes a skill, its model covers the run until the next skill sets its own.
+No setting changes them: `model=` and `effort=` in the config are ignored, and
+`nightshift doctor` notes them.
 
 | | model | effort |
 |---|---|---|
@@ -251,8 +253,6 @@ repo hvalec427/other /Users/me/dev/other auto_merge=false
 allowed_users=hvalec427
 max_parallel=2
 interval=5
-model=opus
-effort=high
 ```
 
 - `repo <owner/repo> <clone path> [key=value …]`: a watched repo and its clone
@@ -282,13 +282,6 @@ effort=high
   (what went wrong is in `~/.nightshift/update.log`), and it stays on its version
   until the next check. Only a release install updates itself, not `--master` or
   a clone's.
-- `model`: the model runs use, as `claude --model` takes it: an alias (`opus`,
-  `sonnet`) or a full model id. Unset (the default), runs get your account's
-  default model; your own `model` in `~/.claude/settings.json` doesn't reach
-  runs. A change applies from the next run, resumed ones included.
-- `effort`: the effort level runs use (`claude --effort`): `low`, `medium`,
-  `high`, `xhigh` or `max`. Unset (the default), Claude Code's own.
-  `nightshift doctor` shows both, and flags an effort that isn't one of these.
 
 Runs use Claude Code's `auto` permission mode. Commands that reach GitHub (`gh`,
 `git`) are always allowed; what else a repo's runs may do goes in its committed
