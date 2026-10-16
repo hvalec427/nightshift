@@ -799,7 +799,7 @@ poll_repo() {
       news="$news${news:+
 }- the watcher: $(sed -n 2p "$d/updating")
 
-This is an update run: the issue skill's step for one.
+This is an update run: the update skill's job.
 "
     fi
     # A comment brings a done issue back; its merged pull request no longer

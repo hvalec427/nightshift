@@ -96,6 +96,12 @@ closed with nothing to resume), only its log and what it needs to come back stay
 in `~/.nightshift`. A merged branch is deleted, here and on GitHub, unless it has
 commits the pull request didn't (a failed delete on GitHub is logged, not fatal). A comment on a done issue (open and labelled) picks it up again.
 
+Each run starts in the plugin's `issue` skill, which reads the thread and hands the
+stage to a skill of its own: `questions`, `plan`, `build` (then `finish`), `update`, or
+`answer` for question and duplicate issues. Invoking a skill loads all of its guidance,
+so no stage runs without it; `nightshift logs -vv` shows each one as a
+`Skill: nightshift:<stage>` call.
+
 ## Issue types
 
 Give an issue its type with one of GitHub's default labels, next to `agent`;
@@ -312,8 +318,8 @@ A test is a few lines in a subshell, with the helpers in `scripts/test-lib.sh`:
 
 ## Credits
 
-How nightshift asks, specs, tickets and tests (the issue skill's `questions.md`,
-`spec.md`, `tickets.md` and `tdd.md`) is adapted from
+How nightshift asks, specs, tickets and tests (the plugin's `questions`, `plan` and
+`build` skills) is adapted from
 [Matt Pocock's skills](https://github.com/mattpocock/skills) (MIT): see
 [plugin/THIRD_PARTY.md](plugin/THIRD_PARTY.md). They ship in the plugin, so a run
 doesn't depend on which skills the machine has.

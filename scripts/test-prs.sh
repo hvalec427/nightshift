@@ -67,7 +67,7 @@ prn() { echo "${PR##*/}"; }
   expect_line "the issue is told" "$(gh_comments o/r 7)" \
     "^master moved, and this pull request conflicts with master now, so I'm rebasing it onto master and updating it to fit\.$"
   expect_line "the run is told" "$(run_prompt)" "^- the watcher: master moved, and this pull request conflicts with master now"
-  expect_line "the run is told it's an update run" "$(run_prompt)" "^This is an update run: the issue skill's step for one\.$"
+  expect_line "the run is told it's an update run" "$(run_prompt)" "^This is an update run: the update skill's job\.$"
   expect "while it runs: updating" "$(grep '^nightshift: ' "$CLAUDE_FAKE/runs/2/start")" "nightshift: updating"
   expect "it's noted for the default branch's commit" "$(state 7 conflict)" "$(git -C "$ORIGIN" rev-parse master)"
   expect_ok "and no longer waits" test ! -f "$(idir 7)/update"

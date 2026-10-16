@@ -1,7 +1,7 @@
 # Third-party notices
 
-The issue skill's `questions.md`, `spec.md`, `tickets.md` and `tdd.md` are adapted from
-Matt Pocock's skills (`grilling`, `to-spec`, `to-tickets` and `tdd`),
+The guidance in the `questions`, `plan` and `build` skills is adapted from Matt Pocock's
+skills (`grilling` in `questions`, `to-spec` and `to-tickets` in `plan`, `tdd` in `build`),
 https://github.com/mattpocock/skills, under the MIT License:
 
 ```
