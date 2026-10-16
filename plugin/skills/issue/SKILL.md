@@ -127,7 +127,8 @@ stay on your issue. File at most three a run, and for each:
 - look for a duplicate first, open or closed (`gh issue list --state all --search ...`);
   one there, file nothing;
 - file it with `gh issue create`, labelled `agent`, its type (`bug`, `documentation`, …)
-  and `nightshift: proposed`, so it waits for the user. The body is short: what's wrong
+  and `nightshift: proposed`, so it waits for the user (a type the repo lacks, leave
+  off). The body is short: what's wrong
   and the evidence, ending "Found while working #<n>.";
 - do it yourself, or through a `general-purpose` subagent in the foreground
   (`run_in_background: false`): the run ends when you stop, and cuts off what's still
