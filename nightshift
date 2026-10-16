@@ -292,12 +292,11 @@ worktree() {
 # that reach GitHub, which an automatic reviewer might otherwise hold back.
 ALLOWED_TOOLS='Bash(gh issue *) Bash(gh pr *) Bash(gh repo view *) Bash(gh api *) Bash(git *) Bash(signalbox *) Bash(boop *) Bash(nightshift label *)'
 
-# Runs are isolated from the machine's own Claude setup (isolated=false: not):
+# Runs are isolated from the machine's own Claude setup:
 # no user-level skills, settings, plugins or hooks, only the repo's own and
 # nightshift's plugin (its copy in $NS/plugin, which install.sh keeps), plus
 # rn-agent when it's installed. Attribution in commits and pull requests is
-# off; the plugin's instructions.md and ~/.nightshift/instructions.md say what
-# else to do (see run_claude).
+# off; the plugin's instructions.md says what else to do (see run_claude).
 RUN_SETTINGS='{"attribution":{"commit":"","pr":""}}'
 
 # rn-agent's plugin directory, if it's installed and enabled.
@@ -306,33 +305,29 @@ rn_agent_dir() {
   [ -n "$d" ] && [ -d "$d" ] && printf '%s' "$d"
 }
 
-# Claude, for a run of $repo#$n with $mode and $resume, in the current
+# Claude, for a run of $repo#$n with $resume, in the current
 # directory: exec'd, so it's the subshell's pid. With the issue, for
 # `nightshift label`, and this nightshift on its PATH.
 run_claude() {
   PATH="$(dirname "$SELF"):$PATH" NIGHTSHIFT_REPO=$repo NIGHTSHIFT_ISSUE=$n
   export PATH NIGHTSHIFT_REPO NIGHTSHIFT_ISSUE
   # shellcheck disable=SC2086 # $ALLOWED_TOOLS is a word per tool, $resume two words or none
-  set -- -p "$1" --output-format stream-json --verbose --permission-mode "$mode" --allowedTools $ALLOWED_TOOLS $resume
+  set -- -p "$1" --output-format stream-json --verbose --permission-mode auto --allowedTools $ALLOWED_TOOLS $resume
   # The config's model and effort, if set; unset, the account's default.
   model=$(setting model "") effort=$(setting effort "")
   [ -n "$model" ] && set -- "$@" --model "$model"
   [ -n "$effort" ] && set -- "$@" --effort "$effort"
   # Without the plugin's copy (install.sh not run since), not isolated: the
   # run needs the issue skill.
-  if [ "$(setting isolated true)" != false ] && [ ! -d "$NS/plugin" ]; then
+  if [ ! -d "$NS/plugin" ]; then
     printf "0\t=== no %s (run install.sh again): this run isn't isolated\n" "$NS/plugin" >>"$dir/log"
-  elif [ "$(setting isolated true)" != false ]; then
+  else
     set -- "$@" --setting-sources project,local --settings "$RUN_SETTINGS" --plugin-dir "$NS/plugin"
     rn=$(rn_agent_dir) && set -- "$@" --plugin-dir "$rn"
   fi
-  # nightshift's defaults and this machine's instructions.md (the plugin's
-  # SessionStart hook skips runs); without the plugin's copy, the latter alone.
-  if [ -f "$NS/plugin/hooks/instructions.sh" ]; then
-    ins=$(NIGHTSHIFT_HOME=$NS sh "$NS/plugin/hooks/instructions.sh")
-  else
-    ins=$(cat "$NS/instructions.md" 2>/dev/null)
-  fi
+  # nightshift's defaults, from the plugin's copy (its SessionStart hook skips
+  # runs); without the copy, none.
+  ins=$(cat "$NS/plugin/instructions.md" 2>/dev/null)
   [ -n "$ins" ] && set -- "$@" --append-system-prompt "$ins"
   exec claude "$@" </dev/null
 }
@@ -422,7 +417,6 @@ This checkout is the issue's own worktree, on branch nightshift/issue-$n.
 $(type_note "$repo" "$n" "$dir")
 
 $intro"
-  mode=$(setting permission_mode auto)
   # The run says when it plans or builds (`nightshift label`); until then:
   if [ -f "$dir/updating" ]; then set_status "$repo" "$n" updating
   elif [ -f "$dir/pr" ] || [ "$build" = 1 ]; then set_status "$repo" "$n" building
@@ -1374,19 +1368,22 @@ cmd_doctor() {
     pass "Claude logged in (for unattended runs, a token lasts longer: claude setup-token, saved to $NS/token)"
   else fail missing "Claude token" "claude setup-token, and save the token to $NS/token (chmod 600)"
   fi
-  if [ "$(setting isolated true)" != false ]; then
-    if [ -f "$NS/plugin/skills/issue/SKILL.md" ]; then pass "nightshift's plugin for runs ($NS/plugin)"
-    else fail missing "nightshift's plugin for runs ($NS/plugin)" "run install.sh again"
-    fi
+  if [ -f "$NS/plugin/skills/issue/SKILL.md" ]; then pass "nightshift's plugin for runs ($NS/plugin)"
+  else fail missing "nightshift's plugin for runs ($NS/plugin)" "run install.sh again"
   fi
   # Your own sessions get the instructions from the plugin's SessionStart hook.
   plugin nightshift "nightshift's plugin in Claude Code (your own sessions get the instructions)" "run install.sh again"
-  mine="(no $NS/instructions.md)"
-  [ -s "$NS/instructions.md" ] && mine="+ $NS/instructions.md"
-  if [ -s "$NS/plugin/instructions.md" ]; then pass "instructions: nightshift's defaults $mine"
+  if [ -s "$NS/plugin/instructions.md" ]; then pass "instructions: nightshift's defaults"
   else fail missing "nightshift's default instructions ($NS/plugin/instructions.md)" "run install.sh again"
   fi
   runs_line
+  # Settings older versions had, ignored now: a note each, not a problem.
+  grep -q '^isolated=' "$CONFIG" 2>/dev/null &&
+    printf '  %-7s %s\n' note "isolated in the config is ignored now: runs are always isolated"
+  grep -q '^permission_mode=' "$CONFIG" 2>/dev/null &&
+    printf '  %-7s %s\n' note "permission_mode in the config is ignored now: runs always use auto"
+  [ -s "$NS/instructions.md" ] &&
+    printf '  %-7s %s\n' note "$NS/instructions.md is ignored now: runs use nightshift's defaults"
 
   echo "repos"
   rn=""

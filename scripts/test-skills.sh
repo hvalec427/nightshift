@@ -52,4 +52,12 @@ expect_line "the subagent doesn't comment on the issue" "$build" "comments on th
 expect_line "the run checks each ticket's commit and a clean tree" "$build" "the tree clean"
 expect_line "a one-ticket plan is built without a subagent" "$build" "plan with one ticket"
 
+# The plugin's SessionStart hook, as Claude Code runs it: your own sessions get
+# nightshift's defaults, a run (which has them in its system prompt) nothing.
+hook=$(jq -r '.hooks.SessionStart[0].hooks[0].command' "$ROOT/plugin/hooks/hooks.json")
+expect "the hook prints nightshift's defaults" \
+  "$(env -u NIGHTSHIFT_ISSUE CLAUDE_PLUGIN_ROOT="$ROOT/plugin" sh -c "$hook")" "$(cat "$ROOT/plugin/instructions.md")"
+expect "the hook prints nothing in a run" \
+  "$(NIGHTSHIFT_ISSUE=7 CLAUDE_PLUGIN_ROOT="$ROOT/plugin" sh -c "$hook")" ""
+
 report
