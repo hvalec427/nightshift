@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# A fake curl for the tests, for what nightshift asks GitHub without gh: where
+# releases/latest redirects (to the tag in $CURL_FAKE/latest; none, to the
+# releases page) and a release's install.sh ($CURL_FAKE/install.sh; none, a
+# 404). The calls go to $CURL_FAKE/calls; anything else fails.
+set -u
+: "${CURL_FAKE:?}"
+echo "$*" >>"$CURL_FAKE/calls"
+url=${*: -1}
+case "$url" in
+https://github.com/*/releases/latest)
+  if [ -s "$CURL_FAKE/latest" ]; then printf '%s' "${url%/latest}/tag/$(cat "$CURL_FAKE/latest")"
+  else printf '%s' "${url%/latest}"
+  fi ;;
+https://raw.githubusercontent.com/*/install.sh)
+  [ -f "$CURL_FAKE/install.sh" ] || { echo "curl: (22) 404" >&2; exit 22; }
+  cat "$CURL_FAKE/install.sh" ;;
+*) echo "fake curl: unexpected: $*" >&2; exit 2 ;;
+esac

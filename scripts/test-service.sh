@@ -108,6 +108,29 @@ install() { env SHELL=/bin/zsh sh "$ROOT/install.sh" "$@"; }
   expect_line "install, pinned already: doesn't add it again" "$(cat "$CLAUDE_FAKE/calls")" "^plugin marketplace add" no)
 
 (healthy
+  install >/dev/null 2>&1
+  bin="$HOME/.nightshift/bin/nightshift"
+  before=$(ls -i "$bin" | awk '{print $1}')
+  install >/dev/null 2>&1
+  expect_ok "install again: the script moved in, not written over (a watch reads it as it runs)" test "$(ls -i "$bin" | awk '{print $1}')" != "$before"
+  expect_ok "install: nothing left aside" test ! -e "$bin.new"
+  try env NIGHTSHIFT_UPDATING=1 SHELL=/bin/zsh sh "$ROOT/install.sh" --service
+  expect "install in update mode: works" "$ST" 0
+  expect_line "install in update mode: leaves the service as it is" "$OUT" "^service: " no
+  expect_ok "install in update mode: no LaunchAgent written" test ! -e "$HOME/Library/LaunchAgents/$NIGHTSHIFT_LABEL.plist")
+
+(healthy
+  mkdir -p "$HOME/.nightshift"
+  printf 'repo o/r %s\nauto_update=false\n' "$CLONE" >"$HOME/.nightshift/config"
+  try install --auto-update
+  expect "install --auto-update: works" "$ST" 0
+  expect_line "install --auto-update: says so" "$OUT" "^auto_update=true in $HOME/.nightshift/config: "
+  expect "install --auto-update: the setting, once, the rest kept" "$(cat "$HOME/.nightshift/config")" "repo o/r $CLONE
+auto_update=true"
+  install --auto-update >/dev/null 2>&1
+  expect "install --auto-update again: still once" "$(grep -c '^auto_update=' "$HOME/.nightshift/config")" 1)
+
+(healthy
   echo '[{"name":"nightshift","repo":"hvalec427/nightshift","ref":"v0.1.0"}]' >"$CLAUDE_FAKE/marketplaces.json"
   install >/dev/null 2>&1
   expect_line "install, pinned to another ref: removes it" "$(cat "$CLAUDE_FAKE/calls")" "^plugin marketplace remove nightshift $"
@@ -124,7 +147,7 @@ install() { env SHELL=/bin/zsh sh "$ROOT/install.sh" "$@"; }
 
 (healthy
   try install --frobnicate
-  expect "install, an unknown option: fails" "$ST $OUT" "2 unknown option: --frobnicate (options: --master, --service)")
+  expect "install, an unknown option: fails" "$ST $OUT" "2 unknown option: --frobnicate (options: --master, --service, --auto-update)")
 
 (world
   try install

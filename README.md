@@ -26,6 +26,10 @@ release; a running service is restarted on the new version. It ends with
 `nightshift doctor` (below), and only starts the service once nothing required
 is missing.
 
+To stop updating by hand, add `--auto-update` (`… | sh -s -- --service
+--auto-update`): it sets `auto_update=true` in the config (below), and from then
+on the watch installs each new release itself.
+
 To test what's on `master` instead, add `--master` (`… | sh -s -- --master`);
 run from a clone (`./install.sh`), it installs the clone's files.
 `nightshift --version` says which one runs: `0.2.0` for a release,
@@ -207,6 +211,14 @@ permission_mode=auto
   costs no rate limit: the issues list is asked with the ETag of its last
   answer, and GitHub's `304 Not Modified` doesn't count. The pull requests are
   checked every 30 s at most.
+- `auto_update`: `true` has the watch install each new release itself (default
+  `false`; `install.sh --auto-update` sets it). It checks for one once an hour.
+  Once a new release is out, no new runs start; their issues show `queued`. When
+  the runs in flight finish, it runs the release's `install.sh` and restarts on
+  the new version, then starts the waiting issues. A failed update is logged
+  (what went wrong is in `~/.nightshift/update.log`), and it stays on its version
+  until the next check. Only a release install updates itself, not `--master` or
+  a clone's.
 - `permission_mode`: Claude Code's permission mode for runs. Commands that reach
   GitHub (`gh`, `git`) and signalbox and boop are always allowed.
 - `isolated`: `true` (the default) runs Claude without the machine's own
@@ -283,7 +295,8 @@ fake `gh` keeps GitHub as files (issues, comments, labels, pull requests) and ru
 nightshift's own `--jq` filters on them; it fails on any call it doesn't know.
 The fake `claude` keeps each run's arguments and plays a script: its text,
 comments, `nightshift label`, commits, a pull request, a failure, or waiting to be
-stopped. `scripts/test-service.sh` is the exception: it starts and stops a real
+stopped. The fake `curl` answers the latest release and serves its `install.sh`.
+`scripts/test-service.sh` is the exception: it starts and stops a real
 LaunchAgent, `com.nightshift.test` (skipped where there's no GUI session), and
 runs `install.sh` into a throwaway `HOME`.
 
