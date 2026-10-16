@@ -16,7 +16,7 @@ there as a comment; nobody reads the terminal.
 Write every comment with `gh issue comment <n> --body-file <file>`, as:
 
 ```
-🤖 **nightshift** · <stage>
+🤖 **nightshift** · <stage> · `nightshift:<skill>`
 
 <the content>
 
@@ -25,6 +25,8 @@ Write every comment with `gh issue comment <n> --body-file <file>`, as:
 
 `<!-- nightshift -->` is how the watcher tells your comments from the user's; keep it in
 every one. The stages are `questions`, `answer`, `plan`, `progress`, `done` and `blocked`.
+`<skill>` is the skill you're in as you write it (`plan`, `build`, …, or `issue` for a
+comment of this skill's own), so the user can see which guidance wrote it.
 
 Keep every comment as short as it can be: the user reads them between other things. Lead
 with what they need to know or decide, cut what they already know (the issue, earlier
@@ -40,10 +42,9 @@ comments, what the diff shows), and fold detail they may want into a collapsed
 ## Status label
 
 The issue carries a `nightshift: <status>` label the user can see from the issue list. The
-watcher sets it when a run starts and ends; you set it when you move to a step it can't
-see, with `nightshift label <status>`: `planning` as you start writing or revising a plan,
-`building` as you start building the tickets. If the command isn't there (an older
-nightshift), skip it.
+watcher sets it when a run starts and ends, and from the stage skill the run invokes
+(`nightshift:plan` sets `planning`, `nightshift:build` sets `building`, …), so you never
+set it yourself.
 
 ## The issue's type
 

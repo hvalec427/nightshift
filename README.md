@@ -99,8 +99,9 @@ commits the pull request didn't (a failed delete on GitHub is logged, not fatal)
 Each run starts in the plugin's `issue` skill, which reads the thread and hands the
 stage to a skill of its own: `questions`, `plan`, `build` (then `finish`), `update`, or
 `answer` for question and duplicate issues. Invoking a skill loads all of its guidance,
-so no stage runs without it; `nightshift logs -vv` shows each one as a
-`Skill: nightshift:<stage>` call.
+so no stage runs without it. The status label follows the skill, `nightshift logs`
+shows each one a run invokes, and each comment names the skill that wrote it
+(`🤖 nightshift · plan · nightshift:plan`).
 
 ## Issue types
 
@@ -304,7 +305,7 @@ Each `scripts/test-*.sh` drives nightshift the way it's used, in a throwaway
 fake `gh` keeps GitHub as files (issues, comments, labels, pull requests) and runs
 nightshift's own `--jq` filters on them; it fails on any call it doesn't know.
 The fake `claude` keeps each run's arguments and plays a script: its text,
-comments, `nightshift label`, commits, a pull request, a failure, or waiting to be
+comments, skills it invokes, `nightshift label`, commits, a pull request, a failure, or waiting to be
 stopped. The fake `curl` answers the latest release and serves its `install.sh`.
 `scripts/test-service.sh` is the exception: it starts and stops a real
 LaunchAgent, `com.nightshift.test` (skipped where there's no GUI session), and
