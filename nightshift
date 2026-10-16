@@ -539,12 +539,33 @@ retire() {
       log "$1#$2: kept $branch: it has commits the merged pull request doesn't"
     fi
   fi
+  gone=""
+  [ "$5" = "PR merged" ] && delete_remote_branch "$1" "$2" "$4" && gone=", branch deleted"
   set_status "$1" "$2" ""
   # Dated when it closed, if it already had (a merge closes the issue too).
   echo "$5" >"$4/done"
   [ -f "$4/off" ] && touch -r "$4/off" "$4/done"
   find "$4" -mindepth 1 -maxdepth 1 ! -name "done" ! -name log ! -name session ! -name seen ! -name started ! -name pr -exec rm -rf {} +
-  log "$1#$2: done ($5)"
+  log "$1#$2: done ($5)$gone"
+}
+
+# A merged issue's branch on GitHub, if it's still there and all of it was in
+# the pull request (it's the pull request's head). True when it was deleted.
+delete_remote_branch() {
+  branch="nightshift/issue-$2"
+  tip=$(gh api "repos/$1/git/ref/heads/$branch" -q .object.sha 2>/dev/null) && [ -n "$tip" ] || return 1
+  head=$(gh pr view "$(cat "$3/pr")" --repo "$1" --json headRefOid -q .headRefOid 2>/dev/null)
+  if [ -z "$head" ]; then
+    log "$1#$2: kept $branch on GitHub: couldn't read the merged pull request's head"
+    return 1
+  elif [ "$tip" != "$head" ]; then
+    log "$1#$2: kept $branch on GitHub: it has commits the merged pull request doesn't"
+    return 1
+  fi
+  if ! err=$(gh api -X DELETE "repos/$1/git/refs/heads/$branch" 2>&1 >/dev/null); then
+    log "$1#$2: couldn't delete $branch on GitHub: $(printf '%s' "$err" | tr '\n' ' ')"
+    return 1
+  fi
 }
 
 # An update run for an issue's pull request, started by the issue loop: its
@@ -985,6 +1006,9 @@ cmd_doctor() {
     elif gh api "repos/$repo/labels/$LABEL" >/dev/null 2>&1; then pass "$repo: clone $clone, \`$LABEL\` label"
     else fail missing "$repo: its \`$LABEL\` label" "gh label create $LABEL --repo $repo --color 5319E7"
     fi
+    # A hint, not a problem: nightshift deletes its own merged branches.
+    [ -n "$ghv" ] && [ "$(gh api "repos/$repo" -q .delete_branch_on_merge 2>/dev/null)" = false ] &&
+      printf '  %-7s %s\n' hint "$repo: GitHub keeps merged branches (\"Automatically delete head branches\" is off); nightshift deletes its own, and for the rest: gh repo edit $repo --delete-branch-on-merge"
   done <<EOF
 $r
 EOF
