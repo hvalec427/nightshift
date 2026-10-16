@@ -40,7 +40,8 @@ Then:
 | Reply | More questions, or a plan: the spec and its tickets, in [Matt Pocock's](https://github.com/mattpocock/skills) to-spec and to-tickets format |
 | Reply **go** (or what to change) | Builds the tickets in order, a progress comment per ticket, then opens the pull request and links it |
 | Comment on the issue after that | Makes the change on the same branch and pushes it |
-| Remove the label | Stops it |
+| Remove the label, or close the issue | Stops it; `nightshift status` says so and why |
+| Add the label back, or reopen it | Picks up the stopped run where it left off |
 
 Each issue gets its own worktree (in the repo's clone, `.claude/worktrees/issue-<n>`,
 branch `nightshift/issue-<n>`) and one Claude session that every run continues, so
@@ -53,7 +54,7 @@ on GitHub they're yours. It only acts on the label when you added it, and only o
 comments from you (`allowed_users` below).
 
 ```sh
-nightshift status                   # the service, the issues it knows, what each is doing, and for how long
+nightshift status                   # the service, the issues it knows, what each is doing (or why it stopped), and for how long
 nightshift start                    # run the service: nightshift watch, in the background whenever you're logged in
 nightshift stop                     # stop the service, and the runs in flight, until nightshift start
 nightshift stop <owner/repo>#<n>    # stop one
