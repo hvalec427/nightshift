@@ -55,6 +55,7 @@ comments from you (`allowed_users` below).
 ```sh
 nightshift status                   # the service, the issues it knows, what each is doing, and for how long
 nightshift start                    # run the service: nightshift watch, in the background whenever you're logged in
+nightshift stop                     # stop the service, and the runs in flight, until nightshift start
 nightshift stop <owner/repo>#<n>    # stop one
 nightshift logs -f                  # what the watcher does: a line per poll
 nightshift logs <owner/repo>#<n> -f # an issue's runs: its tool calls and messages, as they happen

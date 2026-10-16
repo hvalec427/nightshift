@@ -5,6 +5,7 @@
 #   nightshift start                     run `watch` in the background, whenever you're logged in
 #   nightshift once                      one poll, then exit (for testing)
 #   nightshift status                    the service, the issues it knows and what each is doing
+#   nightshift stop                      stop the service (until `nightshift start`)
 #   nightshift stop <owner/repo>#<n>     stop an issue's running agent
 #   nightshift logs [<owner/repo>#<n>] [-f]  the watcher's log, or an issue's runs
 #   nightshift add <owner/repo> <clone>  watch a repo, using this clone of it
@@ -124,6 +125,7 @@ write_plist() {
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
+  <key>ExitTimeOut</key><integer>120</integer>
   <key>StandardOutPath</key><string>$NS/service.log</string>
   <key>StandardErrorPath</key><string>$NS/service.log</string>
 </dict>
@@ -213,7 +215,7 @@ $intro"
   # shellcheck disable=SC2086 # $resume is two words or none
   (cd "$wt" && exec claude -p "$prompt" --output-format stream-json --verbose --permission-mode "$mode" --allowedTools $ALLOWED_TOOLS $resume </dev/null) >"$dir/stream" 2>>"$dir/log" &
   cpid=$!
-  trap 'kill -TERM $cpid 2>/dev/null; stopped=1' TERM
+  trap 'kill -TERM $cpid 2>/dev/null; stopped=1' TERM INT
   stopped=0
   wait $cpid
   status=$?
@@ -225,12 +227,12 @@ $intro"
   while kill -0 $rpid 2>/dev/null && [ $i -lt 5 ]; do sleep 1; i=$((i + 1)); done
   kill $rpid 2>/dev/null
   rm -f "$dir/stream"
+  sid=$(sed -n 's/.*"session_id" *: *"\([^"]*\)".*/\1/p' "$dir/out.jsonl" | head -1)
+  [ -n "$sid" ] && echo "$sid" >"$dir/session"
   if [ $stopped -eq 1 ]; then
     log "$repo#$n: stopped"
     return
   fi
-  sid=$(sed -n 's/.*"session_id" *: *"\([^"]*\)".*/\1/p' "$dir/out.jsonl" | head -1)
-  [ -n "$sid" ] && echo "$sid" >"$dir/session"
   if [ $status -ne 0 ] || grep '"type" *: *"result"' "$dir/out.jsonl" | grep -q '"is_error" *: *true'; then
     log "$repo#$n: run failed ($status)"
     comment_failure "$repo" "$n" "$(tail -15 "$dir/log")"
@@ -344,12 +346,38 @@ cmd_watch() {
     export CLAUDE_CODE_OAUTH_TOKEN
   fi
   echo $$ >"$NS/watch.pid"
+  trap stop_watch TERM INT
   log "watching: $(repos | cut -d' ' -f1 | tr '\n' ' ')"
   while :; do
     poll
     trim_log
-    sleep "$(setting interval 30)"
+    sleep "$(setting interval 30)" &
+    spid=$!
+    wait $spid # a signal interrupts `wait`, not `sleep`
   done
+}
+
+# The watcher stopping (the service stopped, a logout, Ctrl-C): stop the runs in
+# flight as `nightshift stop <issue>` does, wait for them, and log the issues.
+stop_watch() {
+  trap '' TERM INT
+  kill "${spid:-}" 2>/dev/null
+  names=""
+  for d in "$NS"/issues/*/; do
+    d=${d%/}
+    running "$d" || continue
+    kill -TERM "$(cat "$d/pid")" 2>/dev/null
+    name=$(basename "$d")
+    names="$names, $(echo "${name%_*}" | sed 's/_/\//')#${name##*_}"
+  done
+  for d in "$NS"/issues/*/; do
+    while running "${d%/}"; do sleep 1; done
+  done
+  if [ -n "$names" ]; then log "watch stopped: interrupted ${names#, }"
+  else log "watch stopped"
+  fi
+  rm -f "$NS/watch.pid"
+  exit 0
 }
 
 cmd_start() {
@@ -396,8 +424,22 @@ waited() {
   done
 }
 
+# `nightshift stop`: the service, until `nightshift start` (across logins).
+stop_service() {
+  [ -f "$PLIST" ] || die "the service isn't installed"
+  launchctl disable "$DOMAIN/$SERVICE"
+  pid=$(service_pid)
+  [ -n "$pid" ] && echo "stopping the service (and the runs in flight)…"
+  launchctl bootout "$DOMAIN/$SERVICE" 2>/dev/null
+  if [ -n "$pid" ]; then
+    while kill -0 "$pid" 2>/dev/null; do sleep 1; done
+  fi
+  service_line
+}
+
 cmd_stop() {
-  case "$1" in */*#*) ;; *) die "usage: nightshift stop <owner/repo>#<n>" ;; esac
+  [ -n "$1" ] || { stop_service; return; }
+  case "$1" in */*#*) ;; *) die "usage: nightshift stop [<owner/repo>#<n>]" ;; esac
   d=$(issue_dir "${1%#*}" "${1##*#}")
   running "$d" || die "$1 isn't running"
   kill -TERM "$(cat "$d/pid")" && echo "stopped $1"
@@ -443,5 +485,5 @@ start) cmd_start ;;
 stop) shift; cmd_stop "${1:-}" ;;
 logs) shift; cmd_logs "$@" ;;
 add) shift; cmd_add "$@" ;;
-*) sed -n '2,10s/^# \{0,1\}//p' "$0"; exit 2 ;;
+*) sed -n '2,11s/^# \{0,1\}//p' "$0"; exit 2 ;;
 esac
