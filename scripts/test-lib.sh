@@ -70,7 +70,7 @@ world() {
   # The pull requests checked on every poll, not every 30 s.
   export NIGHTSHIFT_PR_INTERVAL=0
   # git and jq from wherever they are; nothing else of this machine's own
-  # (no real gh, claude or signalbox).
+  # (no real gh or claude).
   for t in git jq; do ln -s "$(command -v "$t")" "$W/bin/$t"; done
   export PATH="$FAKES:$W/bin:/usr/bin:/bin:/usr/sbin:/sbin"
   echo alice >"$GH_FAKE/user"

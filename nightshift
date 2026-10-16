@@ -365,7 +365,7 @@ write_instructions() {
 
 # Tools a run may use without asking, on top of the permission mode: the ones
 # that reach GitHub, which an automatic reviewer might otherwise hold back.
-ALLOWED_TOOLS='Bash(gh issue *) Bash(gh pr *) Bash(gh repo view *) Bash(gh api *) Bash(git *) Bash(signalbox *) Bash(boop *) Bash(nightshift label *)'
+ALLOWED_TOOLS='Bash(gh issue *) Bash(gh pr *) Bash(gh repo view *) Bash(gh api *) Bash(git *) Bash(nightshift label *)'
 
 # Runs are isolated from the machine's own Claude setup:
 # no user-level skills, settings, plugins or hooks, only the repo's own and
@@ -622,7 +622,6 @@ $intro"
     [ "$(cat "$dir/pr" 2>/dev/null)" = "$pr" ] || log "$repo#$n: pull request $pr"
     echo "$pr" >"$dir/pr"
     if [ -z "$(git -C "$wt" status --porcelain 2>/dev/null)" ]; then
-      (cd "$wt" && signalbox down --detached-only >/dev/null 2>&1) || true
       git -C "$clone" worktree remove --force "$wt" 2>>"$dir/log" && rm -f "$dir/worktree"
     fi
   fi
@@ -882,7 +881,6 @@ retire() {
   wt="$3/.claude/worktrees/issue-$2"
   branch="nightshift/issue-$2"
   if [ -d "$wt" ] && [ -z "$(git -C "$wt" status --porcelain 2>/dev/null)" ]; then
-    (cd "$wt" && signalbox down --detached-only >/dev/null 2>&1) || true
     git -C "$3" worktree remove --force "$wt" 2>>"$4/log"
   fi
   if [ "$5" = "PR merged" ] && [ ! -d "$wt" ] && git -C "$3" rev-parse -q --verify "refs/heads/$branch" >/dev/null; then
