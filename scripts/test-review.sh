@@ -31,4 +31,7 @@ finish=$(line_of "$BUILD" 'nightshift:finish`')
 expect_ok "the build skill runs the review skill" test "$review" -gt 0
 expect_ok "the review comes before the finish skill" test "$review" -gt 0 -a "$review" -lt "$finish"
 
+expect_line "the done comment counts the review's findings" "$(cat "$BUILD")" '^ *\*\*Review:\*\* <n> found: <n> fixed, <n> dismissed, <n> left open\.$'
+expect_line "the findings left open go in the pull request" "$(cat "$BUILD")" "findings left open go in the pull request"
+
 report
