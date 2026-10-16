@@ -62,9 +62,8 @@ applies, and end the run after its comment:
      dependency): a `blocked` comment saying what's needed, and end the run.
    - After the last ticket, check the **overlap** (below) again, since other work may have
      started or merged since the plan, and use the **finish** skill to open the pull
-     request, with the overlap lines in its body. Then a
-     `done` comment with its link and what's in it. The watcher removes the worktree after
-     this run.
+     request, with the overlap lines in its body. Then a `done` comment with its link and
+     what's in it. The watcher removes the worktree after this run.
 5. **An update run:** the watcher's news says the default branch moved under this pull
    request (it conflicts now, or a pull request it goes after or overlaps merged). Make it
    fit what's there now, so the pull requests can merge in any order:

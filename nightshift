@@ -17,8 +17,9 @@
 # no label or is closed, `interrupted` if that stopped a run, `after` (the issues
 # its open pull request goes after), `update` while an update run waits and
 # `updating` while it runs (its status, then why), `conflict` (the default
-# branch's commit its pull request last conflicted with), `log` (readable, live) and `out.jsonl` (the
-# last run's raw stream-json).
+# branch's commit its pull request was last updated for), `log` (readable,
+# live) and `out.jsonl` (the last run's raw stream-json); and per repo,
+# `merged/<owner>_<repo>`, the merged nightshift pull requests seen.
 set -u
 
 NS="${NIGHTSHIFT_HOME:-$HOME/.nightshift}"
@@ -329,25 +330,62 @@ open_prs() {
     | "\(.headRefName | ltrimstr("nightshift/issue-")) \(.baseRefName) \(.mergeable) \(marked("after")) \(marked("overlaps"))"'
 }
 
+# The repo's merged nightshift pull requests, the last 30, a line each: the
+# pull request and its issue.
+merged_prs() {
+  gh pr list --repo "$1" --state merged --limit 30 --json number,headRefName --jq '
+    .[] | select(.headRefName | startswith("nightshift/issue-"))
+    | "\(.number) \(.headRefName | ltrimstr("nightshift/issue-"))"'
+}
+
 # What the open nightshift pull requests say about each other (each issue's
 # `after`, for status), and an update run for each labelled one that conflicts
-# with its branch now, once per commit of that branch.
+# with its branch now (once per commit of that branch), or goes after or
+# overlaps a nightshift pull request that merged since the last poll. The
+# merges it has seen are in merged/<owner>_<repo>; the first poll only notes them.
 check_prs() {
   repo=$1 open=$2
   prs=$(open_prs "$repo" 2>>"$NS/watch.log") || { log "$repo: couldn't list pull requests"; return; }
+  seen="$NS/merged/$(echo "$repo" | tr '/' '_')"
+  new=""
+  if merged=$(merged_prs "$repo" 2>>"$NS/watch.log"); then
+    [ -f "$seen" ] && new=$(printf '%s\n' "$merged" | grep -vxF -f "$seen")
+    mkdir -p "$NS/merged"
+    printf '%s\n' "$merged" | cat - "$seen" 2>/dev/null | grep . | sort -u >"$seen.tmp"
+    mv "$seen.tmp" "$seen"
+  else
+    log "$repo: couldn't list merged pull requests"
+  fi
   rm -f "$NS/issues/$(echo "$repo" | tr '/' '_')"_*/after
-  printf '%s\n' "$prs" | while read -r n base mergeable after _; do
+  printf '%s\n' "$prs" | while read -r n base mergeable after overlaps; do
     d=$(issue_dir "$repo" "$n")
     [ -n "$n" ] && [ -d "$d" ] || continue
     [ "$after" = - ] || echo "$after" >"$d/after"
     printf '%s\n' "$open" | grep -q "^$n " || continue
-    if [ -f "$d/ignored" ] || [ -f "$d/update" ] || running "$d"; then continue; fi
-    [ "$mergeable" = CONFLICTING ] || continue
-    sha=$(gh api "repos/$repo/commits/$base" --jq .sha 2>/dev/null) || continue
-    [ "$(cat "$d/conflict" 2>/dev/null)" = "$sha" ] && continue
-    echo "$sha" >"$d/conflict"
-    queue_update "$repo" "$n" "conflicts, rebasing" \
-      "$base moved and this pull request conflicts with it now, so I'm rebasing it onto $base and updating it to fit."
+    if [ -f "$d/ignored" ] || [ -f "$d/update" ]; then continue; fi
+    # A merge it goes after or overlaps: #<issue> (PR #<pr>), and which.
+    rel="" how=""
+    for pm in $(printf '%s\n' "$new" | tr ' ' :); do
+      p=${pm%:*} m=${pm#*:}
+      case ",$after," in *",$m,"*) rel="#$m (PR #$p)" how="goes after it"; break ;; esac
+      case ",$overlaps," in *",$m,"*) rel="#$m (PR #$p)" how="overlaps it"; break ;; esac
+    done
+    # A conflict waits for a run in flight; it's still there on the next poll.
+    conflicts=0 sha=""
+    [ "$mergeable" = CONFLICTING ] && ! running "$d" && conflicts=1
+    [ $conflicts -eq 1 ] || [ -n "$rel" ] || continue
+    sha=$(gh api "repos/$repo/commits/$base" --jq .sha 2>/dev/null)
+    [ -n "$sha" ] && [ "$(cat "$d/conflict" 2>/dev/null)" != "$sha" ] || conflicts=0
+    if [ $conflicts -eq 1 ]; then
+      echo "$sha" >"$d/conflict"
+      queue_update "$repo" "$n" "conflicts, rebasing" \
+        "${rel:-$base moved}${rel:+ merged}, and this pull request conflicts with $base now, so I'm rebasing it onto $base and updating it to fit."
+    elif [ -n "$rel" ]; then
+      # Its update run makes it fit this commit, conflict or not.
+      [ -n "$sha" ] && echo "$sha" >"$d/conflict"
+      queue_update "$repo" "$n" "updating after ${rel%% *}" \
+        "$rel merged, and this pull request $how, so I'm rebasing it onto $base and updating it to fit what merged."
+    fi
   done
 }
 
