@@ -5,6 +5,7 @@
 #   nightshift once                      one poll, then exit (for testing)
 #   nightshift status                    the issues it knows and what each is doing
 #   nightshift stop <owner/repo>#<n>     stop an issue's running agent
+#   nightshift logs [<owner/repo>#<n>] [-f]  the watcher's log, or an issue's runs
 #   nightshift add <owner/repo> <clone>  watch a repo, using this clone of it
 #
 # State lives in $NIGHTSHIFT_HOME (default ~/.nightshift): `config`, and per
@@ -325,6 +326,24 @@ cmd_stop() {
   kill -TERM "$(cat "$d/pid")" && echo "stopped $1"
 }
 
+# `logs [<owner/repo>#<n>] [-f]`: the whole log, or with -f its end, followed.
+cmd_logs() {
+  f="$NS/watch.log" follow=0
+  for a in "$@"; do
+    case "$a" in
+    -f) follow=1 ;;
+    */*#*) f="$(issue_dir "${a%#*}" "${a##*#}")/log" ;;
+    *) die "usage: nightshift logs [<owner/repo>#<n>] [-f]" ;;
+    esac
+  done
+  [ -d "$(dirname "$f")" ] || die "nightshift doesn't know that issue"
+  if [ $follow -eq 1 ]; then
+    exec tail -n 50 -F "$f" # -F: keeps up when trimming replaces watch.log
+  fi
+  [ -f "$f" ] || die "nothing logged there yet"
+  cat "$f"
+}
+
 cmd_add() {
   [ $# -eq 2 ] || die "usage: nightshift add <owner/repo> <clone path>"
   clone=$(cd "$2" 2>/dev/null && pwd -P) || die "$2 doesn't exist"
@@ -344,6 +363,7 @@ once) NIGHTSHIFT_WAIT=1; export NIGHTSHIFT_WAIT; poll ;;
 _run) shift; run_agent "$@"; rm -f "$(issue_dir "$1" "$2")/pid"; touch "$(issue_dir "$1" "$2")/finished" ;;
 status) cmd_status ;;
 stop) shift; cmd_stop "${1:-}" ;;
+logs) shift; cmd_logs "$@" ;;
 add) shift; cmd_add "$@" ;;
-*) sed -n '2,8s/^# \{0,1\}//p' "$0"; exit 2 ;;
+*) sed -n '2,9s/^# \{0,1\}//p' "$0"; exit 2 ;;
 esac
