@@ -287,7 +287,7 @@ without() {
   expect_line "a clone that's gone: logged" "$(cat "$NS/watch.log")" "o/q: $W/nothing isn't a git checkout$")
 
 (world
-  echo 'api repos/o/r/issues\?*' >"$GH_FAKE/fail"
+  echo 'api -i repos/o/r/issues\?*' >"$GH_FAKE/fail"
   poll
   expect_line "GitHub can't list the issues: logged" "$(cat "$NS/watch.log")" "o/r: couldn't list issues$")
 

@@ -678,14 +678,34 @@ $MARKER <!-- nightshift:progress -->" >/dev/null 2>&1 || log "$1#$2: couldn't co
   log "$1#$2: pull request $3"
 }
 
+# The repo's open labelled issues, as GitHub's JSON. Asked with the ETag of
+# the last answer, GitHub says 304 when nothing changed (which costs no rate
+# limit), and the last answer, kept in poll/<owner>_<repo>.json, stands.
+list_issues() {
+  f="$NS/poll/$(echo "$1" | tr '/' '_')"
+  set -- "repos/$1/issues?labels=$LABEL&state=open&per_page=100"
+  [ -s "$f.json" ] && [ -s "$f.etag" ] && set -- -H "If-None-Match: $(cat "$f.etag")" "$@"
+  mkdir -p "$NS/poll"
+  # gh fails on a 304; the status line says which it was.
+  res=$(gh api -i "$@" 2>"$f.err" | tr -d '\r')
+  case "$(printf '%s\n' "$res" | head -1)" in
+  *" 304 "*) cat "$f.json"; return ;;
+  *" 200 "*) ;;
+  *) cat "$f.err" >&2; return 1 ;;
+  esac
+  printf '%s\n' "$res" | sed '1,/^$/d' >"$f.json.tmp" && mv "$f.json.tmp" "$f.json"
+  printf '%s\n' "$res" | sed -n '1,/^$/s/^[Ee][Tt][Aa][Gg]: *//p' >"$f.etag"
+  cat "$f.json"
+}
+
 poll_repo() {
   repo=$1 clone=$2
   allowed=$(allowed_json)
   ensure_labels "$repo"
   # Each labelled issue, and the label that holds it (`invalid` or `wontfix`;
   # `-`, none). A held one isn't worked: it's off, as if unlabelled.
-  all=$(gh api "repos/$repo/issues?labels=$LABEL&state=open&per_page=100" \
-    --jq '.[] | select(.pull_request | not) | "\(.number) \(.updated_at) \([.labels[].name | select(. == "invalid" or . == "wontfix")] | first // "-")"' 2>>"$NS/watch.log") || { log "$repo: couldn't list issues"; return; }
+  issues=$(list_issues "$repo" 2>>"$NS/watch.log") || { log "$repo: couldn't list issues"; return; }
+  all=$(printf '%s\n' "$issues" | jq -r '.[] | select(.pull_request | not) | "\(.number) \(.updated_at) \([.labels[].name | select(. == "invalid" or . == "wontfix")] | first // "-")"')
   open=$(printf '%s\n' "$all" | awk 'NF && $3 == "-" { print $1, $2 }')
   held=$(printf '%s\n' "$all" | awk 'NF && $3 != "-" { print $1, $3 }')
 
