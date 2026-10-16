@@ -322,7 +322,8 @@ stopped. The fake `curl` answers the latest release and serves its `install.sh`.
 LaunchAgent, `com.nightshift.test` (skipped where there's no GUI session), and
 runs `install.sh` into a throwaway `HOME`. `scripts/test-skills.sh` and
 `scripts/test-review.sh` check the skills' wiring in the skill files themselves,
-since the fake `claude` can't see a run invoke a skill.
+since the fake `claude` can't see a run invoke a skill; `test-skills.sh` also runs
+the plugin's `SessionStart` hook.
 
 A test is a few lines in a subshell, with the helpers in `scripts/test-lib.sh`:
 

@@ -185,7 +185,8 @@ AT_LABEL='i=0; until gh api "repos/$NIGHTSHIFT_REPO/issues/$NIGHTSHIFT_ISSUE" --
   poll
   expect "isolated=false is ignored: still isolated" "$(run_opt --setting-sources)" "project,local"
   expect "isolated=false is ignored: still nightshift's plugin" "$(run_opt --plugin-dir)" "$NS/plugin"
-  expect "permission_mode is ignored: still auto" "$(run_opt --permission-mode)" auto)
+  expect "permission_mode is ignored: still auto" "$(run_opt --permission-mode)" auto
+  expect "isolated=false is ignored: still nightshift's instructions" "$(run_opt --append-system-prompt)" "$(cat "$ROOT/plugin/instructions.md")")
 
 (world
   set_config model sonnet

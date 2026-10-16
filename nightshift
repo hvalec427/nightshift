@@ -1377,7 +1377,7 @@ cmd_doctor() {
   else fail missing "nightshift's default instructions ($NS/plugin/instructions.md)" "run install.sh again"
   fi
   runs_line
-  # Settings runs no longer have (not problems): a note each.
+  # Settings older versions had, ignored now: a note each, not a problem.
   grep -q '^isolated=' "$CONFIG" 2>/dev/null &&
     printf '  %-7s %s\n' note "isolated in the config is ignored now: runs are always isolated"
   grep -q '^permission_mode=' "$CONFIG" 2>/dev/null &&
