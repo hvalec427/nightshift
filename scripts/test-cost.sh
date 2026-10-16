@@ -49,4 +49,18 @@ cost() { state "$1" cost | awk '{ $5 = "S"; print }'; }
   poll
   expect "counting from a later run: since today" "$(cost 7)" "0 0 0 0 S 1 $(date +%Y-%m-%d)")
 
+# Shown by status.
+(world
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  echo "1.5 12000 85000 1700000 6000 12 -" >"$(idir 7)/cost"
+  expect_line "status: what it cost so far" "$(ns status)" '^o/r#7  *needs you · [0-9]*s · spent \$1\.50, 1\.8M tokens, 1h 40m$'
+  echo "0.004 500 0 0 45 1 -" >"$(idir 7)/cost"
+  expect_line "status: small sums" "$(ns status)" '^o/r#7  *needs you · [0-9]*s · spent \$0\.00, 500 tokens, 45s$'
+  echo "12.345 1000 2000 6000 90000 3 -" >"$(idir 7)/cost"
+  expect_line "status: thousands" "$(ns status)" '^o/r#7  *needs you · [0-9]*s · spent \$12\.35, 9k tokens, 1d 1h$'
+  rm "$(idir 7)/cost"
+  expect_line "status: nothing counted, nothing shown" "$(ns status)" '^o/r#7  *needs you · [0-9]*s$')
+
 report

@@ -869,6 +869,7 @@ cmd_status() {
     elif [ -s "$d/session" ]; then what="$(label_or "$d" "waiting for a reply")$(waited "$d" " · ")"
     else what="queued"
     fi
+    what="$what$(cost_note "$d")"
     t=$(cat "$d/type" 2>/dev/null) && [ -n "$t" ] && what="$t · $what"
     printf '%-40s %s\n' "$repo#$n" "$what"
   done
@@ -876,6 +877,29 @@ cmd_status() {
   elif [ $found -eq 0 ]; then echo "no issues in progress"
   fi
   [ $hidden -eq 0 ] || echo "($hidden done: nightshift status --all)"
+}
+
+# An issue's `cost` (its dir $1), readable, a word each: its dollars, tokens
+# (all, in, out and cache), seconds, runs and the day counting started (-:
+# with its first run). Fails if there's none.
+cost_words() {
+  [ -s "$1/cost" ] || return 1
+  awk 'function tok(n,  x, u, s) {
+      if (n < 1000) return sprintf("%d", n)
+      if (n < 1000000) { x = n / 1000; u = "k" } else { x = n / 1000000; u = "M" }
+      s = sprintf(x < 10 ? "%.1f" : "%.0f", x)
+      sub(/\.0$/, "", s)
+      return s u
+    }
+    { printf "$%.2f %s %s %s %s %d %d %s\n", $1, tok($2 + $3 + $4), tok($2), tok($3), tok($4), $5, $6, $7 }' "$1/cost"
+}
+
+# What an issue's runs (its dir $1) cost, for status, if it's counted.
+cost_note() {
+  cost_words "$1" | {
+    read -r usd tokens _ _ _ secs _ _ || exit 0
+    printf ' · spent %s, %s tokens, %s' "$usd" "$tokens" "$(duration "$secs")"
+  }
 }
 
 # An issue's status label, or $2 if it has none.
