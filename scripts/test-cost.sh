@@ -71,6 +71,19 @@ cost() { state "$1" cost | awk '{ $5 = "S"; print }'; }
   poll
   expect "counting from a later run: since today" "$(cost 7)" "0 0 0 0 S 1 $(date +%Y-%m-%d)")
 
+# A plan's "go" builds in a fresh session: all of its first result counts,
+# whatever the planning session's totals were.
+(world
+  gh_issue o/r 7 alice agent enhancement
+  runs_do 'costs 5 opus 100 100 100 100; comment plan'
+  poll
+  gh_comment o/r 7 alice "go" >/dev/null
+  runs_do 'costs 1 opus 10 10 10 10; comment progress'
+  poll
+  expect "the build session: a fresh one" "$(state 7 session)" session-2
+  expect "its cost: all of it, added" "$(cost 7)" "6 110 110 220 S 2 -"
+  expect_no_unexpected)
+
 # Each run's end line: the models it used, the main one first, and its
 # context at the end (its last turn's, not a subagent's).
 OPUS=claude-opus-5-5 HAIKU=claude-haiku-4-5-20251001
