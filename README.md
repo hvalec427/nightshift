@@ -156,8 +156,11 @@ nightshift's skills: `nightshift:questions` sets `thinking`, `plan` `planning`,
 running (and come back with it). `nightshift status` says the same, with the
 skill a run is in (or its last one ended in).
 
-An issue labelled `nightshift: proposed` (one a run filed for a real defect it
-spotted, unrelated to its own issue) is held: the watcher doesn't start it
+A run that spots a real defect outside its own issue (a bug, broken docs, a
+failing check; not an idea) files it, after looking for a duplicate, with
+`agent`, its type and `nightshift: proposed`, at most three a run, and names
+them in its next comment; it doesn't fix them on its branch. An issue labelled
+`nightshift: proposed` is held: the watcher doesn't start it
 until you comment on it, or remove that label. Your comment starts its first
 run, which is told it, and the status changes as the run starts. Others'
 comments don't start it. `nightshift status` shows a held one as `proposed:

@@ -62,4 +62,13 @@ expect "the hook prints nothing in a run" \
 expect "the defaults have the CLAUDE.md rules, with the root's budget" \
   "$(grep -c -e '^# CLAUDE.md$' -e '200 lines' "$ROOT/plugin/instructions.md")" 2
 
+# A run files a real defect it finds outside its issue, held as proposed until the user comments.
+issue=$(cat "$ISSUE")
+expect_line "a run files a defect it finds as a proposed issue" "$issue" "\`nightshift: proposed\`"
+expect_line "it looks for a duplicate first, open or closed" "$issue" "gh issue list --state all"
+expect_line "it files at most three a run" "$issue" "at most three"
+expect_line "filing finishes before the run ends" "$issue" "run_in_background: false"
+expect_line "the filed issue says where it was found" "$issue" "Found while working #<n>."
+expect_line "a ticket subagent reports defects to the run, not files them" "$build" "files no issues"
+
 report

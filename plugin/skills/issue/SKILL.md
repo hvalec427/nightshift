@@ -118,6 +118,24 @@ request's, when it has one):
 
 No overlap, nothing to say.
 
+## Defects you find
+
+A real defect outside this issue that you run into (a bug, broken docs, a failing check)
+gets an issue of its own; an improvement or an idea doesn't. Don't fix it on this branch:
+stay on your issue. File at most three a run, and for each:
+
+- look for a duplicate first, open or closed (`gh issue list --state all --search ...`);
+  one there, file nothing;
+- file it with `gh issue create`, labelled `agent`, its type (`bug`, `documentation`, …)
+  and `nightshift: proposed`, so it waits for the user. The body is short: what's wrong
+  and the evidence, ending "Found while working #<n>.";
+- do it yourself, or through a `general-purpose` subagent in the foreground
+  (`run_in_background: false`): the run ends when you stop, and cuts off what's still
+  running.
+
+Your next comment on this issue names the ones you filed, in one line. Ticket and review
+subagents don't file: they report what they find to you.
+
 ## Bounds
 
 - Stay inside this worktree and this issue; other issues and branches are other runs.
