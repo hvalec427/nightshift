@@ -106,6 +106,13 @@ hang() {
   touch "$RUN/waiting"
   while kill -0 "$PPID" 2>/dev/null; do sleep 0.2; done
 }
+# hang, but once stopped it lingers until $RUN/go exists, the way claude
+# finishes its SessionEnd hooks.
+linger() {
+  trap 'touch "$RUN/stopped"; while [ ! -e "$RUN/go" ]; do sleep 0.1; done; exit 143' TERM
+  touch "$RUN/waiting"
+  while kill -0 "$PPID" 2>/dev/null; do sleep 0.2; done
+}
 # Wait until $RUN/go exists (or nightshift's run is gone), then go on:
 # $RUN/waiting says it's waiting.
 hold() {

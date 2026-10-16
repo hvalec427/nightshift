@@ -329,7 +329,8 @@ fake `gh` keeps GitHub as files (issues, comments, labels, pull requests) and ru
 nightshift's own `--jq` filters on them; it fails on any call it doesn't know.
 The fake `claude` keeps each run's arguments and plays a script: its text,
 comments, skills it invokes, `nightshift label`, commits, a pull request, a failure, or waiting to be
-stopped. The fake `curl` answers the latest release and serves its `install.sh`.
+stopped. The fake `curl` answers the latest release and serves its `install.sh` and
+a ref's tarball.
 `scripts/test-service.sh` is the exception: it starts and stops a real
 LaunchAgent, one of `com.nightshift.test.1` … `.8`, claimed for the run so suites
 can run at once (skipped where there's no GUI session), and runs `install.sh` into

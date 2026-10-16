@@ -109,8 +109,6 @@ start_hanging() {
   out=$(ns stop o/r7 2>&1)
   set -e
   expect "stop, a bad issue: the usage" "$out" "nightshift: usage: nightshift stop [<owner/repo>#<n>]"
-  poll
-  expect "stopped by hand: the next watch doesn't resume it" "$(runs)" 1
   gh_comment o/r 7 alice "go on" >/dev/null
   poll
   expect "a comment after a stop: it resumes" "$(run_opt --resume)" session-1)

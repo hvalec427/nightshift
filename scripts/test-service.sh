@@ -181,11 +181,11 @@ auto_update=true"
 (healthy
   echo v0.6.0 >"$CURL_FAKE/latest"
   tar -czf "$CURL_FAKE/src.tar.gz" -C "$(dirname "$ROOT")" "$(basename "$ROOT")/nightshift" "$(basename "$ROOT")/plugin"
-  (cd "$ROOT" && env SHELL=/bin/zsh sh <install.sh >/dev/null 2>&1) || true
+  try sh -c 'cd "$1" && env SHELL=/bin/zsh sh <install.sh' sh "$ROOT"
   expect "install, piped from inside a clone: the release" "$("$HOME/.nightshift/bin/nightshift" --version 2>&1)" "nightshift 0.6.0")
 
 (healthy
-  (cd "$ROOT" && env SHELL=/bin/zsh sh install.sh >/dev/null 2>&1) || true
+  try sh -c 'cd "$1" && env SHELL=/bin/zsh sh install.sh' sh "$ROOT"
   expect "install, sh install.sh in a clone: the clone" "$("$HOME/.nightshift/bin/nightshift" --version 2>&1)" "nightshift dev ($(git -C "$ROOT" rev-parse --short HEAD))")
 
 (healthy

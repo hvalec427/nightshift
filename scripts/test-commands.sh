@@ -338,6 +338,7 @@ without() {
   kill -TERM "$bg"
   wait "$bg" || true
   expect_line "watch stopped: queued to resume" "$(ns status)" "^o/r#7  *queued to resume"
+  expect "watch stopped: no comment" "$(gh_comments o/r 7)" ""
   "$ROOT/nightshift" watch &
   bg=$!
   wait_for "$CLAUDE_FAKE/runs/2/args" || true
@@ -347,6 +348,29 @@ without() {
   expect "watch again: it resumes its session" "$(run_opt --resume 2)" session-1
   expect_line "watch again: told to carry on" "$(run_prompt 2)" \
     "^Your last run was stopped partway because nightshift stopped (it was restarted or upgraded); carry on from where it stopped\.$")
+
+# A run stopped by hand stays stopped, even when the watch stops while it's
+# still ending.
+(world
+  set_config interval 1
+  gh_issue o/r 7 alice agent
+  runs_do '[ "$k" = 1 ] && linger; comment questions'
+  "$ROOT/nightshift" watch &
+  bg=$!
+  wait_for "$CLAUDE_FAKE/runs/1/waiting"
+  ns stop o/r#7 >/dev/null
+  wait_for "$CLAUDE_FAKE/runs/1/stopped"
+  kill -TERM "$bg"
+  sleep 0.5
+  touch "$CLAUDE_FAKE/runs/1/go"
+  wait "$bg" || true
+  expect "stopped by hand, then the watch: its status" "$(status_label 7)" stopped
+  "$ROOT/nightshift" watch &
+  bg=$!
+  wait_for "$CLAUDE_FAKE/runs/2" || true
+  kill -TERM "$bg"
+  wait "$bg" || true
+  expect "stopped by hand: the next watch doesn't resume it" "$(runs)" 1)
 
 (world
   printf 'repo o/q %s\n' "$W/nothing" >>"$NS/config"
