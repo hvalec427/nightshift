@@ -37,7 +37,7 @@ Then:
 | You | nightshift |
 |---|---|
 | Open an issue, add the `agent` label | Reads it and the code; asks its questions in one comment (each with its recommended answer), or goes straight to the plan |
-| Reply | More questions, or a plan: the spec and its tickets, in [Matt Pocock's](https://github.com/mattpocock/skills) to-spec and to-tickets format |
+| Reply | More questions, or a plan: the spec and its tickets, in the to-spec and to-tickets format of [Matt Pocock's skills](https://github.com/mattpocock/skills) |
 | Reply **go** (or what to change) | Builds the tickets in order, a progress comment per ticket, then opens the pull request and links it |
 | Comment on the issue after that | Makes the change on the same branch and pushes it |
 | Merge another pull request | Rebases and updates the ones it affects (below) |
@@ -158,3 +158,11 @@ The plugin's `finish` skill works in any Claude Code session too: in a
 `claude --worktree <name>` session, say **finish** and it commits, pushes, opens
 the pull request (with screenshots and a recording when the app is running there)
 and removes the worktree.
+
+## Credits
+
+How nightshift asks, specs, tickets and tests (the issue skill's `questions.md`,
+`spec.md`, `tickets.md` and `tdd.md`) is adapted from
+[Matt Pocock's skills](https://github.com/mattpocock/skills) (MIT): see
+[plugin/THIRD_PARTY.md](plugin/THIRD_PARTY.md). They ship in the plugin, so a run
+doesn't depend on which skills the machine has.

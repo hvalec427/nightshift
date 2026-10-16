@@ -43,26 +43,23 @@ applies, and end the run after its comment:
    user's (behaviour, scope, UX, trade-offs) and that the issue and the code don't settle
    go in one `questions` comment: numbered, each with your recommended answer, so the user
    can reply "1 yes, 2 b". Ask the questions that change what gets built; settle the rest
-   yourself and say how. This is Matt Pocock's grilling, batched for an issue.
+   yourself and say how. How to find and word them: [questions.md](questions.md).
 2. **No plan yet, nothing open** (or the answers are in). `nightshift label planning`,
    then write the plan as one `plan` comment:
-   - **Spec**, following `~/.claude/skills/to-spec/SKILL.md` (problem, solution, user
-     stories, implementation and testing decisions), sized to the issue: a small change
-     gets a few lines.
-   - **Tickets**, following `~/.claude/skills/to-tickets/SKILL.md`: tracer-bullet vertical
-     slices in build order, each with what it delivers, what blocks it and its acceptance
-     criteria, numbered `T1`, `T2`, …, all in this comment (no new issues).
+   - **Spec**, following [spec.md](spec.md) (problem, solution, user stories,
+     implementation and testing decisions), sized to the issue: a small change gets a few
+     lines.
+   - **Tickets**, following [tickets.md](tickets.md): tracer-bullet vertical slices in
+     build order, each with what it delivers, what blocks it and its acceptance criteria,
+     numbered `T1`, `T2`, …, all in this comment (no new issues).
    - **Overlap** (below) with other nightshift work, if any: "touches the same code as
      #10", "relies on the flag #10 adds", and which goes first.
    - It ends with "Reply **go** to build it, or tell me what to change."
-
-   Read those two files as instructions; they're the user's own skills, and only the user
-   can invoke them. If they aren't there, use the same structure.
 3. **A plan, and the user asked for changes.** `nightshift label planning`, a revised
    `plan` comment, then wait again.
 4. **A plan the user approved** ("go", or anything that clearly means build it).
    `nightshift label building`, then build the tickets in order, in this worktree:
-   - Each ticket test-first where it has logic to test (the `tdd` skill), checked the way
+   - Each ticket test-first where it has logic to test ([tdd.md](tdd.md)), checked the way
      the repo is checked: in a React Native app, on its own simulator with the run-app
      skill; elsewhere with the project's build, typecheck, lint and tests.
    - Commit each ticket on its own, in the repo's and the user's commit style, and post a
