@@ -30,7 +30,7 @@ Then:
 2. `gh auth login` (gh 2.99 or newer, for screenshots in pull requests).
 3. For each repo: a clone of it on the machine, then
    `nightshift add <owner/repo> <path to the clone>`. That also creates its
-   `agent` label.
+   `agent` label and the status labels.
 
 ## Working an issue
 
@@ -52,6 +52,26 @@ removed; the branch stays. Once it's done (its pull request merged, or the issue
 closed with nothing to resume), only its log and what it needs to come back stay
 in `~/.nightshift`. A merged branch is deleted, unless it has commits the pull
 request didn't. A comment on a done issue (open and labelled) picks it up again.
+
+## Status labels
+
+Each issue nightshift works carries one status label at a time, so the issue
+list shows where each stands, and `label:"nightshift: needs you"` lists the ones
+waiting on you:
+
+| Label | |
+|---|---|
+| `nightshift: queued` | labelled, waiting for its first run (or a free slot) |
+| `nightshift: thinking` | a run is reading the issue and the code |
+| `nightshift: planning` | a run is writing or revising the plan |
+| `nightshift: building` | a run is building the tickets, or changing the open pull request |
+| `nightshift: updating` | a run is updating the pull request after a merge |
+| `nightshift: needs you` | waiting on your reply: questions, a plan, blocked, or a failed run |
+| `nightshift: PR open` | the pull request is open, nothing running |
+| `nightshift: stopped` | a run was stopped partway |
+
+They come off once it's done, or when you remove the `agent` label with nothing
+running (and come back with it). `nightshift status` says the same.
 
 Its comments start with **🤖 nightshift** and carry a hidden `<!-- nightshift -->`
 marker, which is how it tells them from yours: it runs as your GitHub account, so
