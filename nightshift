@@ -10,7 +10,8 @@
 # State lives in $NIGHTSHIFT_HOME (default ~/.nightshift): `config`, and per
 # issue `issues/<owner>_<repo>_<n>/` with `session` (the Claude session id),
 # `seen` (the last comment handed to the agent), `pid` while it runs,
-# `finished` once a run ended, `pr` once it opened one, and `log`.
+# `finished` once a run ended, `pr` once it opened one, `log` (readable, live) and
+# `out.jsonl` (the last run's raw stream-json).
 set -u
 
 NS="${NIGHTSHIFT_HOME:-$HOME/.nightshift}"
@@ -97,6 +98,29 @@ worktree() {
 # that reach GitHub, which an automatic reviewer might otherwise hold back.
 ALLOWED_TOOLS='Bash(gh issue *) Bash(gh pr *) Bash(gh repo view *) Bash(gh api *) Bash(git *) Bash(signalbox *) Bash(boop *)'
 
+# A run's stream-json events, one readable line each: tool calls, the agent's
+# text, failed tool results and the result (raw lines without jq).
+RENDER='def line: tostring | gsub("\\s+"; " ") | if length > 300 then .[0:300] + "…" else . end;
+  def at: now | strflocaltime("%H:%M:%S ");
+  (if .parent_tool_use_id then "  " else "" end) as $in
+  | if .type == "system" and .subtype == "init" then at + "session \(.session_id)"
+    elif .type == "assistant" then .message.content[]
+      | if .type == "text" then at + $in + (.text | line)
+        elif .type == "tool_use" then at + $in + "→ \(.name): " + (.input | (.command // .file_path // .pattern // .skill // .url // .query // .description // .prompt // .) | line)
+        else empty end
+    elif .type == "user" then .message.content[]? | select(.type? == "tool_result" and .is_error == true)
+      | at + $in + "  ✗ " + (.content | if type == "array" then map(.text? // "") | join(" ") else . end | line)
+    elif .type == "result" then at + "result (\(.subtype)\(if .is_error then ", error" else "" end)): " + (.result // "" | line)
+    else empty end'
+
+render() {
+  if command -v jq >/dev/null 2>&1; then
+    jq -R -r --unbuffered '. as $raw | try (fromjson | '"$RENDER"') catch $raw'
+  else
+    cat
+  fi
+}
+
 # `nightshift _run <repo> <n> <clone>`: one run, as its own process (its pid is
 # the issue's `pid`). SIGTERM stops its claude, which runs the SessionEnd hooks.
 run_agent() {
@@ -121,8 +145,12 @@ $intro"
   mode=$(setting permission_mode auto)
   log "$repo#$n: run starting"
   printf '\n=== %s run\n' "$(date '+%Y-%m-%d %H:%M:%S')" >>"$dir/log"
+  # The events go to out.jsonl as they come, and readably into the log.
+  rm -f "$dir/stream" && mkfifo "$dir/stream"
+  tee "$dir/out.jsonl" <"$dir/stream" | render >>"$dir/log" &
+  rpid=$!
   # shellcheck disable=SC2086 # $resume is two words or none
-  (cd "$wt" && exec claude -p "$prompt" --output-format json --permission-mode "$mode" --allowedTools $ALLOWED_TOOLS $resume </dev/null) >"$dir/out.json" 2>>"$dir/log" &
+  (cd "$wt" && exec claude -p "$prompt" --output-format stream-json --verbose --permission-mode "$mode" --allowedTools $ALLOWED_TOOLS $resume </dev/null) >"$dir/stream" 2>>"$dir/log" &
   cpid=$!
   trap 'kill -TERM $cpid 2>/dev/null; stopped=1' TERM
   stopped=0
@@ -130,14 +158,19 @@ $intro"
   status=$?
   # A signal interrupts `wait`; let claude finish its SessionEnd hooks.
   while kill -0 $cpid 2>/dev/null; do sleep 1; done
+  # The renderer ends when the stream closes; something claude left running
+  # may hold it open, so give it a few seconds.
+  i=0
+  while kill -0 $rpid 2>/dev/null && [ $i -lt 5 ]; do sleep 1; i=$((i + 1)); done
+  kill $rpid 2>/dev/null
+  rm -f "$dir/stream"
   if [ $stopped -eq 1 ]; then
     log "$repo#$n: stopped"
     return
   fi
-  cat "$dir/out.json" >>"$dir/log"
-  sid=$(sed -n 's/.*"session_id" *: *"\([^"]*\)".*/\1/p' "$dir/out.json" | head -1)
+  sid=$(sed -n 's/.*"session_id" *: *"\([^"]*\)".*/\1/p' "$dir/out.jsonl" | head -1)
   [ -n "$sid" ] && echo "$sid" >"$dir/session"
-  if [ $status -ne 0 ] || grep -q '"is_error" *: *true' "$dir/out.json"; then
+  if [ $status -ne 0 ] || grep '"type" *: *"result"' "$dir/out.jsonl" | grep -q '"is_error" *: *true'; then
     log "$repo#$n: run failed ($status)"
     comment_failure "$repo" "$n" "$(tail -15 "$dir/log")"
   else
