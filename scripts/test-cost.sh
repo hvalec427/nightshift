@@ -71,6 +71,36 @@ cost() { state "$1" cost | awk '{ $5 = "S"; print }'; }
   poll
   expect "counting from a later run: since today" "$(cost 7)" "0 0 0 0 S 1 $(date +%Y-%m-%d)")
 
+# Each run's end line: the models it used, the main one first, and its
+# context at the end (its last turn's, not a subagent's).
+OPUS=claude-opus-5-5 HAIKU=claude-haiku-4-5-20251001
+(world
+  gh_issue o/r 7 alice agent
+  runs_do "costs 0.1 $HAIKU 1 1 1 1; costs 1 $OPUS 10 10 10 10; window $OPUS 1000000; window $HAIKU 200000
+    turn $OPUS 5 60000 20000; turn $HAIKU 5 190000 0 toolu_1; comment questions"
+  poll
+  expect_line "its log: the models and the context" "$(cat "$(idir 7)/log")" \
+    "^0	=== [0-9:]* run done in [0-9]*s · opus-5-5, haiku-4-5 · context 80k of 1M$"
+  expect_line "watch.log too" "$(cat "$NS/watch.log")" "o/r#7: run done in [0-9]*s · opus-5-5, haiku-4-5 · context 80k of 1M$"
+  gh_comment o/r 7 alice "1 yes" >/dev/null
+  runs_do "costs 0.5 $OPUS 1 1 1 1; turn $OPUS 5 1500000 0; fail_result"
+  poll
+  expect_line "resumed: the models this run used" "$(tail -1 "$(idir 7)/log")" \
+    "^0	=== [0-9:]* run failed (0) after [0-9]*s · opus-5-5 · context 1.5M of 1M$"
+  gh_comment o/r 7 alice "again" >/dev/null
+  runs_do "comment plan"
+  poll
+  expect_line "no models, no turns: nothing more" "$(tail -1 "$(idir 7)/log")" "^0	=== [0-9:]* run done in [0-9]*s$"
+  gh_comment o/r 7 alice "go" >/dev/null
+  runs_do "turn $OPUS 5 200000 0; hang"
+  "$ROOT/nightshift" once &
+  bg=$!
+  wait_for "$CLAUDE_FAKE/runs/4/waiting"
+  ns stop o/r#7 >/dev/null
+  wait "$bg"
+  expect_line "stopped (no result): its context" "$(tail -1 "$(idir 7)/log")" "^0	=== [0-9:]* run stopped after [0-9]*s · context 200k$"
+  expect_no_unexpected)
+
 # Shown by status.
 (world
   gh_issue o/r 7 alice agent

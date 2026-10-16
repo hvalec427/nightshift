@@ -177,7 +177,7 @@ nightshift --version                # the version that runs
 
 | Level | Flag | Adds |
 |---|---|---|
-| `runs` (default) | | issues picked up (or ignored, waiting, stopped), runs started and done (with how long they took), each skill a run invokes, each comment nightshift posts and its stage, pull requests |
+| `runs` (default) | | issues picked up (or ignored, waiting, stopped), runs started and done (with how long they took, the models they used and their context at the end), each skill a run invokes, each comment nightshift posts and its stage, pull requests |
 | `messages` | `-v` | Claude's text |
 | `tools` | `-vv` | tool calls and failed tool results |
 | `all` | `-vvv` | thinking, every tool result, and the polls with nothing new |
