@@ -36,6 +36,7 @@ rm -rf "$NS/plugin" && mv "$NS/plugin.new" "$NS/plugin"
 chmod +x "$BIN/nightshift"
 echo "nightshift installed to $BIN/nightshift (its plugin for runs: $NS/plugin)"
 
+# shellcheck disable=SC2016 # written to the rc file as is
 LINE='export PATH="$HOME/.nightshift/bin:$PATH"'
 case ":$PATH:" in
 *":$BIN:"*) ;;

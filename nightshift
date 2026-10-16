@@ -279,6 +279,7 @@ run_claude() {
 # the agent's text, tool calls and failed results, then thinking and every
 # result. Raw lines (and everything without jq) stay untagged. `run` writes
 # them to the issue's log and to watch.log.
+# shellcheck disable=SC2016 # a jq program: $ is jq's
 RENDER='def line: tostring | gsub("\\s+"; " ") | if length > 300 then .[0:300] + "…" else . end;
   def tag($l): "\($l)\t" + (now | strflocaltime("%Y-%m-%d %H:%M:%S "));
   def stage: (capture("nightshift:(?<s>[a-z]+) -->").s)? // null;
