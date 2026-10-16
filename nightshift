@@ -64,6 +64,9 @@ worktree() {
     git -C "$clone" fetch -q origin >/dev/null 2>&1 || true
     base=$(gh repo view "$repo" --json defaultBranchRef -q .defaultBranchRef.name)
     mkdir -p "$clone/.claude/worktrees"
+    # Keep the worktrees out of the clone's own git status (not the repo's .gitignore).
+    exclude="$(git -C "$clone" rev-parse --path-format=absolute --git-common-dir)/info/exclude"
+    grep -qxF '.claude/worktrees/' "$exclude" 2>/dev/null || echo '.claude/worktrees/' >>"$exclude"
     if git -C "$clone" rev-parse -q --verify "refs/heads/$branch" >/dev/null; then
       git -C "$clone" worktree add -q "$wt" "$branch"
     else
