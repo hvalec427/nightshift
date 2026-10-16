@@ -58,12 +58,23 @@ nightshift status                   # the service, the issues it knows, what eac
 nightshift start                    # run the service: nightshift watch, in the background whenever you're logged in
 nightshift stop                     # stop the service, and the runs in flight, until nightshift start
 nightshift stop <owner/repo>#<n>    # stop one
-nightshift logs -f                  # what the watcher does: a line per poll
-nightshift logs <owner/repo>#<n> -f # an issue's runs: its tool calls and messages, as they happen
+nightshift logs -f                  # every issue, as it happens: picked up, runs started and done, comments, PRs
+nightshift logs <owner/repo>#<n> -f # the same for one issue
+nightshift logs -f -vv              # more: -v Claude's messages, -vv its tool calls, -vvv everything
 ```
 
-Without `-f`, `logs` prints the whole log. They live in `~/.nightshift`:
-`watch.log` (kept to its last few thousand lines) and
+`logs` shows a level and the ones above it, with or without an issue:
+
+| Level | Flag | Adds |
+|---|---|---|
+| `runs` (default) | | issues picked up (or ignored, waiting, stopped), runs started and done (with how long they took), each comment nightshift posts and its stage, pull requests |
+| `messages` | `-v` | Claude's text |
+| `tools` | `-vv` | tool calls and failed tool results |
+| `all` | `-vvv` | thinking, every tool result, and the polls with nothing new |
+
+`-l <level>` (or `--level`) names the level instead. Without `-f`, `logs` prints
+the whole log. The logs live in `~/.nightshift`: `watch.log` (every issue's
+lines, kept to its last 20,000) and each issue's full history in
 `issues/<owner>_<repo>_<n>/log`.
 
 ## Config

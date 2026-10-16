@@ -7,7 +7,7 @@
 #   nightshift status                    the service, the issues it knows and what each is doing
 #   nightshift stop                      stop the service (until `nightshift start`)
 #   nightshift stop <owner/repo>#<n>     stop an issue's running agent
-#   nightshift logs [<owner/repo>#<n>] [-f]  the watcher's log, or an issue's runs
+#   nightshift logs [<owner/repo>#<n>] [-f] [-v…]  what every issue (or one) does, at a level
 #   nightshift add <owner/repo> <clone>  watch a repo, using this clone of it
 #
 # State lives in $NIGHTSHIFT_HOME (default ~/.nightshift): `config`, and per
@@ -28,15 +28,19 @@ DOMAIN="gui/$(id -u)"
 MARKER="<!-- nightshift -->"
 LABEL=agent
 
-log() { printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >>"$NS/watch.log"; }
+# A line in watch.log, at the `runs` level (log_at: at another; see LEVELS).
+log() { log_at 0 "$*"; }
+log_at() { printf '%s\t%s %s\n' "$1" "$(date '+%Y-%m-%d %H:%M:%S')" "$2" >>"$NS/watch.log"; }
 
-# Keep watch.log to its last 5,000 lines once it passes 10,000 (a line per repo per poll).
+# Keep watch.log to its last 20,000 lines once it passes 40,000 (a line per repo
+# per poll, and every issue's lines).
 trim_log() {
   f="$NS/watch.log"
-  [ -f "$f" ] && [ "$(wc -l <"$f")" -gt 10000 ] || return 0
-  tail -n 5000 "$f" >"$f.tmp" && mv "$f.tmp" "$f"
+  [ -f "$f" ] && [ "$(wc -l <"$f")" -gt 40000 ] || return 0
+  tail -n 20000 "$f" >"$f.tmp" && mv "$f.tmp" "$f"
 }
 die() { echo "nightshift: $*" >&2; exit 1; }
+usage_error() { echo "$*" >&2; exit 2; }
 
 # A `key=value` setting from the config, or a default.
 setting() {
@@ -60,9 +64,12 @@ issue_dir() { printf '%s/issues/%s_%s' "$NS" "$(echo "$1" | tr '/' '_')" "$2"; }
 
 running() { [ -f "$1/pid" ] && kill -0 "$(cat "$1/pid")" 2>/dev/null; }
 
-# How long ago a file was last modified, in its two largest units: 45s, 12m, 2h 5m, 3d 4h.
-age() {
-  s=$(($(date +%s) - $(date -r "$1" +%s)))
+# How long ago a file was last modified.
+age() { duration $(($(date +%s) - $(date -r "$1" +%s))); }
+
+# Seconds, in their two largest units: 45s, 12m, 2h 5m, 3d 4h.
+duration() {
+  s=$(($1))
   if [ $s -lt 60 ]; then echo "${s}s"
   elif [ $s -lt 3600 ]; then echo "$((s / 60))m"
   elif [ $s -lt 86400 ]; then echo "$((s / 3600))h $((s % 3600 / 60))m"
@@ -162,24 +169,44 @@ worktree() {
 # that reach GitHub, which an automatic reviewer might otherwise hold back.
 ALLOWED_TOOLS='Bash(gh issue *) Bash(gh pr *) Bash(gh repo view *) Bash(gh api *) Bash(git *) Bash(signalbox *) Bash(boop *)'
 
-# A run's stream-json events, one readable line each: tool calls, the agent's
-# text, failed tool results and the result (raw lines without jq).
+# A run's stream-json events, one readable line each, tagged with the level
+# `logs` shows it from (a digit and a tab; see LEVELS): the comments it posts,
+# the agent's text, tool calls and failed results, then thinking and every
+# result. Raw lines (and everything without jq) stay untagged. `run` writes
+# them to the issue's log and to watch.log.
 RENDER='def line: tostring | gsub("\\s+"; " ") | if length > 300 then .[0:300] + "…" else . end;
-  def at: now | strflocaltime("%H:%M:%S ");
-  (if .parent_tool_use_id then "  " else "" end) as $in
-  | if .type == "system" and .subtype == "init" then at + "session \(.session_id)"
-    elif .type == "assistant" then .message.content[]
-      | if .type == "text" then at + $in + (.text | line)
-        elif .type == "tool_use" then at + $in + "→ \(.name): " + (.input | (.command // .file_path // .pattern // .skill // .url // .query // .description // .prompt // .) | line)
-        else empty end
-    elif .type == "user" then .message.content[]? | select(.type? == "tool_result" and .is_error == true)
-      | at + $in + "  ✗ " + (.content | if type == "array" then map(.text? // "") | join(" ") else . end | line)
-    elif .type == "result" then at + "result (\(.subtype)\(if .is_error then ", error" else "" end)): " + (.result // "" | line)
-    else empty end'
+  def tag($l): "\($l)\t" + (now | strflocaltime("%Y-%m-%d %H:%M:%S "));
+  def stage: (capture("nightshift:(?<s>[a-z]+) -->").s)? // null;
+  def text: if type == "array" then map(.text? // "") | join(" ") else . end;
+  # The comment stage of a `gh issue comment`: its body, or the file it was written to.
+  def comment_stage($files): [stage, ((capture("--body-file[ =]+(?<f>[^ ;&|]+)").f)? as $f | $files[$f])] | map(select(.)) | first;
+  def render($files):
+    (if .parent_tool_use_id then "  " else "" end) as $in
+    | if .type == "system" and .subtype == "init" then tag(2) + "session \(.session_id)"
+      elif .type == "assistant" then .message.content[]
+        | if .type == "text" then tag(1) + $in + (.text | line)
+          elif .type == "thinking" then tag(3) + $in + "… " + (.thinking | line)
+          elif .type == "tool_use" then
+            (select(.name == "Bash" and (.input.command? // "" | test("gh issue comment")))
+              | (.input.command | comment_stage($files)) as $s
+              | tag(0) + $in + "commented" + (if $s then " (\($s))" else "" end)),
+            tag(2) + $in + "→ \(.name): " + (.input | (.command // .file_path // .pattern // .skill // .url // .query // .description // .prompt // .) | line)
+          else empty end
+      elif .type == "user" then .message.content[]? | select(.type? == "tool_result")
+        | if .is_error == true then tag(2) + $in + "  ✗ " + (.content | text | line)
+          else tag(3) + $in + "  ← " + (.content | text | line) end
+      elif .type == "result" then tag(if .is_error then 0 else 1 end) + "result (\(.subtype)\(if .is_error then ", error" else "" end)): " + (.result // "" | line)
+      else empty end;
+  # The stage each written file holds, for comments posted with --body-file.
+  foreach inputs as $raw ({files: {}};
+    .raw = $raw | .ev = ($raw | try fromjson catch null)
+    | .files += ([.ev | objects | select(.type == "assistant") | .message.content[]? | select(.type? == "tool_use") | .input
+        | select((.file_path? | type) == "string" and (.content? | type) == "string") | {(.file_path): (.content | stage)}] | add // {});
+    .files as $files | if .ev == null then .raw else .ev | render($files) end)'
 
 render() {
   if command -v jq >/dev/null 2>&1; then
-    jq -R -r --unbuffered '. as $raw | try (fromjson | '"$RENDER"') catch $raw'
+    jq -n -R -r --unbuffered "$RENDER"
   else
     cat
   fi
@@ -213,10 +240,20 @@ This checkout is the issue's own worktree, on branch nightshift/issue-$n.
 $intro"
   mode=$(setting permission_mode auto)
   log "$repo#$n: run starting"
-  printf '\n=== %s run\n' "$(date '+%Y-%m-%d %H:%M:%S')" >>"$dir/log"
-  # The events go to out.jsonl as they come, and readably into the log.
+  t0=$(date +%s)
+  printf '\n0\t=== %s run\n' "$(date '+%Y-%m-%d %H:%M:%S')" >>"$dir/log"
+  # The events go to out.jsonl as they come, and readably into the log and,
+  # tagged with the issue, into watch.log (closed after each line, which
+  # trimming replaces).
   rm -f "$dir/stream" && mkfifo "$dir/stream"
-  tee "$dir/out.jsonl" <"$dir/stream" | render >>"$dir/log" &
+  tee "$dir/out.jsonl" <"$dir/stream" | render | awk -v own="$dir/log" -v all="$NS/watch.log" -v who="$repo#$n:" '
+    /^[0-3]\t[0-9-]+ [0-9:]+ / {
+      tag = substr($0, 1, 2); day = substr($0, 3, 11); time = substr($0, 14, 9); rest = substr($0, 23)
+      print tag time rest >>own; close(own)
+      print tag day time who " " rest >>all; close(all)
+      next
+    }
+    { print >>own; close(own) }' &
   rpid=$!
   # shellcheck disable=SC2086 # $resume is two words or none
   (cd "$wt" && exec claude -p "$prompt" --output-format stream-json --verbose --permission-mode "$mode" --allowedTools $ALLOWED_TOOLS $resume </dev/null) >"$dir/stream" 2>>"$dir/log" &
@@ -235,20 +272,25 @@ $intro"
   rm -f "$dir/stream"
   sid=$(sed -n 's/.*"session_id" *: *"\([^"]*\)".*/\1/p' "$dir/out.jsonl" | head -1)
   [ -n "$sid" ] && echo "$sid" >"$dir/session"
+  took=$(duration $(($(date +%s) - t0)))
   if [ $stopped -eq 1 ]; then
-    log "$repo#$n: stopped"
+    run_end "stopped after $took"
+    log "$repo#$n: stopped after $took"
     return
   fi
   if [ $status -ne 0 ] || grep '"type" *: *"result"' "$dir/out.jsonl" | grep -q '"is_error" *: *true'; then
-    log "$repo#$n: run failed ($status)"
-    comment_failure "$repo" "$n" "$(tail -15 "$dir/log")"
+    run_end "failed ($status) after $took"
+    log "$repo#$n: run failed ($status) after $took"
+    comment_failure "$repo" "$n" "$(show_level 3 <"$dir/log" | tail -15)"
   else
-    log "$repo#$n: run done"
+    run_end "done in $took"
+    log "$repo#$n: run done in $took"
   fi
   # Once there's a pull request, the worktree's work is on GitHub: remove it
   # (the branch stays; a later comment brings it back).
   pr=$(gh pr list --repo "$repo" --head "nightshift/issue-$n" --state all --json url -q '.[0].url' 2>/dev/null)
   if [ -n "$pr" ]; then
+    [ "$(cat "$dir/pr" 2>/dev/null)" = "$pr" ] || log "$repo#$n: pull request $pr"
     echo "$pr" >"$dir/pr"
     if [ -z "$(git -C "$wt" status --porcelain 2>/dev/null)" ]; then
       (cd "$wt" && signalbox down --detached-only >/dev/null 2>&1) || true
@@ -256,6 +298,9 @@ $intro"
     fi
   fi
 }
+
+# The run's last line in its issue log.
+run_end() { printf '0\t=== %s run %s\n' "$(date '+%H:%M:%S')" "$1" >>"$dir/log"; }
 
 comment_failure() {
   gh issue comment "$2" --repo "$1" --body "🤖 **nightshift**: the last run failed. Reply to try again.
@@ -341,7 +386,9 @@ poll_repo() {
     did="$did, started #$n"
   done
   [ $count -eq 1 ] && s="" || s="s"
-  log "polled $repo: $count labelled issue$s${did:-, nothing new}"
+  # Shown by default when it started an issue or one waits; otherwise at `all`.
+  case "$did" in *started* | *waits*) l=0 ;; *) l=3 ;; esac
+  log_at $l "polled $repo: $count labelled issue$s${did:-, nothing new}"
   # `once` waits for the runs it started (they're children of this pipeline).
   if [ "${NIGHTSHIFT_WAIT:-}" = 1 ]; then wait; fi
   }
@@ -473,22 +520,84 @@ cmd_stop() {
   kill -TERM "$(cat "$d/pid")" && echo "stopped $1"
 }
 
-# `logs [<owner/repo>#<n>] [-f]`: the whole log, or with -f its end, followed.
-cmd_logs() {
-  f="$NS/watch.log" follow=0
-  for a in "$@"; do
-    case "$a" in
-    -f) follow=1 ;;
-    */*#*) f="$(issue_dir "${a%#*}" "${a##*#}")/log" ;;
-    *) die "usage: nightshift logs [<owner/repo>#<n>] [-f]" ;;
-    esac
+# The log levels, each showing the ones before it too: 0 runs (runs and the
+# comments posted), 1 messages (the agent's text), 2 tools (tool calls and
+# failed results), 3 all (thinking and every result).
+LEVELS="runs messages tools all"
+
+# A level's number, from its name or number; nothing if it isn't one.
+level_number() {
+  i=0
+  for l in $LEVELS; do
+    [ "$1" = "$l" ] || [ "$1" = $i ] && { echo $i; return; }
+    i=$((i + 1))
   done
+}
+
+# Log lines (stdin) up to level $1, without their tags. Untagged lines, from
+# before levels or not rendered, always show.
+show_level() {
+  awk -v max="$1" '/^[0-3]\t/ { if (substr($0, 1, 1) + 0 <= max) print substr($0, 3); fflush(); next } { print; fflush() }'
+}
+
+logs_help() {
+  cat <<'EOF'
+usage: nightshift logs [<owner/repo>#<n>] [-f] [-l <level> | -v | -vv | -vvv]
+
+What nightshift does: every issue's lines, each prefixed with its owner/repo#n,
+or with <owner/repo>#<n> just that issue's.
+
+  -f                  follow: the last 50 lines, then new ones as they come
+  -l, --level <level> show this level and the ones above it (a name, or 0-3):
+        runs      (0, the default) issues picked up (or ignored, waiting,
+                  stopped), runs started and done with how long they took,
+                  each comment nightshift posts and its stage, pull requests
+        messages  (1) adds Claude's text
+        tools     (2) adds tool calls and failed tool results
+        all       (3) adds thinking, every tool result, and the polls with
+                  nothing new
+  -v, -vv, -vvv       messages, tools, all (they add up: -v -v is -vv)
+  -h, --help          this help
+
+Lines logged before levels existed show at every level.
+EOF
+}
+
+# `logs [<owner/repo>#<n>] [-f] [-l <level> | -v…]`: the whole log, or with -f
+# its end, followed, up to a level (default runs).
+cmd_logs() {
+  f="$NS/watch.log" follow=0 level=0
+  usage="usage: nightshift logs [<owner/repo>#<n>] [-f] [-l runs|messages|tools|all | -v | -vv | -vvv]
+see nightshift logs --help"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+    -h | --help) logs_help; exit 0 ;;
+    -f) follow=1 ;;
+    -l | --level) [ $# -ge 2 ] || usage_error "$usage"; level=$(level_number "$2"); shift ;;
+    --level=*) level=$(level_number "${1#--level=}") ;;
+    -v | -vv | -vvv)
+      [ -n "$level" ] || level=0
+      level=$((level + ${#1} - 1))
+      [ $level -le 3 ] || level=3
+      ;;
+    */*#*) f="$(issue_dir "${1%#*}" "${1##*#}")/log" ;;
+    *) usage_error "$usage" ;;
+    esac
+    shift
+  done
+  [ -n "$level" ] || usage_error "$usage"
   [ -d "$(dirname "$f")" ] || die "nightshift doesn't know that issue"
   if [ $follow -eq 1 ]; then
-    exec tail -n 50 -F "$f" # -F: keeps up when trimming replaces watch.log
+    # The last 50 lines at this level, then what comes after them, as it comes.
+    # (-F keeps up when trimming replaces watch.log.)
+    c=0
+    [ -f "$f" ] && c=$(wc -l <"$f")
+    head -n "$c" "$f" 2>/dev/null | show_level "$level" | tail -n 50
+    tail -n +$((c + 1)) -F "$f" 2>/dev/null | show_level "$level"
+    exit
   fi
   [ -f "$f" ] || die "nothing logged there yet"
-  cat "$f"
+  show_level "$level" <"$f"
 }
 
 cmd_add() {
@@ -503,6 +612,8 @@ cmd_add() {
   echo "watching $1 (clone: $clone); add the \`$LABEL\` label to an issue to start"
 }
 
+usage() { sed -n '2,11s/^# \{0,1\}//p' "$SELF"; }
+
 mkdir -p "$NS/issues"
 case "${1:-}" in
 watch) cmd_watch ;;
@@ -513,5 +624,6 @@ start) cmd_start ;;
 stop) shift; cmd_stop "${1:-}" ;;
 logs) shift; cmd_logs "$@" ;;
 add) shift; cmd_add "$@" ;;
-*) sed -n '2,11s/^# \{0,1\}//p' "$0"; exit 2 ;;
+-h | --help | help) usage; echo; echo "nightshift logs --help: the log levels and their flags" ;;
+*) usage >&2; exit 2 ;;
 esac
