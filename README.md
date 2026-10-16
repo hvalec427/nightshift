@@ -197,13 +197,16 @@ the pull requests can be merged in any order.
 repo hvalec427/nightshift /Users/me/dev/nightshift
 allowed_users=hvalec427
 max_parallel=2
-interval=30
+interval=5
 permission_mode=auto
 ```
 
 - `allowed_users`: whose labels and comments count (default: your gh account).
 - `max_parallel`: issues worked at once (each may run a simulator).
-- `interval`: seconds between polls.
+- `interval`: seconds between polls (default 5). A poll that finds nothing new
+  costs no rate limit: the issues list is asked with the ETag of its last
+  answer, and GitHub's `304 Not Modified` doesn't count. The pull requests are
+  checked every 30 s at most.
 - `permission_mode`: Claude Code's permission mode for runs. Commands that reach
   GitHub (`gh`, `git`) and signalbox and boop are always allowed.
 - `isolated`: `true` (the default) runs Claude without the machine's own

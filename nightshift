@@ -840,7 +840,7 @@ cmd_watch() {
   while :; do
     poll
     trim_log
-    sleep "$(setting interval 30)" &
+    sleep "$(setting interval 5)" &
     spid=$!
     wait $spid # a signal interrupts `wait`, not `sleep`
   done
