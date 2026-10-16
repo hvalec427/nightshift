@@ -27,9 +27,8 @@ a plan, the build, a pull request, talking to the user only through the issue.
   BSD-compatible flags, no GNU-only ones.
 - Skills are prose in `plugin/skills/<name>/SKILL.md` with frontmatter (`name`,
   `description`, `user-invocable: false`) that `scripts/test-skills.sh` checks.
-- Tests drive nightshift through the fakes in `scripts/fake/` (`gh`, `claude`, `curl`), never
-  the real ones. A skill's wiring is checked statically, since the fake `claude` can't see a
-  run invoke a skill.
+- Tests drive nightshift through the fakes in `scripts/fake/` (`gh`, `claude`, `curl`); the
+  README's Tests section says how, and names the one exception.
 
 ## Pointers
 
