@@ -2,6 +2,8 @@
 name: issue
 description: Work a GitHub issue end to end, unattended, talking to the user only through the issue: clarify it, plan it as a spec and tickets, build the tickets in order, open a pull request. Use when nightshift starts you on an issue.
 user-invocable: false
+model: sonnet
+effort: low
 ---
 
 # Work an issue

@@ -2,6 +2,8 @@
 name: answer
 description: Answer a question issue, or find the issue a duplicate one repeats, in an answer comment, with no plan and no pull request. Started by the issue skill for issues labelled question or duplicate.
 user-invocable: false
+model: sonnet
+effort: medium
 ---
 
 # Answer an issue

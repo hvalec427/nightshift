@@ -2,6 +2,8 @@
 name: build
 description: Build an issue's approved plan, ticket by ticket and test-first, then open its pull request with the finish skill. Started by the issue skill when the user approved the plan.
 user-invocable: false
+model: sonnet
+effort: high
 ---
 
 # Build an issue
@@ -44,8 +46,8 @@ Build the tickets in order, one at a time, in this worktree:
 
 ## Ticket subagents
 
-Start each with the Agent tool (`general-purpose`), without a `model`, so it runs on the
-run's own model. Its brief stands on its own, since it sees nothing of this conversation:
+Start each with the Agent tool (`nightshift:ticket`), without a `model`, so it runs on the
+model its agent sets. Its brief stands on its own, since it sees nothing of this conversation:
 
 - the ticket from the plan: its text, what blocks it and its acceptance criteria, and the
   spec's decisions it needs; when it's a retry after a `blocked` comment, the user's

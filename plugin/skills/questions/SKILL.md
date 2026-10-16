@@ -2,6 +2,8 @@
 name: questions
 description: Ask the user, in one questions comment on the issue, the decisions the issue and the code don't settle. Started by the issue skill when an issue has no plan yet and open decisions.
 user-invocable: false
+model: opus
+effort: high
 ---
 
 # Ask about an issue

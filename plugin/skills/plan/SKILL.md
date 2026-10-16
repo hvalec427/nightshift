@@ -2,6 +2,8 @@
 name: plan
 description: Write or revise an issue's plan, its spec and tickets, as one plan comment. Started by the issue skill when an issue has no plan and nothing is left to ask, or the user asked for changes to its plan.
 user-invocable: false
+model: opus
+effort: high
 ---
 
 # Plan an issue

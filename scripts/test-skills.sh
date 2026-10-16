@@ -68,6 +68,36 @@ expect "no skill sets the status label: the watcher does, from the skill" \
 expect "no skill names a project's own plugin or its tools" \
   "$(grep -liE 'rn-agent|run-app|signalbox|boop' "$SKILLS"/*/SKILL.md | sed "s|^$SKILLS/||")" ""
 
+# Each skill and plugin agent runs on its own model and effort, from its frontmatter.
+model_effort() {
+  expect "$1: its model" "$(field "$2" model)" "$3"
+  expect "$1: its effort" "$(field "$2" effort)" "$4"
+}
+model_effort "the issue skill" "$ISSUE" sonnet low
+for s in questions plan; do model_effort "the $s skill" "$SKILLS/$s/SKILL.md" opus high; done
+for s in build update review; do model_effort "the $s skill" "$SKILLS/$s/SKILL.md" sonnet high; done
+for s in answer finish; do model_effort "the $s skill" "$SKILLS/$s/SKILL.md" sonnet medium; done
+bad=""
+for f in "$SKILLS"/*/SKILL.md; do
+  case "$(field "$f" effort)" in low|medium|high|max) ;; *) bad="$bad${f#"$SKILLS"/} " ;; esac
+done
+expect "every skill's effort is low, medium, high or max" "$bad" ""
+
+AGENTS="$ROOT/plugin/agents"
+while read -r a model effort; do
+  f="$AGENTS/$a.md"
+  expect_ok "the $a agent exists" test -f "$f"
+  [ -f "$f" ] || continue
+  expect "the $a agent is named $a" "$(field "$f" name)" "$a"
+  expect_ok "the $a agent has a description" test -n "$(field "$f" description)"
+  model_effort "the $a agent" "$f" "$model" "$effort"
+  expect "the $a agent keeps the default tools" "$(field "$f" tools)" ""
+done <<'EOF'
+ticket sonnet high
+spec-review opus high
+standards-review sonnet medium
+EOF
+
 expect "the issue skill is its SKILL.md alone, the stages' guidance in their skills" \
   "$(cd "$SKILLS/issue" && find . -type f)" "./SKILL.md"
 
@@ -75,7 +105,8 @@ expect "the issue skill is its SKILL.md alone, the stages' guidance in their ski
 build=$(cat "$SKILLS/build/SKILL.md")
 expect_line "the build hands each ticket to a subagent" "$build" "ticket subagent"
 expect_line "the subagent is started with the Agent tool" "$build" "Agent tool"
-expect_line "the subagent inherits the run's model" "$build" "without a \`model\`"
+expect_line "the subagent is the plugin's ticket agent" "$build" "\`nightshift:ticket\`"
+expect_line "its model is its agent's own" "$build" "without a \`model\`"
 expect_line "a stuck subagent replies BLOCKED:" "$build" "\`BLOCKED:\`"
 expect_line "the subagent doesn't comment on the issue" "$build" "comments on the issue, changes labels"
 expect_line "the run checks each ticket's commit and a clean tree" "$build" "the tree clean"
@@ -101,5 +132,10 @@ expect_line "it files at most three a run" "$issue" "at most three"
 expect_line "filing finishes before the run ends" "$issue" "run_in_background: false"
 expect_line "the filed issue says where it was found" "$issue" "Found while working #<n>."
 expect_line "a ticket subagent reports defects to the run, not files them" "$build" "files no issues"
+
+review=$(cat "$SKILLS/review/SKILL.md")
+expect_line "the spec reviewer is the plugin's spec-review agent" "$review" "\`nightshift:spec-review\`"
+expect_line "the standards reviewer is the plugin's standards-review agent" "$review" "\`nightshift:standards-review\`"
+expect_line "the reviewers' models are their agents' own" "$review" "without a \`model\`"
 
 report

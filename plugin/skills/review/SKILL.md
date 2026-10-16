@@ -2,6 +2,8 @@
 name: review
 description: Review an issue's built change before its pull request opens, with two fresh subagents (Spec: does it do what the approved plan asked; Standards: does it follow the repo's conventions), then fix what's real in one pass. Started by the build skill after the last ticket, before the finish skill.
 user-invocable: false
+model: sonnet
+effort: high
 ---
 
 # Review the change
@@ -34,7 +36,9 @@ when you report, and go on.
 ## 3. Start both reviewers
 
 Start both subagents in one message, so they run in parallel, in the foreground
-(`run_in_background: false`), with the general-purpose type. Each prompt stands alone:
+(`run_in_background: false`): Spec as `nightshift:spec-review`, Standards as
+`nightshift:standards-review`, each without a `model`, so it runs on the model its agent
+sets. Each prompt stands alone:
 this worktree's path, the diff and log commands, what it reviews against, and its brief
 below. Tell each it only reads: no edits, commits, comments or new issues. Each finding
 gives `file:line`, quotes the hunk (and the plan or standard it's measured against), and

@@ -222,6 +222,24 @@ instead. Meanwhile `status` shows `conflicts, rebasing` or `updating after #10`.
 the pull requests can be merged in any order. With auto-merge on, a pull request
 that goes after another waits for it, then merges after that update run.
 
+## Models
+
+Each skill and subagent runs on its own model and effort, set in the frontmatter
+of the plugin's skills (`plugin/skills/*/SKILL.md`) and agents (`plugin/agents/*.md`).
+Once a run invokes a skill, its model covers the run until the next skill sets its own.
+
+| | model | effort |
+|---|---|---|
+| `issue` (routing) | sonnet | low |
+| `questions`, `plan` | opus | high |
+| `build`, `update`, `review` (its fixes) | sonnet | high |
+| Ticket builder (agent `ticket`) | sonnet | high |
+| Spec reviewer (agent `spec-review`) | opus | high |
+| Standards reviewer (agent `standards-review`) | sonnet | medium |
+| `answer`, `finish` | sonnet | medium |
+
+Each run's line in `nightshift logs` shows the models it used, the main one first.
+
 ## Config
 
 `~/.nightshift/config`, written by `nightshift add`:
