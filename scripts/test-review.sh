@@ -16,6 +16,8 @@ field() { sed -n '/^---$/,/^---$/p' "$1" | sed -n "s/^$2: *//p"; }
 line_of() { grep -n -m1 -- "$2" "$1" | cut -d: -f1 || echo 0; }
 # The file $1 as one line, so a phrase matches however the prose wraps.
 flat() { tr -s ' \n' ' ' <"$1"; }
+# The section of $1 from the heading matching $2 to the next heading, as one line.
+section() { awk -v s="$2" '$0 ~ s { on = 1; print; next } on && /^#/ { exit } on' "$1" | tr -s ' \n' ' '; }
 
 expect_ok "the review skill exists" test -f "$REVIEW"
 if [ -f "$REVIEW" ]; then
@@ -27,6 +29,8 @@ if [ -f "$REVIEW" ]; then
   expect_line "it briefs a Standards reviewer" "$review_skill" '^### Standards'
   expect_line "it reviews against the default branch" "$review_skill" 'git diff <default branch>\.\.\.HEAD'
   expect_line "it bounds the fixes to one pass" "$review_skill" '^## .*One fix pass$'
+  expect_line "it pastes the CLAUDE.md rules in" "$(section "$REVIEW" '^## 2\.')" 'the `CLAUDE\.md` rules'
+  expect_line "the Standards reviewer checks a CLAUDE.md change against them" "$(section "$REVIEW" '^### Standards')" 'a `CLAUDE\.md` change in the diff, checked against'
 fi
 
 review=$(line_of "$BUILD" 'nightshift:review`')

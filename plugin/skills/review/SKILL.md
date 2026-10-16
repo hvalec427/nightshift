@@ -28,8 +28,8 @@ when you report, and go on.
   full, plus any reply of the user's after it that changed it.
 - **The standards:** every file in the repo that says how code here is written:
   `CLAUDE.md` files, `CONTRIBUTING.md`, `CODING_STANDARDS.md`, a README's section on
-  development or tests, and the commit and pull request conventions you were given for
-  this session (paste those in: a subagent doesn't see them).
+  development or tests, and the commit and pull request conventions and the `CLAUDE.md`
+  rules you were given for this session (paste those in: a subagent doesn't see them).
 
 ## 3. Start both reviewers
 
@@ -56,8 +56,10 @@ Give it the standards files and the conventions you pasted, plus this smell base
 full. The repo's documented standards win: where they endorse something a smell would
 flag, it isn't one. A smell is always a judgement call ("possible Feature Envy"), never a
 hard miss. Skip what tooling already enforces. Its brief: where the diff breaks a
-documented standard (citing the file and the rule), the baseline smells it spots, and
-leftovers: debug output, commented-out code, TODOs, stray files, a scratch script.
+documented standard (citing the file and the rule), a `CLAUDE.md` change in the diff,
+checked against those rules (nothing to say when there's none), the baseline smells it
+spots, and leftovers: debug output, commented-out code, TODOs, stray files, a scratch
+script.
 
 - **Mysterious Name:** a name that doesn't say what it does or holds → rename it.
 - **Duplicated Code:** the same logic in more than one hunk or file → one shared shape.
