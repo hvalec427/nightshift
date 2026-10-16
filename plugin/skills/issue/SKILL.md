@@ -53,6 +53,8 @@ prompt names it ("Its type label: `bug`") or says it has none. It changes how yo
 - **`duplicate`**: find the issue it duplicates (`gh issue list --state all --search …`)
   and post an `answer` linking it and saying how the two match; no plan, no pull request.
   Found none: say so, swap the label for the type it is, and carry on as that type.
+- **`invalid`, `wontfix`**: the watcher doesn't run you while either is on the issue, and
+  you never add them yourself.
 
 With **no type label**, pick one of these from the issue and the code, add its label
 (`gh issue edit <n> --add-label <type>`), and say in that run's comment which you took

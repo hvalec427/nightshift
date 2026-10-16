@@ -80,8 +80,8 @@ For React Native repos (required once a watched repo's `package.json` has
 | Reply **go** (or what to change) | Builds the tickets in order, a progress comment per ticket, then opens the pull request and links it |
 | Comment on the issue after that | Makes the change on the same branch and pushes it |
 | Merge another pull request | Rebases and updates the ones it affects (below) |
-| Remove the label, or close the issue | Stops it; `nightshift status` says so and why |
-| Add the label back, or reopen it | Picks up the stopped run where it left off |
+| Remove the label, add `invalid` or `wontfix`, or close the issue | Stops it; `nightshift status` says so and why |
+| Add the label back, remove `invalid`/`wontfix`, or reopen it | Picks up the stopped run where it left off |
 | Merge its pull request, or close the issue | It's done: `nightshift status` leaves it out, and its state and branch are cleaned up |
 
 Each issue gets its own worktree (in the repo's clone, `.claude/worktrees/issue-<n>`,
@@ -105,13 +105,14 @@ calls for:
 | `documentation` | the same, kept to the docs |
 | `question` | answers it in a comment: no plan, no pull request. Reply to follow up, or ask for a change to have it built |
 | `duplicate` | a comment linking the issue it duplicates; no pull request |
+| `invalid`, `wontfix` | doesn't work it: as if you'd removed `agent` (a run in flight stops); remove the label to pick it up again |
 
 With no type label, the run picks one from the issue, adds it, and says so in
 its comment; when a type turns out wrong, it swaps the label and says why. It
 only uses labels the repo has. Change the label yourself and yours stands: the
 next run is told, and leaves it. `good first issue` and `help wanted` say who
 should take an issue, not what it is, so they change nothing. If an issue has
-two type labels, the first of `duplicate`, `bug`, `question`, `documentation`,
+two type labels, the first of `invalid`/`wontfix`, `duplicate`, `bug`, `question`, `documentation`,
 `enhancement` wins in that order. `nightshift status` shows each issue's type.
 
 ## Status labels

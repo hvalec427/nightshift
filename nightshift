@@ -377,7 +377,7 @@ run_agent() {
 
 $news"
     # A run the label's removal (or closing the issue) stopped, now resumed.
-    [ -n "$why" ] && intro="Your last run was stopped partway because the $(echo "$why" | sed 's/^label/agent label was/; s/^issue/issue was/'); that's undone now, so carry on from where it stopped.${news:+
+    [ -n "$why" ] && intro="Your last run was stopped partway because the $(echo "$why" | sed 's/^label/agent label was/; s/^issue/issue was/; s/ label added$/ label was added/'); that's undone now, so carry on from where it stopped.${news:+
 
 $intro}"
     resume="--resume $(cat "$dir/session")"
@@ -641,12 +641,16 @@ poll_repo() {
   repo=$1 clone=$2
   allowed=$(allowed_json)
   ensure_labels "$repo"
-  open=$(gh api "repos/$repo/issues?labels=$LABEL&state=open&per_page=100" \
-    --jq '.[] | select(.pull_request | not) | "\(.number) \(.updated_at)"' 2>>"$NS/watch.log") || { log "$repo: couldn't list issues"; return; }
+  # Each labelled issue, and the label that holds it (`invalid` or `wontfix`;
+  # `-`, none). A held one isn't worked: it's off, as if unlabelled.
+  all=$(gh api "repos/$repo/issues?labels=$LABEL&state=open&per_page=100" \
+    --jq '.[] | select(.pull_request | not) | "\(.number) \(.updated_at) \([.labels[].name | select(. == "invalid" or . == "wontfix")] | first // "-")"' 2>>"$NS/watch.log") || { log "$repo: couldn't list issues"; return; }
+  open=$(printf '%s\n' "$all" | awk 'NF && $3 == "-" { print $1, $2 }')
+  held=$(printf '%s\n' "$all" | awk 'NF && $3 != "-" { print $1, $3 }')
 
-  # Issues no longer labelled (or closed): note which, once, and stop what's
-  # running there. Back in the list, the note goes (and a stopped run resumes,
-  # below).
+  # Issues no longer labelled (or closed, or held): note which, once, and stop
+  # what's running there. Back in the list, the note goes (and a stopped run
+  # resumes, below).
   for d in "$NS/issues/$(echo "$repo" | tr '/' '_')"_*; do
     [ -d "$d" ] || continue
     n=${d##*_}
@@ -658,7 +662,11 @@ poll_repo() {
     fi
     [ -f "$d/off" ] || [ -f "$d/ignored" ] || [ -f "$d/done" ] && continue
     state=$(gh api "repos/$repo/issues/$n" --jq .state 2>/dev/null) || continue
-    [ "$state" = closed ] && why="issue closed" || why="label removed"
+    hold=$(printf '%s\n' "$held" | awk -v n="$n" '$1 == n { print $2 }')
+    if [ "$state" = closed ]; then why="issue closed"
+    elif [ -n "$hold" ]; then why="$hold label added"
+    else why="label removed"
+    fi
     echo "$why" >"$d/off"
     if running "$d"; then
       echo "$why" >"$d/interrupted"
@@ -859,9 +867,11 @@ after_note() {
 
 # What brings a stopped run back.
 resume_hint() {
-  if [ "$(cat "$1/off")" = "issue closed" ]; then echo "reopen to resume"
-  else echo "add the label back to resume"
-  fi
+  case "$(cat "$1/off")" in
+  "issue closed") echo "reopen to resume" ;;
+  *" label added") echo "remove the $(sed 's/ label added$//' "$1/off") label to resume" ;;
+  *) echo "add the label back to resume" ;;
+  esac
 }
 
 # How long an issue has waited since its last run ended, after a prefix; nothing

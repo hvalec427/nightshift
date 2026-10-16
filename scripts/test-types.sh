@@ -67,6 +67,12 @@ after_comment() {
 expect "after questions: needs you" "$(after_comment questions)" "needs you"
 expect "after an answer: needs you" "$(after_comment answer)" "needs you"
 
+# What brings back an issue stopped for the reason $1.
+hint() { echo "$1" >"$DIR/off"; resume_hint "$DIR"; }
+expect "wontfix added: remove it to resume" "$(hint "wontfix label added")" "remove the wontfix label to resume"
+expect "invalid added: remove it to resume" "$(hint "invalid label added")" "remove the invalid label to resume"
+expect "agent removed: add it back" "$(hint "label removed")" "add the label back to resume"
+
 if [ -s "$FAILS" ]; then
   echo "$(wc -l <"$FAILS" | tr -d ' ') failed"
   exit 1
