@@ -258,7 +258,8 @@ Every run and every Claude session of yours where the nightshift plugin is
 enabled get nightshift's default instructions:
 [`plugin/instructions.md`](plugin/instructions.md) (installed at
 `~/.nightshift/plugin/instructions.md`), its rules for commit messages and pull
-requests, Conventional Commits and no AI attribution included. Runs get them in
+requests, Conventional Commits and no AI attribution included, and for keeping a
+project's `CLAUDE.md` small and true. Runs get them in
 their system prompt, your own sessions from the plugin's `SessionStart` hook.
 Only the defaults apply: a `~/.nightshift/instructions.md` from an older version
 is ignored (`nightshift doctor` notes it).
