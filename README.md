@@ -54,10 +54,13 @@ comments from you (`allowed_users` below).
 ```sh
 nightshift status                   # the issues it knows, what each is doing, and for how long
 nightshift stop <owner/repo>#<n>    # stop one
-tail -f ~/.nightshift/watch.log     # what the watcher does
+nightshift logs -f                  # what the watcher does: a line per poll
+nightshift logs <owner/repo>#<n> -f # an issue's runs: its tool calls and messages, as they happen
 ```
 
-`~/.nightshift/issues/<owner>_<repo>_<n>/log` has each issue's runs.
+Without `-f`, `logs` prints the whole log. They live in `~/.nightshift`:
+`watch.log` (kept to its last few thousand lines) and
+`issues/<owner>_<repo>_<n>/log`.
 
 ## Config
 
