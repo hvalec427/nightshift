@@ -32,7 +32,7 @@ comments, what the diff shows), and fold detail they may want into a collapsed
 `<details>` block. Lengths to aim for:
 
 - `questions`: one line per question or option ([questions.md](questions.md));
-- `plan`: a minute to read, the full spec collapsed (below);
+- `plan`: a minute to read, the full spec collapsed (the plan skill);
 - `progress`, `done`, `blocked`: one or two lines, e.g. "T2 done: short comments in the
   issue skill. Tests and shellcheck pass.";
 - `answer`: the answer first, in a few lines, then where it comes from.
@@ -85,32 +85,10 @@ applies, and end the run after its comment:
    go in one `questions` comment: numbered, each with your recommended answer, so the user
    can reply "1 yes, 2 b". Ask the questions that change what gets built; settle the rest
    yourself and say how. How to find and word them: [questions.md](questions.md).
-2. **No plan yet, nothing open** (or the answers are in). `nightshift label planning`,
-   then write the plan as one `plan` comment, short enough to read in a minute:
-   - **On top:** what gets built, in two or three lines; the decisions the user should
-     see; the tickets, one line each, in build order (`**T1: <title>.** <what it
-     delivers>`); and the **overlap** (below) with other nightshift work, if any.
-   - **Collapsed,** in one `<details><summary>Full spec</summary>` block: the **spec**,
-     following [spec.md](spec.md), and each ticket's blockers and acceptance criteria,
-     following [tickets.md](tickets.md). All tickets are in this comment (no new issues).
-   - It ends with "Reply **go** to build it, or tell me what to change."
-
-   ```
-   **What changes:** <two or three lines>.
-
-   **Tickets**
-   - **T1: <title>.** <what it delivers>
-   - **T2: <title>.** <what it delivers>
-
-   <details><summary>Full spec</summary>
-
-   <the spec, then each ticket's blockers and criteria>
-   </details>
-
-   Reply **go** to build it, or tell me what to change.
-   ```
-3. **A plan, and the user asked for changes.** `nightshift label planning`, a revised
-   `plan` comment, then wait again.
+2. **No plan yet, nothing open** (or the answers are in). Invoke the `nightshift:plan`
+   skill with the Skill tool: it writes the plan, with the spec and ticket guidance.
+3. **A plan, and the user asked for changes.** Invoke `nightshift:plan` too, for a revised
+   plan, then wait again.
 4. **A plan the user approved** ("go", or anything that clearly means build it).
    `nightshift label building`, then build the tickets in order, in this worktree:
    - Each ticket test-first where it has logic to test ([tdd.md](tdd.md)), checked the way
