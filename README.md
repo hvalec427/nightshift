@@ -40,6 +40,7 @@ Then:
 | Reply | More questions, or a plan: the spec and its tickets, in [Matt Pocock's](https://github.com/mattpocock/skills) to-spec and to-tickets format |
 | Reply **go** (or what to change) | Builds the tickets in order, a progress comment per ticket, then opens the pull request and links it |
 | Comment on the issue after that | Makes the change on the same branch and pushes it |
+| Merge another pull request | Rebases and updates the ones it affects (below) |
 | Remove the label, or close the issue | Stops it; `nightshift status` says so and why |
 | Add the label back, or reopen it | Picks up the stopped run where it left off |
 
@@ -54,7 +55,7 @@ on GitHub they're yours. It only acts on the label when you added it, and only o
 comments from you (`allowed_users` below).
 
 ```sh
-nightshift status                   # the service, the issues it knows, what each is doing (or why it stopped), and for how long
+nightshift status                   # the service, the issues it knows, what each is doing (or why it stopped), for how long, and merge order
 nightshift start                    # run the service: nightshift watch, in the background whenever you're logged in
 nightshift stop                     # stop the service, and the runs in flight, until nightshift start
 nightshift stop <owner/repo>#<n>    # stop one
@@ -76,6 +77,27 @@ nightshift logs -f -vv              # more: -v Claude's messages, -vv its tool c
 the whole log. The logs live in `~/.nightshift`: `watch.log` (every issue's
 lines, kept to its last 20,000) and each issue's full history in
 `issues/<owner>_<repo>_<n>/log`.
+
+## Pull requests that overlap
+
+Two nightshift issues overlap when their changes touch the same file, or one relies
+on something the other adds (a function, a flag, a file). nightshift checks for this
+against the other `nightshift/issue-*` branches and open pull requests when it
+plans, and again when it opens the pull request. The plan says so ("touches the
+same code as #10"), and so does the pull request: **Merge after #10** when it goes
+second, **Overlaps with #10** when it goes first. The one relied on goes first;
+otherwise the pull request that opened first does. `nightshift status` shows it as
+`PR <url> · after #10`.
+
+After a merge, each poll looks at the open nightshift pull requests. One that now
+conflicts with the default branch (after any merge, nightshift's or not), or that
+goes after or overlaps the nightshift pull request that just merged, gets a comment
+on its issue and a run. That run rebases it onto the default branch, fixes the
+conflicts, and updates the change to fit what merged, not just to apply. It runs the
+checks again, force-pushes (`--force-with-lease`), and says what changed beyond the
+conflict fixes. A conflict that needs your decision gets a question on the issue
+instead. Meanwhile `status` shows `conflicts, rebasing` or `updating after #10`. So
+the pull requests can be merged in any order.
 
 ## Config
 
