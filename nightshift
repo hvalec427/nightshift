@@ -389,7 +389,15 @@ run_agent() {
   }
   echo "$wt" >"$dir/worktree"
   why=$(cat "$dir/interrupted" 2>/dev/null) && rm -f "$dir/interrupted"
-  if [ ! -s "$dir/session" ]; then
+  build=0
+  if [ -f "$dir/build" ]; then
+    build=1
+    # The plan is approved: built in a fresh session, the planning one kept.
+    intro=$(build_intro "$repo" "$n" "$dir")
+    mv "$dir/session" "$dir/plan-session"
+    rm -f "$dir/build"
+    resume=""
+  elif [ ! -s "$dir/session" ]; then
     intro="This is your first run for this issue."
     resume=""
   else
@@ -410,7 +418,7 @@ $intro"
   mode=$(setting permission_mode auto)
   # The run says when it plans or builds (`nightshift label`); until then:
   if [ -f "$dir/updating" ]; then set_status "$repo" "$n" updating
-  elif [ -f "$dir/pr" ]; then set_status "$repo" "$n" building
+  elif [ -f "$dir/pr" ] || [ "$build" = 1 ]; then set_status "$repo" "$n" building
   else set_status "$repo" "$n" thinking
   fi
   log "$repo#$n: run starting"
@@ -480,6 +488,17 @@ $intro"
     fi
   fi
   set_status "$repo" "$n" "$(idle_status "$dir")"
+}
+
+# What a build session's first run is told, for $1#$2 (its dir $3): the issue,
+# the approved plan (the last nightshift `plan` comment) and the approval.
+build_intro() {
+  issue=$(gh api "repos/$1/issues/$2" --jq '.title + "\n\n" + (.body // "")' 2>/dev/null)
+  plan=$(gh api --paginate "repos/$1/issues/$2/comments?per_page=100" \
+    --jq ".[] | select(.body | contains(\"$MARKER\") and contains(\"nightshift:plan -->\")) | .body | @json" 2>/dev/null | tail -1 | jq -r . 2>/dev/null)
+  printf '%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s' \
+    "The plan is approved: build it (the issue skill's step for an approved plan). This is a fresh session: the plan holds what was settled before it, so read the thread only for what came after it." \
+    "The issue:" "$issue" "The approved plan:" "$plan" "The approval:" "$(cat "$3/build")"
 }
 
 # What a run is told of its issue's type: its type label, or that it has none,
@@ -778,7 +797,7 @@ poll_repo() {
     count=$((count + 1))
     d=$(issue_dir "$repo" "$n")
     running "$d" && { did="$did, #$n running"; continue; }
-    [ ! -f "$d/update" ] && [ -f "$d/updated" ] && [ "$(cat "$d/updated")" = "$updated" ] && continue
+    [ ! -f "$d/update" ] && [ ! -f "$d/build" ] && [ -f "$d/updated" ] && [ "$(cat "$d/updated")" = "$updated" ] && continue
     if [ ! -d "$d" ]; then
       # Only a label added by an allowed user starts work.
       by=$(gh api --paginate "repos/$repo/issues/$n/events" \
@@ -798,7 +817,11 @@ poll_repo() {
     last=$(gh api --paginate "repos/$repo/issues/$n/comments?per_page=100" --jq "$filter | .id" 2>/dev/null | tail -1)
     first_run=0
     [ -s "$d/session" ] || [ -f "$d/started" ] || first_run=1
-    if [ $first_run -eq 0 ] && [ -z "$news" ] && [ ! -f "$d/interrupted" ] && [ ! -f "$d/update" ]; then
+    # A plain "go" to the plan: build it in a fresh session (see run_agent).
+    if [ -n "$news" ] && handoff_ok "$d" && approves "$repo" "$n" "$filter"; then
+      printf '%s' "$news" >"$d/build"
+    fi
+    if [ $first_run -eq 0 ] && [ -z "$news" ] && [ ! -f "$d/interrupted" ] && [ ! -f "$d/update" ] && [ ! -f "$d/build" ]; then
       echo "$updated" >"$d/updated"
       continue
     fi
@@ -841,6 +864,19 @@ This is an update run: the update skill's job.
   # `once` waits for the runs it started (they're children of this pipeline).
   if [ "${NIGHTSHIFT_WAIT:-}" = 1 ]; then wait; fi
   }
+}
+
+# Whether issue dir $1 can still hand off to a build session: it has a
+# planning session, and no build session or pull request yet.
+handoff_ok() { [ -s "$1/session" ] && [ ! -f "$1/plan-session" ] && [ ! -f "$1/pr" ] && [ ! -f "$1/build" ]; }
+
+# Whether the new comments on $1#$2 ($3, the jq filter for them) are a plain
+# "go", replying to a plan: the last nightshift comment.
+approves() {
+  [ "$(gh api --paginate "repos/$1/issues/$2/comments?per_page=100" \
+    --jq "$3 | .body | ascii_downcase | test(\"^\\\\s*go[.!]*\\\\s*$\")" 2>/dev/null)" = true ] || return 1
+  gh api --paginate "repos/$1/issues/$2/comments?per_page=100" \
+    --jq ".[] | select(.body | contains(\"$MARKER\")) | .body | contains(\"nightshift:plan -->\")" 2>/dev/null | tail -1 | grep -qx true
 }
 
 poll() {
