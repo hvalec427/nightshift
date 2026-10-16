@@ -44,6 +44,8 @@ applies, and end the run after its comment:
    - **Tickets**, following `~/.claude/skills/to-tickets/SKILL.md`: tracer-bullet vertical
      slices in build order, each with what it delivers, what blocks it and its acceptance
      criteria, numbered `T1`, `T2`, …, all in this comment (no new issues).
+   - **Overlap** (below) with other nightshift work, if any: "touches the same code as
+     #10", "relies on the flag #10 adds", and which goes first.
    - It ends with "Reply **go** to build it, or tell me what to change."
 
    Read those two files as instructions; they're the user's own skills, and only the user
@@ -58,12 +60,37 @@ applies, and end the run after its comment:
      short `progress` comment: what the ticket delivered and how it was checked.
    - A ticket that can't be finished (a decision the plan didn't cover, a broken
      dependency): a `blocked` comment saying what's needed, and end the run.
-   - After the last ticket, use the **finish** skill to open the pull request. Then a
+   - After the last ticket, check the **overlap** (below) again, since other work may have
+     started or merged since the plan, and use the **finish** skill to open the pull
+     request, with the overlap lines in its body. Then a
      `done` comment with its link and what's in it. The watcher removes the worktree after
      this run.
 5. **A pull request is open, and the user commented.** Do what they ask on this branch,
    check it, commit, push, and reply with a `progress` comment. The pull request updates
    with the push.
+
+## Overlap with other nightshift work
+
+Other issues are worked on `nightshift/issue-<n>` branches of this same clone, so the
+ones still in progress are local branches, and the finished ones are open pull requests
+(`gh pr list --state open --json number,headRefName,url`). For each, other than this
+issue's, the files it changes are `git diff --name-only <default branch>...<branch>`
+(fetch first; use `origin/<branch>` when there's no local one). Read its diff where it
+touches what this change touches.
+
+Two changes **overlap** when they change the same file, or when one relies on something
+the other adds (a function, a flag, a file), even in a different file. Of two that
+overlap, the one relied on goes first; otherwise the one whose pull request opened first
+(a branch without one comes after one with one). The pull request body says it, readable
+and with a marker the watcher reads, using the other change's issue number (and its pull
+request's, when it has one):
+
+- `Merge after #10 (PR #15): uses the flag it adds. <!-- nightshift:after #10 -->`,
+  when this one goes second;
+- `Overlaps with #10: both change nightshift's status. <!-- nightshift:overlaps #10 -->`,
+  when this one goes first.
+
+No overlap, nothing to say.
 
 ## Bounds
 

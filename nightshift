@@ -14,8 +14,9 @@
 # issue `issues/<owner>_<repo>_<n>/` with `session` (the Claude session id),
 # `seen` (the last comment handed to the agent), `pid` while it runs,
 # `finished` once a run ended, `pr` once it opened one, `off` (why) while it has
-# no label or is closed, `interrupted` if that stopped a run, `log` (readable, live) and
-# `out.jsonl` (the last run's raw stream-json).
+# no label or is closed, `interrupted` if that stopped a run, `after` (the issues
+# its open pull request goes after), `log` (readable, live) and `out.jsonl` (the
+# last run's raw stream-json).
 set -u
 
 NS="${NIGHTSHIFT_HOME:-$HOME/.nightshift}"
@@ -313,6 +314,30 @@ $MARKER" >/dev/null 2>&1 || log "$1#$2: couldn't comment the failure"
 
 # --- polling --------------------------------------------------------------------
 
+# The repo's open nightshift pull requests, a line each: the issue, GitHub's
+# mergeable state, and the issues its body's markers say it goes after and
+# overlaps (comma-separated, or -).
+open_prs() {
+  # shellcheck disable=SC2016 # jq's \(…), not the shell's
+  gh pr list --repo "$1" --state open --limit 100 --json headRefName,mergeable,body --jq '
+    def marked($m): [.body | scan("<!-- nightshift:\($m) #([0-9]+) -->") | .[0] | tonumber] | unique | map(tostring) | join(",") | if . == "" then "-" else . end;
+    .[] | select(.headRefName | startswith("nightshift/issue-"))
+    | "\(.headRefName | ltrimstr("nightshift/issue-")) \(.mergeable) \(marked("after")) \(marked("overlaps"))"'
+}
+
+# What the open nightshift pull requests say about each other: each issue's
+# `after`, for status.
+check_prs() {
+  repo=$1
+  prs=$(open_prs "$repo" 2>>"$NS/watch.log") || { log "$repo: couldn't list pull requests"; return; }
+  rm -f "$NS/issues/$(echo "$repo" | tr '/' '_')"_*/after
+  printf '%s\n' "$prs" | while read -r n _ after _; do
+    d=$(issue_dir "$repo" "$n")
+    [ -n "$n" ] && [ -d "$d" ] || continue
+    [ "$after" = - ] || echo "$after" >"$d/after"
+  done
+}
+
 poll_repo() {
   repo=$1 clone=$2
   allowed=$(allowed_json)
@@ -341,6 +366,8 @@ poll_repo() {
       log "$repo#$n: $why"
     fi
   done
+
+  check_prs "$repo"
 
   printf '%s\n' "$open" | {
   count=0 did=""
@@ -475,13 +502,18 @@ cmd_status() {
     elif [ -f "$d/off" ] && [ -f "$d/pr" ]; then what="PR $(cat "$d/pr") · $(cat "$d/off")"
     elif [ -f "$d/off" ]; then what="$(cat "$d/off") $(age "$d/off") ago"
     elif [ -f "$d/interrupted" ]; then what="queued to resume"
-    elif [ -f "$d/pr" ]; then what="PR $(cat "$d/pr")$(waited "$d" " · waiting ")"
+    elif [ -f "$d/pr" ]; then what="PR $(cat "$d/pr")$(after_note "$d")$(waited "$d" " · waiting ")"
     elif [ -s "$d/session" ]; then what="waiting for a reply$(waited "$d" " · ")"
     else what="queued"
     fi
     printf '%-40s %s\n' "$repo#$n" "$what"
   done
   [ $found -eq 1 ] || echo "no issues yet"
+}
+
+# The issues an open pull request goes after: " · after #10, #11", or nothing.
+after_note() {
+  [ -s "$1/after" ] && printf ' · after #%s' "$(sed 's/,/, #/g' "$1/after")"
 }
 
 # What brings a stopped run back.
