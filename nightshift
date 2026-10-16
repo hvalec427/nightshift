@@ -9,6 +9,7 @@
 #   nightshift stop <owner/repo>#<n>     stop an issue's running agent
 #   nightshift logs [<owner/repo>#<n>] [-f] [-v…]  what every issue (or one) does, at a level
 #   nightshift add <owner/repo> <clone>  watch a repo, using this clone of it
+#   nightshift label <status>            (in a run) set its issue's status label
 #
 # State lives in $NIGHTSHIFT_HOME (default ~/.nightshift): `config`, and per
 # issue `issues/<owner>_<repo>_<n>/` with `session` (the Claude session id),
@@ -180,13 +181,14 @@ set_status() {
   sd=$(issue_dir "$1" "$2")
   [ -f "$sd/label" ] && [ "$(cat "$sd/label")" = "$3" ] && return 0
   sold=$(gh api "repos/$1/issues/$2/labels" --jq '[.[].name | select(startswith("nightshift: ")) | select(. != "nightshift: '"$3"'")] | join(",")' 2>/dev/null)
-  set -- "$1" "$2" "$3" ${sold:+--remove-label "$sold"}
-  [ -n "$3" ] && set -- "$@" --add-label "nightshift: $3"
-  if [ $# -gt 3 ] && ! gh issue edit "$2" --repo "$1" "$@" >/dev/null 2>&1; then
-    log "$1#$2: couldn't set the status label${3:+ to $3}"
+  srepo=$1 sn=$2 snew=$3
+  set -- ${sold:+--remove-label "$sold"}
+  [ -n "$snew" ] && set -- "$@" --add-label "nightshift: $snew"
+  if [ $# -gt 0 ] && ! gh issue edit "$sn" --repo "$srepo" "$@" >/dev/null 2>&1; then
+    log "$srepo#$sn: couldn't set the status label${snew:+ to $snew}"
     return 1
   fi
-  printf '%s\n' "$3" >"$sd/label"
+  printf '%s\n' "$snew" >"$sd/label"
 }
 
 # The status of an issue with nothing running, from its log's last run: how it
@@ -236,7 +238,7 @@ worktree() {
 
 # Tools a run may use without asking, on top of the permission mode: the ones
 # that reach GitHub, which an automatic reviewer might otherwise hold back.
-ALLOWED_TOOLS='Bash(gh issue *) Bash(gh pr *) Bash(gh repo view *) Bash(gh api *) Bash(git *) Bash(signalbox *) Bash(boop *)'
+ALLOWED_TOOLS='Bash(gh issue *) Bash(gh pr *) Bash(gh repo view *) Bash(gh api *) Bash(git *) Bash(signalbox *) Bash(boop *) Bash(nightshift label *)'
 
 # A run's stream-json events, one readable line each, tagged with the level
 # `logs` shows it from (a digit and a tab; see LEVELS): the comments it posts,
@@ -334,7 +336,8 @@ $intro"
     { print >>own; close(own) }' &
   rpid=$!
   # shellcheck disable=SC2086 # $resume is two words or none
-  (cd "$wt" && exec claude -p "$prompt" --output-format stream-json --verbose --permission-mode "$mode" --allowedTools $ALLOWED_TOOLS $resume </dev/null) >"$dir/stream" 2>>"$dir/log" &
+  # The issue, for `nightshift label`, and this nightshift on its PATH.
+  (cd "$wt" && PATH="$(dirname "$SELF"):$PATH" NIGHTSHIFT_REPO=$repo NIGHTSHIFT_ISSUE=$n exec claude -p "$prompt" --output-format stream-json --verbose --permission-mode "$mode" --allowedTools $ALLOWED_TOOLS $resume </dev/null) >"$dir/stream" 2>>"$dir/log" &
   cpid=$!
   trap 'kill -TERM $cpid 2>/dev/null; stopped=1' TERM INT
   stopped=0
@@ -868,7 +871,15 @@ cmd_add() {
   echo "watching $1 (clone: $clone); add the \`$LABEL\` label to an issue to start"
 }
 
-usage() { sed -n '2,11s/^# \{0,1\}//p' "$SELF"; }
+# `label <status>`: a run setting its issue's status label.
+cmd_label() {
+  [ -n "${NIGHTSHIFT_REPO:-}" ] && [ -n "${NIGHTSHIFT_ISSUE:-}" ] || die "nightshift label only works in a nightshift run"
+  printf '%s\n' "$STATUSES" | cut -d'|' -f1 | grep -qxF "$1" ||
+    die "usage: nightshift label <status>: one of $(printf '%s\n' "$STATUSES" | cut -d'|' -f1 | paste -sd, - | sed 's/,/, /g')"
+  set_status "$NIGHTSHIFT_REPO" "$NIGHTSHIFT_ISSUE" "$1" || die "couldn't set the label: see nightshift logs"
+}
+
+usage() { sed -n '2,12s/^# \{0,1\}//p' "$SELF"; }
 
 mkdir -p "$NS/issues"
 case "${1:-}" in
@@ -880,6 +891,7 @@ start) cmd_start ;;
 stop) shift; cmd_stop "${1:-}" ;;
 logs) shift; cmd_logs "$@" ;;
 add) shift; cmd_add "$@" ;;
+label) shift; cmd_label "$*" ;;
 -h | --help | help) usage; echo; echo "nightshift logs --help: the log levels and their flags" ;;
 *) usage >&2; exit 2 ;;
 esac

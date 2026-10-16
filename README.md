@@ -70,7 +70,8 @@ waiting on you:
 | `nightshift: PR open` | the pull request is open, nothing running |
 | `nightshift: stopped` | a run was stopped partway |
 
-They come off once it's done, or when you remove the `agent` label with nothing
+The watcher sets them as runs start and end; a run says when it moves on to
+planning or building with `nightshift label <status>`. They come off once it's done, or when you remove the `agent` label with nothing
 running (and come back with it). `nightshift status` says the same.
 
 Its comments start with **🤖 nightshift** and carry a hidden `<!-- nightshift -->`
