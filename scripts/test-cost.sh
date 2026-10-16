@@ -115,6 +115,20 @@ OPUS=claude-opus-5-5 HAIKU=claude-haiku-4-5-20251001
   rm "$(idir 7)/cost"
   expect_line "status: nothing counted, nothing shown" "$(ns status)" '^o/r#7  *needs you · [0-9]*s$')
 
+# status: the context at the end of the last run.
+(world
+  gh_issue o/r 7 alice agent
+  runs_do "costs 1 $OPUS 1 1 1 1; window $OPUS 1000000; turn $OPUS 5 84000 0; comment questions"
+  poll
+  expect_line "status: its context" "$(ns status)" '^o/r#7  *needs you · [0-9]*s · spent \$1\.00, 4 tokens, [0-9]*s · context 84k of 1M$'
+  gh_comment o/r 7 alice "1 yes" >/dev/null
+  runs_do "comment plan"
+  poll
+  expect_line "a run without a turn: the last one's" "$(ns status)" ' · context 84k of 1M$'
+  gh_state o/r 7 closed
+  poll
+  expect_line "done: no context" "$(ns status --all)" '^o/r#7  *done · issue closed .* ago · spent \$1\.00, 4 tokens, [0-9]*s$')
+
 # Posted once it's done.
 COMMENT="🤖 \*\*nightshift\*\* · cost"
 (world

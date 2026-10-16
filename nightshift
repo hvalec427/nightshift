@@ -25,7 +25,8 @@
 # `updating` while it runs (its status, then why), `conflict` (the default
 # branch's commit its pull request was last updated for), `log` (readable,
 # live) and `out.jsonl` (the last run's raw stream-json), `cost` (what its
-# runs cost, added up), `usage` (its session's totals at the last result), and
+# runs cost, added up), `usage` (its session's totals at the last result),
+# `context` (its last run's context at the end, and the model's window), and
 # `done` (why) once its pull request merged or it closed, when only `log`,
 # `session`, `plan-session`, `seen`, `started`, `pr`, `cost` and `usage` stay
 # (`revived`, the merged pull request a comment brought it back from);
@@ -575,6 +576,12 @@ TOK='function tok(n,  x, u, s) {
   return s u
 }'
 
+# A context, its tokens $1 and its model's window $2 (0: unknown), readable:
+# `context 84k of 1M`.
+context_words() {
+  awk -v n="$1" -v w="$2" "$TOK"' BEGIN { printf "context %s", tok(n); if (w > 0) printf " of %s", tok(w) }'
+}
+
 # A run's dollars and tokens (what its result adds to the session's totals,
 # none without one) and its seconds $2, added to the issue's `cost`: a line of
 # dollars, tokens in, out and cache (read and written), seconds, runs, and the
@@ -587,14 +594,16 @@ add_cost() {
   run=""
   now=$(cat "$1/usage" 2>/dev/null)
   ctx=$(jq -n -R -r "$CONTEXT" "$1/out.jsonl" 2>/dev/null)
+  [ -z "$ctx" ] || echo "${ctx#* }" >"$1/context"
   if [ -n "$now" ] && [ "$now" != "$prev" ]; then
     run=$(jq -n -r --argjson now "$now" --argjson prev "${prev:-null}" --arg main "${ctx%% *}" "$SPENT" 2>/dev/null) ||
       run=$(jq -n -r --argjson now "$now" --argjson prev null --arg main "${ctx%% *}" "$SPENT" 2>/dev/null)
   fi
-  note=$(echo "${run:-0 0 0 0 -} ${ctx:-- 0 0}" | awk "$TOK"'{
-    if ($5 != "-") { m = $5; gsub(/,/, ", ", m); printf " · %s", m }
-    if ($6 != "-") { printf " · context %s", tok($7); if ($8 > 0) printf " of %s", tok($8) }
-  }')
+  note=""
+  models=$(echo "${run:-0 0 0 0 -}" | awk '{ print $5 }')
+  [ "$models" = - ] || note=" · $(echo "$models" | sed 's/,/, /g')"
+  # shellcheck disable=SC2086 # $ctx: the model, its tokens and window
+  [ -z "$ctx" ] || note="$note · $(set -- $ctx; context_words "$2" "$3")"
   if [ ! -f "$1/cost" ]; then
     since=-
     [ -n "$3" ] && since=$(date +%Y-%m-%d)
@@ -1104,12 +1113,16 @@ cost_words() {
     { printf "$%.2f %s %s %s %s %d %d %s\n", $1, tok($2 + $3 + $4), tok($2), tok($3), tok($4), $5, $6, $7 }' "$1/cost"
 }
 
-# What an issue's runs (its dir $1) cost, for status, if it's counted.
+# What an issue's runs (its dir $1) cost, for status, if it's counted, and
+# its context at the end of its last run, until it's done.
 cost_note() {
   cost_words "$1" | {
     read -r usd tokens _ _ _ secs _ _ || exit 0
     printf ' · spent %s, %s tokens, %s' "$usd" "$tokens" "$(duration "$secs")"
   }
+  [ -s "$1/context" ] && [ ! -f "$1/done" ] || return 0
+  read -r tokens window <"$1/context"
+  printf ' · %s' "$(context_words "$tokens" "${window:-0}")"
 }
 
 # An issue's status label, or $2 if it has none.
