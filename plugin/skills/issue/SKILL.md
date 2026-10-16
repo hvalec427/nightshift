@@ -73,27 +73,19 @@ theirs stands. Leave labels other than the type and status ones alone.
 ## Where the issue stands
 
 Read the thread first (`gh issue view <n> --comments`), then do the first of these that
-applies, and end the run after its comment:
+applies, and end the run after its comment. Most are a stage with a skill of its own:
+invoke it by name with the Skill tool, and follow it with the rules above; the stage's
+guidance is in that skill, not here.
 
 1. **No plan yet, open decisions.** Decisions that are the user's and that the issue and
    the code don't settle: invoke the `nightshift:questions` skill, which asks them.
 2. **No plan yet, nothing open** (or the answers are in). Invoke the `nightshift:plan`
-   skill with the Skill tool: it writes the plan, with the spec and ticket guidance.
+   skill: it writes the plan, with the spec and ticket guidance.
 3. **A plan, and the user asked for changes.** Invoke `nightshift:plan` too, for a revised
    plan, then wait again.
-4. **A plan the user approved** ("go", or anything that clearly means build it).
-   `nightshift label building`, then build the tickets in order, in this worktree:
-   - Each ticket test-first where it has logic to test ([tdd.md](tdd.md)), checked the way
-     the repo is checked: in a React Native app, on its own simulator with the run-app
-     skill; elsewhere with the project's build, typecheck, lint and tests.
-   - Commit each ticket on its own, in the repo's and the user's commit style, and post a
-     short `progress` comment: what the ticket delivered and how it was checked.
-   - A ticket that can't be finished (a decision the plan didn't cover, a broken
-     dependency): a `blocked` comment saying what's needed, and end the run.
-   - After the last ticket, check the **overlap** (below) again, since other work may have
-     started or merged since the plan, and use the **finish** skill to open the pull
-     request, with the overlap lines in its body. Then a `done` comment with its link and
-     what's in it. The watcher removes the worktree after this run.
+4. **A plan the user approved** ("go", or anything that clearly means build it). Invoke
+   the `nightshift:build` skill: it builds the tickets test-first and opens the pull
+   request.
 5. **An update run:** the watcher's news says the default branch moved under this pull
    request. Invoke the `nightshift:update` skill: it rebases the branch and adapts the
    change to what merged.

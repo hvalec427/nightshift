@@ -1,6 +1,6 @@
 ---
 name: finish
-description: Finish this task: commit, push, open a pull request (with screenshots and a recording when the app is running here), then clean up. Use when the user says finish, ship it, or asks for a PR for the work in this worktree, and when the issue skill has built its last ticket.
+description: Finish this task: commit, push, open a pull request (with screenshots and a recording when the app is running here), then clean up. Use when the user says finish, ship it, or asks for a PR for the work in this worktree, and when the build skill has built its last ticket.
 allowed-tools: Bash(git status *) Bash(git diff *) Bash(git log *) Bash(git add *) Bash(git commit *) Bash(git push *) Bash(git rev-parse *) Bash(git worktree *) Bash(gh pr *) Bash(gh repo view *) Bash(signalbox *) Bash(boop *) Bash(cp *) Bash(mkdir *)
 user-invocable: false
 ---
