@@ -10,13 +10,17 @@ The issue skill sent you here, and its rules (comments, the status label, the is
 overlap, bounds) hold throughout. The test-first guidance below is adapted from Matt
 Pocock's `tdd` skill (see `THIRD_PARTY.md` in the plugin).
 
-`nightshift label building`, then build the tickets in order, in this worktree:
+`nightshift label building`, then build the tickets in order, one at a time, in this
+worktree:
 
 - Each ticket test-first where it has logic to test (**test first**, below), checked the
   way the repo is checked: in a React Native app, on its own simulator with the run-app
   skill; elsewhere with the project's build, typecheck, lint and tests.
 - Commit each ticket on its own, in the repo's and the user's commit style, and post a
   short `progress` comment: what the ticket delivered and how it was checked.
+- With two or more tickets, hand each to a **ticket subagent** (below), so a ticket's
+  reads, test output and fixes don't fill the context of the next. A plan with one ticket
+  you build yourself: there's no next ticket to keep clean.
 - A ticket that can't be finished (a decision the plan didn't cover, a broken
   dependency): a `blocked` comment saying what's needed, and end the run.
 - After the last ticket, check the **overlap** (in the issue skill) again, since other
@@ -24,6 +28,30 @@ Pocock's `tdd` skill (see `THIRD_PARTY.md` in the plugin).
   skill to open the pull request, with the overlap lines in its body. Then a `done`
   comment with its link and what's in it. The watcher removes the worktree after this
   run.
+
+## Ticket subagents
+
+Start each with the Agent tool (`general-purpose`), without a `model`, so it runs on the
+run's own model. Its brief stands on its own, since it sees nothing of this conversation:
+
+- the ticket from the plan: its text, what blocks it and its acceptance criteria, and the
+  spec's decisions it needs; when it's a retry after a `blocked` comment, the user's
+  answer and what the last attempt left in the worktree;
+- this worktree's absolute path, and the tickets already committed in it;
+- the test-first guidance: the sections below, from **test first** on, copied in, not
+  pointed to;
+- how the repo is checked (as above), and the commit style;
+- what it may do: build, check and commit this one ticket, in this worktree. It never
+  comments on the issue, changes labels, pushes, opens a pull request or touches the other
+  tickets.
+- what it returns: a short summary of what the ticket delivered and how it was checked;
+  or, when it can't finish, a reply starting with `BLOCKED:`, then what's needed, what it
+  finished and what it left uncommitted. It commits nothing half done.
+
+When it returns, check the work is there: the ticket's commit on top, and the tree clean.
+Then post the `progress` comment from its summary and start the next ticket. A `BLOCKED:`
+reply (or no commit) gets the one `blocked` comment, from what it said, and ends the run;
+the next run hands the same ticket to a new subagent.
 
 ## Test first
 
