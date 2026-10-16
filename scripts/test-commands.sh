@@ -34,13 +34,20 @@ try() {
   try ns add o/y "$W/plain"
   expect "add a directory that isn't a clone: fails" "$ST $OUT" "1 nightshift: $W/plain isn't a git checkout"
   try ns add o/y
-  expect "add without a clone: the usage" "$ST $OUT" "1 nightshift: usage: nightshift add <owner/repo> <clone path> [instructions=<path>] [auto_merge=false]"
+  expect "add without a clone: the usage" "$ST $OUT" "1 nightshift: usage: nightshift add <owner/repo> <clone path> [instructions=<path>] [auto_merge=false] [plugins=<name>,…]"
   git init -q "$W/third"
   gh_repo o/z "$W/third"
   try ns add o/z "$W/third" auto_merge=false
   expect "add auto_merge=false: says its PRs wait" "$OUT" \
     "watching o/z (clone: $W/third); PRs wait for you; add the \`agent\` label to an issue to start"
   expect_line "add auto_merge=false: on the repo line" "$(cat "$NS/config")" "^repo o/z $W/third auto_merge=false$"
+  gh_repo o/q "$W/third"
+  try ns add o/q "$W/third" plugins=rn-agent,web@other
+  expect "add with plugins: watches it" "$ST" 0
+  expect_line "add with plugins: on its line as given" "$(cat "$NS/config")" "^repo o/q $W/third plugins=rn-agent,web@other$"
+  try ns add o/w "$W/plain" colour=red
+  expect "add with an unknown option: the usage" "$ST $OUT" "1 nightshift: usage: nightshift add <owner/repo> <clone path> [instructions=<path>] [auto_merge=false] [plugins=<name>,…] (colour isn't an option)"
+  expect_line "add with an unknown option: no line" "$(cat "$NS/config")" "o/w" no
   expect_no_unexpected)
 
 (world
@@ -62,9 +69,9 @@ try() {
   try ns add o/x "$W/other" "instructions=$W/gone.md"
   expect "add with a missing instructions= file: fails" "$ST $OUT" "1 nightshift: $W/gone.md doesn't exist"
   expect "add with a missing instructions= file: nothing written" "$(cat "$NS/config")" ""
-  try ns add o/x "$W/other" plugins=a
-  expect "add with an unknown option: the usage" "$ST $OUT" "1 nightshift: usage: nightshift add <owner/repo> <clone path> [instructions=<path>] [auto_merge=false]"
-  expect "add with an unknown option: nothing written" "$(cat "$NS/config")" "")
+  try ns add o/x "$W/other" instructions=
+  expect "add with an empty instructions=: the usage" "$ST $OUT" "1 nightshift: usage: nightshift add <owner/repo> <clone path> [instructions=<path>] [auto_merge=false] [plugins=<name>,…] (instructions needs a value)"
+  expect "add with an empty instructions=: nothing written" "$(cat "$NS/config")" "")
 
 # --- status -----------------------------------------------------------------------
 
@@ -245,7 +252,7 @@ without() {
   expect_line "doctor: runs' model and effort, unset" "$OUT" "^  ok      runs: the account's default model, the default effort (set model= and effort= in $NS/config to choose)$"
   expect_line "doctor: the repo, its PRs merge on their own" "$OUT" "^  ok      o/r: clone $CLONE, \`agent\` label, PRs merge on their own$"
   expect_line "doctor: a hint for merged branches" "$OUT" "^  hint    o/r: GitHub keeps merged branches"
-  expect_line "doctor: React Native is optional" "$OUT" "^React Native (optional: no watched repo is React Native)$"
+  expect_line "doctor: no React Native section" "$OUT" "React Native" no
   expect_line "doctor: all good" "$OUT" "^all good$")
 
 (healthy
@@ -360,11 +367,22 @@ without() {
   expect_line "doctor: no repos yet" "$(ns doctor)" "^  none watched yet: nightshift add <owner/repo> <clone>$")
 
 (healthy
-  echo '{"dependencies":{"react-native":"0.80.0"}}' >"$CLONE/package.json"
+  plugin rn-agent@hvalec427
+  sed -i.bak 's|^repo o/r .*|& plugins=rn-agent|' "$NS/config"
   try ns doctor
-  expect_line "doctor: a React Native repo needs rn-agent" "$OUT" "^React Native (needed: o/r)$"
-  expect_line "doctor: rn-agent missing" "$OUT" "^  missing rn-agent plugin: "
-  expect "doctor: then it fails" "$ST" 1)
+  expect "doctor: the repo's plugins installed: passes" "$ST" 0)
+
+(healthy
+  plugin rn-agent@hvalec427
+  plugin web@other false
+  sed -i.bak 's|^repo o/r .*|& plugins=rn-agent,web,nope|' "$NS/config"
+  try ns doctor
+  expect "doctor: a missing or disabled plugin: fails" "$ST" 1
+  expect_line "doctor: an installed plugin" "$OUT" "^  ok      o/r: plugin rn-agent$"
+  expect_line "doctor: after the repo's label line" "$(grep -A1 '^  ok      o/r: clone' <<<"$OUT")" "^  ok      o/r: plugin rn-agent$"
+  expect_line "doctor: a disabled plugin" "$OUT" "^  disabled o/r: plugin web: enable it: claude plugin enable web@other$"
+  expect_line "doctor: a missing plugin" "$OUT" "^  missing o/r: plugin nope: claude plugin install nope$"
+  expect_line "doctor: counts both" "$OUT" "^2 to fix")
 
 # --- watch ------------------------------------------------------------------------
 

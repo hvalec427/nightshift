@@ -42,8 +42,9 @@ Then:
 2. `gh auth login` (gh 2.99 or newer, for screenshots in pull requests).
 3. For each repo: a clone of it on the machine, then
    `nightshift add <owner/repo> <path to the clone>`, with
-   `instructions=<file>` for the project's own rules (see below). That also
-   creates its `agent` label and the status labels.
+   `instructions=<file>` for the project's own rules (see below) and
+   `plugins=<name>,…` for the plugins its runs need (see [Config](#config)).
+   That also creates its `agent` label and the status labels.
    nightshift merges the repo's pull requests itself; to merge them yourself,
    add `auto_merge=false` (see [Config](#config)).
 
@@ -53,7 +54,9 @@ Then:
 nightshift version that runs (and, on a release, whether a newer one is out):
 what's installed and its version, gh's login, a Claude token, nightshift's
 plugin, and each watched repo's clone and `agent` label (with a hint when GitHub
-keeps merged branches there). It says what's missing and how to get it, and
+keeps merged branches there), then a line for each plugin its repo line names:
+`ok`, or `missing` with how to install it (`claude plugin install <name>`), or
+`disabled` with how to enable it (`claude plugin enable <id>`). It says what's missing and how to get it, and
 fails when something required is; `nightshift start` won't start the service until
 nothing is.
 
@@ -66,17 +69,8 @@ Always:
 | [Claude Code](https://claude.com/claude-code) (`claude`), with a token in `~/.nightshift/token` (or logged in) | the runs | 2.1.286 (the version its run flags were checked on) |
 | jq | reading GitHub's and Claude's JSON, and the logs | 1.6 |
 
-For React Native repos (required once a watched repo's `package.json` has
-`react-native`; optional otherwise), all from
-[rn-agent's installer](https://github.com/hvalec427/rn-agent) except tmux and Xcode:
-
-| Tool | For |
-|---|---|
-| the rn-agent plugin | the run-app skill and its session hooks |
-| signalbox | Metro, builds and a simulator per run |
-| boop | screenshots, taps and recordings |
-| tmux | signalbox's sessions (`brew install tmux`) |
-| Xcode, selected (`sudo xcode-select -s /Applications/Xcode.app`) | building and simulating the app |
+What a repo's runs need beyond that comes with the plugins its line names
+(`plugins=`, see [Config](#config)).
 
 ## Working an issue
 

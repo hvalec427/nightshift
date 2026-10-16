@@ -240,14 +240,6 @@ resumed_label() {
 # The plugins a repo line names: loaded, after nightshift's own.
 # The --plugin-dir values of the last run, space-separated.
 plugin_dirs() { run_args | grep -A1 -x -- --plugin-dir | grep -v -x -e --plugin-dir -e -- | tr '\n' ' '; }
-# Plugin $1 (an id, name@marketplace) installed in $W/<name>, enabled unless $2 is false.
-plugin() {
-  mkdir -p "$W/${1%@*}"
-  [ -f "$CLAUDE_FAKE/plugins.json" ] || echo '[]' >"$CLAUDE_FAKE/plugins.json"
-  # shellcheck disable=SC2016 # a jq program: $ is jq's
-  jq -c --arg id "$1" --arg p "$W/${1%@*}" --argjson e "${2:-true}" '. + [{id: $id, enabled: $e, installPath: $p}]' \
-    "$CLAUDE_FAKE/plugins.json" >"$W/plugins.json" && mv "$W/plugins.json" "$CLAUDE_FAKE/plugins.json"
-}
 
 (world
   cp -R "$ROOT/plugin" "$NS/plugin"

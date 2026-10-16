@@ -164,6 +164,15 @@ poll() { "$ROOT/nightshift" once; }
 # A setting in the config.
 set_config() { echo "$1=$2" >>"$NS/config"; }
 
+# Plugin $1 (an id, name@marketplace) installed in $W/<name>, enabled unless $2 is false.
+plugin() {
+  mkdir -p "$W/${1%@*}"
+  [ -f "$CLAUDE_FAKE/plugins.json" ] || echo '[]' >"$CLAUDE_FAKE/plugins.json"
+  # shellcheck disable=SC2016 # a jq program: $ is jq's
+  jq -c --arg id "$1" --arg p "$W/${1%@*}" --argjson e "${2:-true}" '. + [{id: $id, enabled: $e, installPath: $p}]' \
+    "$CLAUDE_FAKE/plugins.json" >"$W/plugins.json" && mv "$W/plugins.json" "$CLAUDE_FAKE/plugins.json"
+}
+
 # What the next runs do: their script (see scripts/fake/claude).
 runs_do() { printf '%s\n' "$1" >"$CLAUDE_FAKE/script"; }
 
