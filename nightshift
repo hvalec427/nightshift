@@ -13,7 +13,8 @@
 # State lives in $NIGHTSHIFT_HOME (default ~/.nightshift): `config`, and per
 # issue `issues/<owner>_<repo>_<n>/` with `session` (the Claude session id),
 # `seen` (the last comment handed to the agent), `pid` while it runs,
-# `finished` once a run ended, `pr` once it opened one, `log` (readable, live) and
+# `finished` once a run ended, `pr` once it opened one, `off` (why) while it has
+# no label or is closed, `interrupted` if that stopped a run, `log` (readable, live) and
 # `out.jsonl` (the last run's raw stream-json).
 set -u
 
@@ -192,14 +193,19 @@ run_agent() {
   news=$(cat "$dir/news" 2>/dev/null)
   wt=$(worktree "$repo" "$n" "$clone") || { comment_failure "$repo" "$n" "couldn't create the worktree: see $dir/log"; return; }
   echo "$wt" >"$dir/worktree"
-  if [ -s "$dir/session" ]; then
+  why=$(cat "$dir/interrupted" 2>/dev/null) && rm -f "$dir/interrupted"
+  if [ ! -s "$dir/session" ]; then
+    intro="This is your first run for this issue."
+    resume=""
+  else
     intro="New on the issue since your last run:
 
 $news"
+    # A run the label's removal (or closing the issue) stopped, now resumed.
+    [ -n "$why" ] && intro="Your last run was stopped partway because the $(echo "$why" | sed 's/^label/agent label was/; s/^issue/issue was/'); that's undone now, so carry on from where it stopped.${news:+
+
+$intro}"
     resume="--resume $(cat "$dir/session")"
-  else
-    intro="This is your first run for this issue."
-    resume=""
   fi
   prompt="You are nightshift, working GitHub issue #$n in $repo, unattended: nobody is at a terminal, and you talk to the user only through the issue. Use the issue skill.
 This checkout is the issue's own worktree, on branch nightshift/issue-$n.
@@ -268,15 +274,26 @@ poll_repo() {
   open=$(gh api "repos/$repo/issues?labels=$LABEL&state=open&per_page=100" \
     --jq '.[] | select(.pull_request | not) | "\(.number) \(.updated_at)"' 2>>"$NS/watch.log") || { log "$repo: couldn't list issues"; return; }
 
-  # Issues no longer labelled (or closed): stop what's running there.
+  # Issues no longer labelled (or closed): note which, once, and stop what's
+  # running there. Back in the list, the note goes (and a stopped run resumes,
+  # below).
   for d in "$NS/issues/$(echo "$repo" | tr '/' '_')"_*; do
     [ -d "$d" ] || continue
     n=${d##*_}
-    if ! printf '%s\n' "$open" | grep -q "^$n "; then
-      if running "$d"; then
-        kill -TERM "$(cat "$d/pid")" 2>/dev/null
-        log "$repo#$n: label removed or issue closed: stopped"
-      fi
+    if printf '%s\n' "$open" | grep -q "^$n "; then
+      rm -f "$d/off"
+      continue
+    fi
+    [ -f "$d/off" ] || [ -f "$d/ignored" ] && continue
+    state=$(gh api "repos/$repo/issues/$n" --jq .state 2>/dev/null) || continue
+    [ "$state" = closed ] && why="issue closed" || why="label removed"
+    echo "$why" >"$d/off"
+    if running "$d"; then
+      echo "$why" >"$d/interrupted"
+      kill -TERM "$(cat "$d/pid")" 2>/dev/null
+      log "$repo#$n: $why: stopped"
+    else
+      log "$repo#$n: $why"
     fi
   done
 
@@ -307,7 +324,7 @@ poll_repo() {
     last=$(gh api --paginate "repos/$repo/issues/$n/comments?per_page=100" --jq "$filter | .id" 2>/dev/null | tail -1)
     first_run=0
     [ -s "$d/session" ] || [ -f "$d/started" ] || first_run=1
-    if [ $first_run -eq 0 ] && [ -z "$news" ]; then
+    if [ $first_run -eq 0 ] && [ -z "$news" ] && [ ! -f "$d/interrupted" ]; then
       echo "$updated" >"$d/updated"
       continue
     fi
@@ -407,6 +424,10 @@ cmd_status() {
     repo=$(echo "${name%_*}" | sed 's/_/\//')
     if [ -f "$d/ignored" ]; then what="ignored (labelled by someone else)"
     elif running "$d"; then what="running $(age "$d/pid") (pid $(cat "$d/pid"))"
+    elif [ -f "$d/off" ] && [ -f "$d/interrupted" ]; then what="stopped $(age "$d/off") ago ($(cat "$d/off")) · $(resume_hint "$d")"
+    elif [ -f "$d/off" ] && [ -f "$d/pr" ]; then what="PR $(cat "$d/pr") · $(cat "$d/off")"
+    elif [ -f "$d/off" ]; then what="$(cat "$d/off") $(age "$d/off") ago"
+    elif [ -f "$d/interrupted" ]; then what="queued to resume"
     elif [ -f "$d/pr" ]; then what="PR $(cat "$d/pr")$(waited "$d" " · waiting ")"
     elif [ -s "$d/session" ]; then what="waiting for a reply$(waited "$d" " · ")"
     else what="queued"
@@ -414,6 +435,13 @@ cmd_status() {
     printf '%-40s %s\n' "$repo#$n" "$what"
   done
   [ $found -eq 1 ] || echo "no issues yet"
+}
+
+# What brings a stopped run back.
+resume_hint() {
+  if [ "$(cat "$1/off")" = "issue closed" ]; then echo "reopen to resume"
+  else echo "add the label back to resume"
+  fi
 }
 
 # How long an issue has waited since its last run ended, after a prefix; nothing
