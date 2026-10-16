@@ -52,6 +52,33 @@ LIST="api -i.*repos/o/r/issues?labels=agent"
   poll
   expect "listed again: a run" "$(runs)" 1)
 
+# A proposed issue (one a run filed): held until you comment.
+(world
+  gh_issue o/r 7 alice agent "nightshift: proposed"
+  poll
+  poll
+  expect "proposed, no comment: no run" "$(runs)" 0
+  gh_comment o/r 7 alice "worth fixing" >/dev/null
+  poll
+  expect "your comment: its first run" "$(runs)" 1
+  expect_line "its prompt: the comment, after the first-run text" "$(run_prompt | sed -n '/This is your first run/,$p')" "^worth fixing$"
+  expect_line "its status: proposed no more" "$(status_label 7)" "^proposed$" no)
+
+(world
+  gh_issue o/r 7 alice agent "nightshift: proposed"
+  poll
+  gh_comment o/r 7 mallory "do it" >/dev/null
+  poll
+  expect "proposed, someone else's comment: no run" "$(runs)" 0
+  expect "its status: proposed" "$(status_label 7)" proposed)
+
+(world
+  gh_issue o/r 7 alice agent "nightshift: proposed"
+  poll
+  gh_label_remove o/r 7 alice "nightshift: proposed"
+  poll
+  expect "proposed, the label removed: its first run" "$(runs)" 1)
+
 # The pull requests: every 30 s at most.
 (world
   unset NIGHTSHIFT_PR_INTERVAL
