@@ -8,7 +8,7 @@
 #   nightshift stop                      stop the service (until `nightshift start`)
 #   nightshift stop <owner/repo>#<n>     stop an issue's running agent
 #   nightshift logs [<owner/repo>#<n>] [-f] [-v…]  what every issue (or one) does, at a level
-#   nightshift add <owner/repo> <clone>  watch a repo, using this clone of it
+#   nightshift add <owner/repo> <clone> [instructions=<path>]  watch a repo, using this clone of it (and these instructions for its runs)
 #   nightshift label <status>            (in a run) set its issue's status label
 #   nightshift build                     (in a run) build the approved plan, in a fresh session if it's the planning one
 #   nightshift doctor                    check the tools and setup it needs on this machine
@@ -75,8 +75,19 @@ setting() {
   printf '%s' "${v:-$2}"
 }
 
-# `repo <owner/repo> <clone path>` lines.
-repos() { sed -n 's/^repo  *\([^ ]*\)  *\(.*\)$/\1 \2/p' "$CONFIG" 2>/dev/null; }
+# `repo <owner/repo> <clone path> [key=value …]` lines: the repo and its clone
+# path (spaces and all), without the trailing options.
+repos() {
+  sed -n -e 's/  *$//' -e ':a' -e 's/^\(repo  *[^ ]*  *[^ ].*\) [a-z_][a-z_]*=[^ ]*$/\1/' -e 's/  *$//' -e 'ta' \
+    -e 's/^repo  *\([^ ]*\)  *\(.*\)$/\1 \2/p' "$CONFIG" 2>/dev/null
+}
+
+# Repo $1's option $2 (its line's `$2=value`, in any order), or empty.
+repo_option() {
+  awk -v r="$1" -v k="$2=" '$1 == "repo" && $2 == r {
+    for (i = NF; i > 3 && $i ~ /^[a-z_]+=/; i--) if (index($i, k) == 1) { printf "%s", substr($i, length(k) + 1); exit }
+  }' "$CONFIG" 2>/dev/null
+}
 
 allowed_users() {
   u=$(setting allowed_users "")
@@ -298,16 +309,28 @@ worktree() {
 
 # Worktree $1's CLAUDE.local.md, rewritten for every run: nightshift's
 # instructions, which every agent and subagent in it loads (none without the
-# plugin's copy). One the repo tracks is left alone, said in log dir $2's log.
+# plugin's copy), then repo $3's own from its `instructions=` file, which win
+# (alone without the plugin's copy; only read, never written). One the repo
+# tracks is left alone; that, and a missing instructions= file, said in log
+# dir $2's log.
 write_instructions() {
   git_exclude "$1" CLAUDE.local.md
   if [ -n "$(git -C "$1" ls-files CLAUDE.local.md)" ]; then
     printf "0\t=== CLAUDE.local.md is tracked in the repo: nightshift's instructions aren't in it\n" >>"$2/log"
-  elif [ -f "$NS/plugin/instructions.md" ]; then
-    cp "$NS/plugin/instructions.md" "$1/CLAUDE.local.md"
-  else
-    rm -f "$1/CLAUDE.local.md"
+    return
   fi
+  own=$(repo_option "$3" instructions)
+  if [ -n "$own" ] && [ ! -r "$own" ]; then
+    printf "0\t=== %s (this repo's instructions=) doesn't exist: runs on with nightshift's instructions only\n" "$own" >>"$2/log"
+    own=""
+  fi
+  rm -f "$1/CLAUDE.local.md"
+  if [ -f "$NS/plugin/instructions.md" ]; then
+    cp "$NS/plugin/instructions.md" "$1/CLAUDE.local.md"
+    [ -n "$own" ] && printf "\n# This project's instructions\n\nThese come after nightshift's and win where the two disagree.\n\n" >>"$1/CLAUDE.local.md"
+  fi
+  [ -n "$own" ] && cat "$own" >>"$1/CLAUDE.local.md"
+  return 0
 }
 
 # Tools a run may use without asking, on top of the permission mode: the ones
@@ -464,7 +487,7 @@ $intro"
   log "$repo#$n: run starting"
   t0=$(date +%s)
   printf '\n0\t=== %s run\n' "$(date '+%Y-%m-%d %H:%M:%S')" >>"$dir/log"
-  write_instructions "$wt" "$dir"
+  write_instructions "$wt" "$dir" "$repo"
   # The events go to out.jsonl as they come, and readably into the log and,
   # tagged with the issue, into watch.log (closed after each line, which
   # trimming replaces).
@@ -1456,6 +1479,13 @@ cmd_doctor() {
     elif gh api "repos/$repo/labels/$LABEL" >/dev/null 2>&1; then pass "$repo: clone $clone, \`$LABEL\` label"
     else fail missing "$repo: its \`$LABEL\` label" "gh label create $LABEL --repo $repo --color 5319E7"
     fi
+    own=$(repo_option "$repo" instructions)
+    if [ -z "$own" ]; then :
+    elif [ -r "$own" ]; then pass "$repo: instructions $own"
+    else fail missing "$repo: its instructions ($own)" "create it, or fix its repo line in $CONFIG"
+    fi
+    [ -n "$(git -C "$clone" ls-files CLAUDE.local.md 2>/dev/null)" ] &&
+      fail tracked "$repo: CLAUDE.local.md, so runs don't get nightshift's instructions" "untrack it: git -C $clone rm --cached CLAUDE.local.md"
     # A hint, not a problem: nightshift deletes its own merged branches.
     [ -n "$ghv" ] && [ "$(gh api "repos/$repo" -q .delete_branch_on_merge 2>/dev/null)" = false ] &&
       printf '  %-7s %s\n' hint "$repo: GitHub keeps merged branches (\"Automatically delete head branches\" is off); nightshift deletes its own, and for the rest: gh repo edit $repo --delete-branch-on-merge"
@@ -1481,17 +1511,35 @@ EOF
   fi
 }
 
+# `add <owner/repo> <clone path> [instructions=<path>]`: the repo line, with
+# the clone's and the instructions file's absolute paths (`~/` is home).
 cmd_add() {
-  [ $# -eq 2 ] || die "usage: nightshift add <owner/repo> <clone path>"
-  clone=$(cd "$2" 2>/dev/null && pwd -P) || die "$2 doesn't exist"
+  use="usage: nightshift add <owner/repo> <clone path> [instructions=<path>]"
+  [ $# -ge 2 ] || die "$use"
+  repo=$1 clone=$(cd "$2" 2>/dev/null && pwd -P) || die "$2 doesn't exist"
+  shift 2
+  opts=""
+  for o in "$@"; do
+    case "$o" in
+    instructions=?*)
+      f=${o#instructions=}
+      case "$f" in \~/*) f="$HOME/${f#\~/}" ;; esac
+      [ -f "$f" ] || die "$f doesn't exist"
+      f="$(cd "$(dirname "$f")" && pwd -P)/$(basename "$f")"
+      case "$f" in *" "*) die "$f: the instructions file's path can't have spaces" ;; esac
+      opts="$opts instructions=$f"
+      ;;
+    *) die "$use" ;;
+    esac
+  done
   git -C "$clone" rev-parse --git-dir >/dev/null 2>&1 || die "$clone isn't a git checkout"
   mkdir -p "$NS"
   touch "$CONFIG"
-  grep -q "^repo $1 " "$CONFIG" && die "$1 is already watched"
-  echo "repo $1 $clone" >>"$CONFIG"
-  gh label create "$LABEL" --repo "$1" --color 5319E7 --description "nightshift works this issue" >/dev/null 2>&1 || true
-  ensure_labels "$1" || true
-  echo "watching $1 (clone: $clone); add the \`$LABEL\` label to an issue to start"
+  grep -q "^repo $repo " "$CONFIG" && die "$repo is already watched"
+  echo "repo $repo $clone$opts" >>"$CONFIG"
+  gh label create "$LABEL" --repo "$repo" --color 5319E7 --description "nightshift works this issue" >/dev/null 2>&1 || true
+  ensure_labels "$repo" || true
+  echo "watching $repo (clone: $clone); add the \`$LABEL\` label to an issue to start"
 }
 
 # `label <status>`: a run setting its issue's status label.

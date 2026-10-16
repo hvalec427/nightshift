@@ -200,6 +200,48 @@ AT_LABEL='i=0; until gh api "repos/$NIGHTSHIFT_REPO/issues/$NIGHTSHIFT_ISSUE" --
 
 (world
   cp -R "$ROOT/plugin" "$NS/plugin"
+  printf 'Use tabs.\nRun make check.\n' >"$W/ours.md"
+  printf 'repo %s %s instructions=%s\n' "$REPO" "$CLONE" "$W/ours.md" >"$NS/config"
+  gh_issue o/r 7 alice agent
+  poll
+  expect "a project's instructions=: after nightshift's, under a heading" "$(cat "$CLONE/.claude/worktrees/issue-7/CLAUDE.local.md")" \
+    "$(cat "$ROOT/plugin/instructions.md")
+
+# This project's instructions
+
+These come after nightshift's and win where the two disagree.
+
+Use tabs.
+Run make check."
+  expect "a project's instructions=: the file is only read" "$(cat "$W/ours.md")" "Use tabs.
+Run make check.")
+
+(world
+  cp -R "$ROOT/plugin" "$NS/plugin"
+  printf 'repo %s %s instructions=%s\n' "$REPO" "$CLONE" "$W/gone.md" >"$NS/config"
+  gh_issue o/r 7 alice agent
+  poll
+  expect "instructions= missing: nightshift's only" "$(cat "$CLONE/.claude/worktrees/issue-7/CLAUDE.local.md")" "$(cat "$ROOT/plugin/instructions.md")"
+  expect_line "instructions= missing: the log says so" "$(cat "$(idir 7)/log")" \
+    "^0	=== $W/gone.md (this repo's instructions=) doesn't exist: runs on with nightshift's instructions only$")
+
+(world
+  cp -R "$ROOT/plugin" "$NS/plugin"
+  echo "Ours." >"$W/ours.md"
+  printf 'repo %s %s instructions=%s plugins=x,y\n' "$REPO" "$CLONE" "$W/ours.md" >"$NS/config"
+  gh_issue o/r 7 alice agent
+  poll
+  expect "instructions= before another option: still the clone's worktree, with the project's" "$(tail -1 "$CLONE/.claude/worktrees/issue-7/CLAUDE.local.md")" "Ours.")
+
+(world
+  echo "Ours." >"$W/ours.md"
+  printf 'repo %s %s instructions=%s\n' "$REPO" "$CLONE" "$W/ours.md" >"$NS/config"
+  gh_issue o/r 7 alice agent
+  poll
+  expect "no plugin copy, a project's instructions=: the project's alone" "$(cat "$CLONE/.claude/worktrees/issue-7/CLAUDE.local.md")" "Ours.")
+
+(world
+  cp -R "$ROOT/plugin" "$NS/plugin"
   mkdir -p "$W/rn-agent"
   printf '[{"id":"rn-agent@hvalec427","enabled":true,"installPath":"%s"}]\n' "$W/rn-agent" >"$CLAUDE_FAKE/plugins.json"
   gh_issue o/r 7 alice agent
