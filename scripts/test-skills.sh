@@ -37,4 +37,14 @@ expect "every link in a skill resolves" "$dangling" ""
 expect "the issue skill is its SKILL.md alone, the stages' guidance in their skills" \
   "$(cd "$SKILLS/issue" && find . -type f)" "./SKILL.md"
 
+# The build skill hands each ticket to a subagent; a real run's log shows its `→ Agent:` lines.
+build=$(cat "$SKILLS/build/SKILL.md")
+expect_line "the build hands each ticket to a subagent" "$build" "ticket subagent"
+expect_line "the subagent is started with the Agent tool" "$build" "Agent tool"
+expect_line "the subagent inherits the run's model" "$build" "without a \`model\`"
+expect_line "a stuck subagent replies BLOCKED:" "$build" "\`BLOCKED:\`"
+expect_line "the subagent doesn't comment on the issue" "$build" "comments on the issue, changes labels"
+expect_line "the run checks each ticket's commit and a clean tree" "$build" "the tree clean"
+expect_line "a one-ticket plan is built without a subagent" "$build" "plan with one ticket"
+
 report
