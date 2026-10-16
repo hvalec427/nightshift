@@ -20,7 +20,8 @@ try() {
   git init -q "$W/other"
   gh_repo o/x "$W/other"
   try ns add o/x "$W/other"
-  expect "add: says so" "$OUT" "watching o/x (clone: $W/other); add the \`agent\` label to an issue to start"
+  expect "add: says so, and that its PRs merge on their own" "$OUT" \
+    "watching o/x (clone: $W/other); PRs merge on their own (auto_merge=false turns it off); add the \`agent\` label to an issue to start"
   expect "add: the repo line" "$(cat "$NS/config")" "repo o/x $W/other"
   expect_line "add: the agent label is created" "$(cat "$(gh_dir o/x)/labels")" "^agent$"
   expect_line "add: the status labels too" "$(cat "$(gh_dir o/x)/labels")" "^nightshift: needs you$"
@@ -33,7 +34,13 @@ try() {
   try ns add o/y "$W/plain"
   expect "add a directory that isn't a clone: fails" "$ST $OUT" "1 nightshift: $W/plain isn't a git checkout"
   try ns add o/y
-  expect "add without a clone: the usage" "$ST $OUT" "1 nightshift: usage: nightshift add <owner/repo> <clone path> [instructions=<path>]"
+  expect "add without a clone: the usage" "$ST $OUT" "1 nightshift: usage: nightshift add <owner/repo> <clone path> [instructions=<path>] [auto_merge=false]"
+  git init -q "$W/third"
+  gh_repo o/z "$W/third"
+  try ns add o/z "$W/third" auto_merge=false
+  expect "add auto_merge=false: says its PRs wait" "$OUT" \
+    "watching o/z (clone: $W/third); PRs wait for you; add the \`agent\` label to an issue to start"
+  expect_line "add auto_merge=false: on the repo line" "$(cat "$NS/config")" "^repo o/z $W/third auto_merge=false$"
   expect_no_unexpected)
 
 (world
@@ -56,13 +63,14 @@ try() {
   expect "add with a missing instructions= file: fails" "$ST $OUT" "1 nightshift: $W/gone.md doesn't exist"
   expect "add with a missing instructions= file: nothing written" "$(cat "$NS/config")" ""
   try ns add o/x "$W/other" plugins=a
-  expect "add with an unknown option: the usage" "$ST $OUT" "1 nightshift: usage: nightshift add <owner/repo> <clone path> [instructions=<path>]"
+  expect "add with an unknown option: the usage" "$ST $OUT" "1 nightshift: usage: nightshift add <owner/repo> <clone path> [instructions=<path>] [auto_merge=false]"
   expect "add with an unknown option: nothing written" "$(cat "$NS/config")" "")
 
 # --- status -----------------------------------------------------------------------
 
 (world
   expect "status, nothing yet" "$(ns status)" "service: not installed
+pull requests merge on their own (auto_merge=false on a repo line turns it off)
 no issues yet"
   sh -c 'exit 0' &
   dead=$!
@@ -71,6 +79,18 @@ no issues yet"
   expect "status: a watch.pid left by a watch that's gone" "$(ns status | head -1)" "service: not installed"
   try ns status --everything
   expect "status, a bad option: the usage" "$ST $OUT" "2 usage: nightshift status [--all]")
+
+(world
+  printf 'repo o/x %s auto_merge=false\n' "$W/other" >>"$NS/config"
+  expect "status: the repos auto-merge is off for" "$(ns status | sed -n 2p)" \
+    "pull requests merge on their own (off for: o/x; auto_merge=false on a repo line turns it off)"
+  printf 'repo %s %s auto_merge=false\n' "$REPO" "$CLONE" >"$NS/config"
+  printf 'repo o/x %s auto_merge=false\n' "$W/other" >>"$NS/config"
+  expect "status: off for every repo, they wait" "$(ns status | sed -n 2p)" \
+    "pull requests wait for you (auto_merge=false on every repo line)"
+  : >"$NS/config"
+  expect "status: no repos, no merge line" "$(ns status)" "service: not installed
+no issues yet")
 
 (world
   gh_issue o/r 7 alice agent bug
@@ -223,10 +243,15 @@ without() {
   expect_line "doctor: the plugin in Claude Code" "$OUT" "^  ok      nightshift's plugin in Claude Code"
   expect_line "doctor: the instructions" "$OUT" "^  ok      instructions: nightshift's defaults$"
   expect_line "doctor: runs' model and effort, unset" "$OUT" "^  ok      runs: the account's default model, the default effort (set model= and effort= in $NS/config to choose)$"
-  expect_line "doctor: the repo" "$OUT" "^  ok      o/r: clone $CLONE, \`agent\` label$"
+  expect_line "doctor: the repo, its PRs merge on their own" "$OUT" "^  ok      o/r: clone $CLONE, \`agent\` label, PRs merge on their own$"
   expect_line "doctor: a hint for merged branches" "$OUT" "^  hint    o/r: GitHub keeps merged branches"
   expect_line "doctor: React Native is optional" "$OUT" "^React Native (optional: no watched repo is React Native)$"
   expect_line "doctor: all good" "$OUT" "^all good$")
+
+(healthy
+  printf 'repo %s %s auto_merge=false\n' "$REPO" "$CLONE" >"$NS/config"
+  expect_line "doctor: auto_merge=false, its PRs wait" "$(ns doctor)" \
+    "^  ok      o/r: clone $CLONE, \`agent\` label, PRs wait for you (auto_merge=false)$")
 
 (healthy
   set_config model sonnet

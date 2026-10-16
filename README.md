@@ -44,6 +44,8 @@ Then:
    `nightshift add <owner/repo> <path to the clone>`, with
    `instructions=<file>` for the project's own rules (see below). That also
    creates its `agent` label and the status labels.
+   nightshift merges the repo's pull requests itself; to merge them yourself,
+   add `auto_merge=false` (see [Config](#config)).
 
 ## What it needs
 
@@ -227,6 +229,7 @@ the pull requests can be merged in any order.
 ```
 repo hvalec427/nightshift /Users/me/dev/nightshift
 repo me/app /Users/me/dev/app instructions=/Users/me/notes/app.md
+repo hvalec427/other /Users/me/dev/other auto_merge=false
 allowed_users=hvalec427
 max_parallel=2
 interval=5
@@ -237,6 +240,10 @@ effort=high
 - `repo <owner/repo> <clone> [key=value …]`: a watched repo, its clone, then
   its options in any order. `instructions=` names a file of the project's own
   rules for runs (below); `nightshift doctor` says when it's missing.
+  `auto_merge=false` makes its pull requests wait for you to merge; without
+  it, nightshift merges them on its own. It's on by default, so repos added
+  before it start merging on their own after an upgrade. `status` and `doctor`
+  say which repos have it off.
 - `allowed_users`: whose labels and comments count (default: your gh account).
 - `max_parallel`: issues worked at once (each may run a simulator).
 - `interval`: seconds between polls (default 5). A poll that finds nothing new

@@ -22,6 +22,8 @@ LABELS_NOW='gh api "repos/$NIGHTSHIFT_REPO/issues/$NIGHTSHIFT_ISSUE" --jq ".labe
   expect_line "the prompt: the issue" "$(run_prompt)" "^You are nightshift, working GitHub issue #7 in o/r, unattended"
   expect_line "the prompt: its type" "$(run_prompt)" '^Its type label: `bug`\.$'
   expect_line "the prompt: a first run" "$(run_prompt)" "^This is your first run for this issue\.$"
+  expect_line "the prompt: a plain repo line auto-merges" "$(run_prompt)" \
+    "^This repo auto-merges: once its pull request is open or updated, use the merge skill\.$"
   expect "no --resume on a first run" "$(run_opt --resume)" ""
   expect "the permission mode: auto" "$(run_opt --permission-mode)" auto
   expect "no model set: no --model" "$(run_opt --model)" ""
@@ -56,6 +58,15 @@ NIGHTSHIFT_REPO=o/r"
   expect "after a plan: needs you" "$(status_label 7)" "needs you"
   expect_line "the prompt: no type label" "$(run_prompt)" "^It has no type label\.$"
   expect_no_unexpected)
+
+(world
+  printf 'repo %s %s auto_merge=false\n' "$REPO" "$CLONE" >"$NS/config"
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  expect "auto_merge=false: the run still works in the clone's worktree" "$(cat "$CLAUDE_FAKE/runs/1/cwd")" "$CLONE/.claude/worktrees/issue-7"
+  expect_line "the prompt: auto_merge=false doesn't auto-merge" "$(run_prompt)" \
+    "^This repo doesn't auto-merge (auto_merge=false): leave merging to the user\.$")
 
 # The skill a run is in: its status label, its skill file and its log.
 # (The watcher sets the label as the stream goes by, so wait for it.)
