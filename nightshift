@@ -266,6 +266,13 @@ fetch_type() {
 
 # --- one agent run --------------------------------------------------------------
 
+# Pattern $2 kept out of the git status of $1's clone and all its worktrees
+# (in the clone's info/exclude, not the repo's .gitignore).
+git_exclude() {
+  exclude="$(git -C "$1" rev-parse --path-format=absolute --git-common-dir)/info/exclude"
+  grep -qxF "$2" "$exclude" 2>/dev/null || echo "$2" >>"$exclude"
+}
+
 # The issue's worktree in the repo's clone, created on the first run (or again,
 # on its existing branch, after it was removed).
 worktree() {
@@ -276,9 +283,8 @@ worktree() {
     git -C "$clone" fetch -q origin >/dev/null 2>&1 || true
     base=$(gh repo view "$repo" --json defaultBranchRef -q .defaultBranchRef.name)
     mkdir -p "$clone/.claude/worktrees"
-    # Keep the worktrees out of the clone's own git status (not the repo's .gitignore).
-    exclude="$(git -C "$clone" rev-parse --path-format=absolute --git-common-dir)/info/exclude"
-    grep -qxF '.claude/worktrees/' "$exclude" 2>/dev/null || echo '.claude/worktrees/' >>"$exclude"
+    # Keep the worktrees out of the clone's own git status.
+    git_exclude "$clone" .claude/worktrees/
     if git -C "$clone" rev-parse -q --verify "refs/heads/$branch" >/dev/null; then
       git -C "$clone" worktree add -q "$wt" "$branch"
     elif git -C "$clone" rev-parse -q --verify "refs/remotes/origin/$branch" >/dev/null; then
@@ -290,6 +296,20 @@ worktree() {
   printf '%s' "$wt"
 }
 
+# Worktree $1's CLAUDE.local.md, rewritten for every run: nightshift's
+# instructions, which every agent and subagent in it loads (none without the
+# plugin's copy). One the repo tracks is left alone, said in log dir $2's log.
+write_instructions() {
+  git_exclude "$1" CLAUDE.local.md
+  if [ -n "$(git -C "$1" ls-files CLAUDE.local.md)" ]; then
+    printf "0\t=== CLAUDE.local.md is tracked in the repo: nightshift's instructions aren't in it\n" >>"$2/log"
+  elif [ -f "$NS/plugin/instructions.md" ]; then
+    cp "$NS/plugin/instructions.md" "$1/CLAUDE.local.md"
+  else
+    rm -f "$1/CLAUDE.local.md"
+  fi
+}
+
 # Tools a run may use without asking, on top of the permission mode: the ones
 # that reach GitHub, which an automatic reviewer might otherwise hold back.
 ALLOWED_TOOLS='Bash(gh issue *) Bash(gh pr *) Bash(gh repo view *) Bash(gh api *) Bash(git *) Bash(signalbox *) Bash(boop *) Bash(nightshift label *)'
@@ -298,8 +318,14 @@ ALLOWED_TOOLS='Bash(gh issue *) Bash(gh pr *) Bash(gh repo view *) Bash(gh api *
 # no user-level skills, settings, plugins or hooks, only the repo's own and
 # nightshift's plugin (its copy in $NS/plugin, which install.sh keeps), plus
 # rn-agent when it's installed. Attribution in commits and pull requests is
-# off; the plugin's instructions.md says what else to do (see run_claude).
-RUN_SETTINGS='{"attribution":{"commit":"","pr":""}}'
+# off; the plugin's instructions.md, in the worktree's CLAUDE.local.md, says
+# what else to do (see write_instructions).
+RUN_SETTINGS='"attribution":{"commit":"","pr":""}'
+
+# Every run skips the clone's own CLAUDE.md and CLAUDE.local.md, which it would
+# load walking up from the worktree: the worktree has its branch's CLAUDE.md,
+# and the clone's personal notes shouldn't change runs.
+md_excludes() { printf '"claudeMdExcludes":["%s/CLAUDE.md","%s/CLAUDE.local.md"]' "$1" "$1"; }
 
 # rn-agent's plugin directory, if it's installed and enabled.
 rn_agent_dir() {
@@ -321,16 +347,15 @@ run_claude() {
   [ -n "$effort" ] && set -- "$@" --effort "$effort"
   # Without the plugin's copy (install.sh not run since), not isolated: the
   # run needs the issue skill.
+  settings="{$(md_excludes "$clone")}"
   if [ ! -d "$NS/plugin" ]; then
     printf "0\t=== no %s (run install.sh again): this run isn't isolated\n" "$NS/plugin" >>"$dir/log"
   else
-    set -- "$@" --setting-sources project,local --settings "$RUN_SETTINGS" --plugin-dir "$NS/plugin"
+    settings="{$RUN_SETTINGS,$(md_excludes "$clone")}"
+    set -- "$@" --setting-sources project,local --plugin-dir "$NS/plugin"
     rn=$(rn_agent_dir) && set -- "$@" --plugin-dir "$rn"
   fi
-  # nightshift's defaults, from the plugin's copy (its SessionStart hook skips
-  # runs); without the copy, none.
-  ins=$(cat "$NS/plugin/instructions.md" 2>/dev/null)
-  [ -n "$ins" ] && set -- "$@" --append-system-prompt "$ins"
+  set -- "$@" --settings "$settings"
   exec claude "$@" </dev/null
 }
 
@@ -439,6 +464,7 @@ $intro"
   log "$repo#$n: run starting"
   t0=$(date +%s)
   printf '\n0\t=== %s run\n' "$(date '+%Y-%m-%d %H:%M:%S')" >>"$dir/log"
+  write_instructions "$wt" "$dir"
   # The events go to out.jsonl as they come, and readably into the log and,
   # tagged with the issue, into watch.log (closed after each line, which
   # trimming replaces).
