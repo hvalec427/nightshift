@@ -138,12 +138,15 @@ waiting on you:
 | `nightshift: planning` | a run is writing or revising the plan |
 | `nightshift: building` | a run is building the tickets, or changing the open pull request |
 | `nightshift: updating` | a run is updating the pull request after a merge |
+| `nightshift: answering` | a run is answering a `question` or `duplicate` issue |
 | `nightshift: needs you` | waiting on your reply: questions, an answer, a plan, blocked, or a failed run |
 | `nightshift: PR open` | the pull request is open, nothing running |
 | `nightshift: stopped` | a run was stopped partway |
 
-The watcher sets them as runs start and end; a run says when it moves on to
-planning or building with `nightshift label <status>`. They come off once it's done, or when you remove the `agent` label with nothing
+The watcher sets them as runs start and end, and as a run invokes one of
+nightshift's skills: `nightshift:questions` sets `thinking`, `plan` `planning`,
+`build` and `finish` `building`, `update` `updating` and `answer` `answering`
+(`nightshift label <status>` sets one by hand). They come off once it's done, or when you remove the `agent` label with nothing
 running (and come back with it). `nightshift status` says the same.
 
 Its comments start with **🤖 nightshift** and carry a hidden `<!-- nightshift -->`
@@ -157,7 +160,7 @@ nightshift status --all             # the done ones too: when their pull request
 nightshift start                    # run the service: nightshift watch, in the background whenever you're logged in
 nightshift stop                     # stop the service, and the runs in flight, until nightshift start
 nightshift stop <owner/repo>#<n>    # stop one
-nightshift logs -f                  # every issue, as it happens: picked up, runs started and done, comments, PRs
+nightshift logs -f                  # every issue, as it happens: picked up, runs started and done, skills, comments, PRs
 nightshift logs <owner/repo>#<n> -f # the same for one issue
 nightshift logs -f -vv              # more: -v Claude's messages, -vv its tool calls, -vvv everything
 nightshift doctor                   # what this machine is missing, and how to get it
@@ -168,7 +171,7 @@ nightshift --version                # the version that runs
 
 | Level | Flag | Adds |
 |---|---|---|
-| `runs` (default) | | issues picked up (or ignored, waiting, stopped), runs started and done (with how long they took), each comment nightshift posts and its stage, pull requests |
+| `runs` (default) | | issues picked up (or ignored, waiting, stopped), runs started and done (with how long they took), each skill a run invokes, each comment nightshift posts and its stage, pull requests |
 | `messages` | `-v` | Claude's text |
 | `tools` | `-vv` | tool calls and failed tool results |
 | `all` | `-vvv` | thinking, every tool result, and the polls with nothing new |

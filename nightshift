@@ -25,7 +25,8 @@
 # runs cost, added up), and `done` (why) once its pull request merged or it
 # closed, when only `log`, `session`, `seen`, `started`, `pr` and `cost`
 # stay (`revived`, the merged pull request a comment brought it back from);
-# `label`, its status label (see STATUSES); `type`, its type label as the
+# `label`, its status label (see STATUSES); `skill`, the last nightshift skill
+# its run invoked (see SKILL_STATUSES); `type`, its type label as the
 # last run left it (see TYPES); and per repo, `merged/<owner>_<repo>`, the
 # merged nightshift pull requests seen, and `labels/<owner>_<repo>`, the
 # version of the status labels created there.
@@ -170,9 +171,19 @@ thinking|1D76DB|nightshift is reading the issue and the code
 planning|1D76DB|nightshift is writing the plan
 building|1D76DB|nightshift is building it
 updating|1D76DB|nightshift is updating its pull request after a merge
+answering|1D76DB|nightshift is answering the question
 needs you|D93F0B|nightshift is waiting on your reply
 PR open|0E8A16|its pull request is open
 stopped|BFBFBF|nightshift was stopped partway'
+
+# The status each of nightshift's skills sets as a run invokes it, a line
+# each: the skill (without `nightshift:`) and its status. Others set none.
+SKILL_STATUSES='questions|thinking
+plan|planning
+build|building
+finish|building
+update|updating
+answer|answering'
 
 # Create the status labels in a repo (or update their colours), once per
 # version of STATUSES.
@@ -337,6 +348,8 @@ RENDER='def line: tostring | gsub("\\s+"; " ") | if length > 300 then .[0:300] +
             (select(.name == "Bash" and (.input.command? // "" | test("gh issue comment")))
               | (.input.command | comment_stage($files)) as $s
               | tag(0) + $in + "commented" + (if $s then " (\($s))" else "" end)),
+            (select(.name == "Skill" and (.input.skill? // "" | test("^nightshift:[a-z-]+$")) and .input.skill != "nightshift:issue")
+              | tag(0) + $in + "skill " + .input.skill),
             tag(2) + $in + "→ \(.name): " + (.input | (.command // .file_path // .pattern // .skill // .url // .query // .description // .prompt // .) | line)
           else empty end
       elif .type == "user" then .message.content[]? | select(.type? == "tool_result")
@@ -403,11 +416,15 @@ $intro"
   # tagged with the issue, into watch.log (closed after each line, which
   # trimming replaces).
   rm -f "$dir/stream" && mkfifo "$dir/stream"
-  tee "$dir/out.jsonl" <"$dir/stream" | render | awk -v own="$dir/log" -v all="$NS/watch.log" -v who="$repo#$n:" '
+  # A skill the run invokes sets its status (`_skill`) as it goes by.
+  rm -f "$dir/skill"
+  tee "$dir/out.jsonl" <"$dir/stream" | render | awk -v own="$dir/log" -v all="$NS/watch.log" -v who="$repo#$n:" \
+    -v skill="'$SELF' _skill '$repo' '$n' " '
     /^[0-3]\t[0-9-]+ [0-9:]+ / {
       tag = substr($0, 1, 2); day = substr($0, 3, 11); time = substr($0, 14, 9); rest = substr($0, 23)
       print tag time rest >>own; close(own)
       print tag day time who " " rest >>all; close(all)
+      if (rest ~ /^ *skill nightshift:[a-z-]+$/) { sub(/^ *skill /, "", rest); system(skill rest) }
       next
     }
     { print >>own; close(own) }' &
@@ -1072,7 +1089,8 @@ or with <owner/repo>#<n> just that issue's.
   -l, --level <level> show this level and the ones above it (a name, or 0-3):
         runs      (0, the default) issues picked up (or ignored, waiting,
                   stopped), runs started and done with how long they took,
-                  each comment nightshift posts and its stage, pull requests
+                  each skill a run invokes, each comment nightshift posts
+                  and its stage, pull requests
         messages  (1) adds Claude's text
         tools     (2) adds tool calls and failed tool results
         all       (3) adds thinking, every tool result, and the polls with
@@ -1295,6 +1313,14 @@ cmd_label() {
   set_status "$NIGHTSHIFT_REPO" "$NIGHTSHIFT_ISSUE" "$1" || die "couldn't set the label: see nightshift logs"
 }
 
+# `_skill <repo> <n> nightshift:<name>`: a run invoked the skill; keep it, and
+# set the status it maps to.
+cmd_skill() {
+  s=$(printf '%s\n' "$SKILL_STATUSES" | sed -n "s/^${3#nightshift:}|//p")
+  [ -z "$s" ] || set_status "$1" "$2" "$s"
+  printf '%s\n' "$3" >"$(issue_dir "$1" "$2")/skill"
+}
+
 usage() { sed -n '2,14s/^# \{0,1\}//p' "$SELF"; }
 
 # Sourced for its functions (the tests): stop here.
@@ -1311,6 +1337,7 @@ stop) shift; cmd_stop "${1:-}" ;;
 logs) shift; cmd_logs "$@" ;;
 add) shift; cmd_add "$@" ;;
 label) shift; cmd_label "$*" ;;
+_skill) shift; cmd_skill "$@" ;;
 doctor) cmd_doctor ;;
 -V | --version | version) echo "nightshift $VERSION" ;;
 -h | --help | help) usage; echo; echo "nightshift logs --help: the log levels and their flags" ;;

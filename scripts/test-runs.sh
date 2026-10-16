@@ -40,10 +40,10 @@ NIGHTSHIFT_REPO=o/r"
   expect_line "its log: how it ended" "$log" "^0	=== [0-9:]* run done in [0-9]*s$"
   expect_line "watch.log: the run, with the issue" "$(cat "$NS/watch.log")" "o/r#7: run done in"
   expect "the status labels are created" "$(LC_ALL=C sort "$(gh_dir o/r)/labels" | tr '\n' ,)" \
-    "nightshift: PR open,nightshift: building,nightshift: needs you,nightshift: planning,nightshift: queued,nightshift: stopped,nightshift: thinking,nightshift: updating,"
+    "nightshift: PR open,nightshift: answering,nightshift: building,nightshift: needs you,nightshift: planning,nightshift: queued,nightshift: stopped,nightshift: thinking,nightshift: updating,"
   poll
   expect "nothing new: no run" "$(runs)" 1
-  expect "the status labels are created once" "$(gh_calls '^label create' | wc -l | tr -d ' ')" 8
+  expect "the status labels are created once" "$(gh_calls '^label create' | wc -l | tr -d ' ')" 9
   expect_no_unexpected)
 
 (world
@@ -54,6 +54,41 @@ NIGHTSHIFT_REPO=o/r"
   expect "after a plan: needs you" "$(status_label 7)" "needs you"
   expect_line "the prompt: no type label" "$(run_prompt)" "^It has no type label\.$"
   expect_no_unexpected)
+
+# The skill a run is in: its status label, its skill file and its log.
+# (The watcher sets the label as the stream goes by, so wait for it.)
+AT_LABEL='i=0; until gh api "repos/$NIGHTSHIFT_REPO/issues/$NIGHTSHIFT_ISSUE" --jq ".labels[].name" | grep -qx "nightshift: $1" || [ $i -ge 50 ]; do sleep 0.1; i=$((i + 1)); done'
+(world
+  gh_issue o/r 7 alice agent
+  runs_do 'at() { '"$AT_LABEL"'; '"$LABELS_NOW"'$2"; }
+    skill nightshift:issue; sleep 0.3; '"$LABELS_NOW"'issue"
+    skill nightshift:plan; at planning plan
+    skill other:thing; sleep 0.3; '"$LABELS_NOW"'other"
+    skill nightshift:build; at building build
+    comment plan'
+  poll
+  expect "the issue skill: the label as it was" "$(grep '^nightshift: ' "$CLAUDE_FAKE/runs/1/issue")" "nightshift: thinking"
+  expect "the plan skill: planning" "$(grep '^nightshift: ' "$CLAUDE_FAKE/runs/1/plan")" "nightshift: planning"
+  expect "another plugin's skill: the label as it was" "$(grep '^nightshift: ' "$CLAUDE_FAKE/runs/1/other")" "nightshift: planning"
+  expect "the build skill: building" "$(grep '^nightshift: ' "$CLAUDE_FAKE/runs/1/build")" "nightshift: building"
+  expect "the skill is kept: the last nightshift one" "$(state 7 skill)" "nightshift:build"
+  log=$(cat "$(idir 7)/log")
+  expect_line "its log: the skill, at the runs level" "$log" "^0	[0-9:]* skill nightshift:plan$"
+  expect_line "its log: not the issue skill" "$log" "skill nightshift:issue$" no
+  expect_line "watch.log: the skill, with the issue" "$(cat "$NS/watch.log")" "o/r#7: skill nightshift:build$"
+  expect "after the run: from its comment" "$(status_label 7)" "needs you"
+  runs_do ''
+  gh_comment o/r 7 alice "and?" >/dev/null
+  poll
+  expect "a new run: the last one's skill is gone" "$(state 7 skill)" ""
+  expect_no_unexpected)
+
+(world
+  gh_issue o/r 7 alice agent question
+  runs_do 'at() { '"$AT_LABEL"'; '"$LABELS_NOW"'$2"; }
+    skill nightshift:answer; at answering answer'
+  poll
+  expect "the answer skill: answering" "$(grep '^nightshift: ' "$CLAUDE_FAKE/runs/1/answer")" "nightshift: answering")
 
 (world
   gh_issue o/r 7 alice agent
