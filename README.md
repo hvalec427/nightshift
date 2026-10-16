@@ -37,8 +37,8 @@ Then:
 
 `nightshift doctor` checks all of it on this machine: what's installed and its
 version, gh's login, a Claude token, nightshift's plugin, and each watched repo's
-clone and `agent` label. It says what's missing and how to get it, and fails
-when something required is; `nightshift start` won't start the service until
+clone and `agent` label (with a hint when GitHub keeps merged branches there). It
+says what's missing and how to get it, and fails when something required is; `nightshift start` won't start the service until
 nothing is.
 
 Always:

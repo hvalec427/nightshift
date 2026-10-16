@@ -1006,6 +1006,9 @@ cmd_doctor() {
     elif gh api "repos/$repo/labels/$LABEL" >/dev/null 2>&1; then pass "$repo: clone $clone, \`$LABEL\` label"
     else fail missing "$repo: its \`$LABEL\` label" "gh label create $LABEL --repo $repo --color 5319E7"
     fi
+    # A hint, not a problem: nightshift deletes its own merged branches.
+    [ -n "$ghv" ] && [ "$(gh api "repos/$repo" -q .delete_branch_on_merge 2>/dev/null)" = false ] &&
+      printf '  %-7s %s\n' hint "$repo: GitHub keeps merged branches (\"Automatically delete head branches\" is off); nightshift deletes its own, and for the rest: gh repo edit $repo --delete-branch-on-merge"
   done <<EOF
 $r
 EOF
