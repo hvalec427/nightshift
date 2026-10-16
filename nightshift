@@ -965,15 +965,15 @@ cmd_status() {
     elif [ -f "$d/done" ] && [ "$(cat "$d/done")" = "PR merged" ]; then what="done · PR $(cat "$d/pr") merged $(age "$d/done") ago"
     elif [ -f "$d/done" ]; then what="done · $(cat "$d/done") $(age "$d/done") ago"
     elif running "$d" && [ -f "$d/updating" ]; then what="PR $(cat "$d/pr") · $(head -1 "$d/updating") $(age "$d/pid") (pid $(cat "$d/pid"))"
-    elif running "$d"; then what="$(label_or "$d" running) $(age "$d/pid") (pid $(cat "$d/pid"))"
+    elif running "$d"; then what="$(label_or "$d" running)$(skill_note "$d") $(age "$d/pid") (pid $(cat "$d/pid"))"
     elif [ -f "$d/off" ] && [ -f "$d/interrupted" ]; then what="stopped $(age "$d/off") ago ($(cat "$d/off")) · $(resume_hint "$d")"
     elif [ -f "$d/off" ] && [ -f "$d/pr" ]; then what="PR $(cat "$d/pr") · $(cat "$d/off")"
     elif [ -f "$d/off" ]; then what="$(cat "$d/off") $(age "$d/off") ago"
     elif [ -f "$d/interrupted" ]; then what="queued to resume"
     elif [ -f "$d/update" ]; then what="PR $(cat "$d/pr") · queued: $(head -1 "$d/update")"
-    elif [ -f "$d/pr" ] && [ "$(label_or "$d" "PR open")" = "PR open" ]; then what="PR $(cat "$d/pr")$(after_note "$d")$(waited "$d" " · waiting ")"
-    elif [ -f "$d/pr" ]; then what="PR $(cat "$d/pr")$(after_note "$d") · $(cat "$d/label")$(waited "$d" " · ")"
-    elif [ -s "$d/session" ]; then what="$(label_or "$d" "waiting for a reply")$(waited "$d" " · ")"
+    elif [ -f "$d/pr" ] && [ "$(label_or "$d" "PR open")" = "PR open" ]; then what="PR $(cat "$d/pr")$(after_note "$d")$(skill_note "$d")$(waited "$d" " · waiting ")"
+    elif [ -f "$d/pr" ]; then what="PR $(cat "$d/pr")$(after_note "$d") · $(cat "$d/label")$(skill_note "$d")$(waited "$d" " · ")"
+    elif [ -s "$d/session" ]; then what="$(label_or "$d" "waiting for a reply")$(skill_note "$d")$(waited "$d" " · ")"
     else what="queued"
     fi
     what="$what$(cost_note "$d")"
@@ -1027,6 +1027,11 @@ resume_hint() {
   *" label added") echo "remove the $(sed 's/ label added$//' "$1/off") label to resume" ;;
   *) echo "add the label back to resume" ;;
   esac
+}
+
+# The skill an issue's run is in, or its last one ended in.
+skill_note() {
+  [ -s "$1/skill" ] && printf ' · %s' "$(cat "$1/skill")"
 }
 
 # How long an issue has waited since its last run ended, after a prefix; nothing

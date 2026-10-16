@@ -147,7 +147,8 @@ The watcher sets them as runs start and end, and as a run invokes one of
 nightshift's skills: `nightshift:questions` sets `thinking`, `plan` `planning`,
 `build` and `finish` `building`, `update` `updating` and `answer` `answering`
 (`nightshift label <status>` sets one by hand). They come off once it's done, or when you remove the `agent` label with nothing
-running (and come back with it). `nightshift status` says the same.
+running (and come back with it). `nightshift status` says the same, with the
+skill a run is in (or its last one ended in).
 
 Its comments start with **🤖 nightshift** and carry a hidden `<!-- nightshift -->`
 marker, which is how it tells them from yours: it runs as your GitHub account, so
@@ -155,7 +156,7 @@ on GitHub they're yours. It only acts on the label when you added it, and only o
 comments from you (`allowed_users` below).
 
 ```sh
-nightshift status                   # the service, the issues in progress, what each is doing (or why it stopped), for how long, what it spent so far, and merge order
+nightshift status                   # the service, the issues in progress, what each is doing and in which skill (or why it stopped), for how long, what it spent so far, and merge order
 nightshift status --all             # the done ones too: when their pull request merged, or the issue closed
 nightshift start                    # run the service: nightshift watch, in the background whenever you're logged in
 nightshift stop                     # stop the service, and the runs in flight, until nightshift start
