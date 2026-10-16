@@ -2,8 +2,10 @@
 # nightshift: work GitHub issues labelled `agent` with Claude Code, unattended.
 #
 #   nightshift watch                     poll the configured repos and run agents
+#   nightshift start                     run `watch` in the background, whenever you're logged in
 #   nightshift once                      one poll, then exit (for testing)
-#   nightshift status                    the issues it knows and what each is doing
+#   nightshift status                    the service, the issues it knows and what each is doing
+#   nightshift stop                      stop the service (until `nightshift start`)
 #   nightshift stop <owner/repo>#<n>     stop an issue's running agent
 #   nightshift logs [<owner/repo>#<n>] [-f]  the watcher's log, or an issue's runs
 #   nightshift add <owner/repo> <clone>  watch a repo, using this clone of it
@@ -18,6 +20,10 @@ set -u
 NS="${NIGHTSHIFT_HOME:-$HOME/.nightshift}"
 SELF="$(cd "$(dirname "$0")" && pwd -P)/$(basename "$0")"
 CONFIG="$NS/config"
+# The LaunchAgent that runs `nightshift watch` (NIGHTSHIFT_LABEL is for tests).
+SERVICE="${NIGHTSHIFT_LABEL:-com.nightshift.watch}"
+PLIST="$HOME/Library/LaunchAgents/$SERVICE.plist"
+DOMAIN="gui/$(id -u)"
 MARKER="<!-- nightshift -->"
 LABEL=agent
 
@@ -69,6 +75,62 @@ count_running() {
     [ -d "$d" ] && running "${d%/}" && n=$((n + 1))
   done
   echo $n
+}
+
+# --- the service ------------------------------------------------------------------
+
+# The service's pid, if launchd is running it.
+service_pid() {
+  launchctl print "$DOMAIN/$SERVICE" 2>/dev/null | sed -n 's/^	pid = \([0-9]*\)$/\1/p'
+}
+
+service_disabled() {
+  launchctl print-disabled "$DOMAIN" 2>/dev/null | grep -Eq "\"$SERVICE\" => (disabled|true)"
+}
+
+# The pid of a `nightshift watch` run by hand (not by the service), if one runs.
+hand_pid() {
+  p=$(cat "$NS/watch.pid" 2>/dev/null)
+  [ -n "$p" ] && kill -0 "$p" 2>/dev/null && [ "$p" != "$(service_pid)" ] && printf '%s' "$p"
+}
+
+service_line() {
+  pid=$(service_pid)
+  if [ -n "$pid" ]; then s="running (pid $pid)"
+  elif [ -f "$PLIST" ]; then
+    s="stopped"
+    service_disabled && s="$s (disabled)"
+  else s="not installed"
+  fi
+  h=$(hand_pid) && s="$s · nightshift watch runs by hand (pid $h)"
+  echo "service: $s"
+}
+
+# The LaunchAgent: this `nightshift watch` whenever you're logged in, with the
+# PATH of the shell that ran `start`.
+write_plist() {
+  mkdir -p "$(dirname "$PLIST")"
+  cat >"$PLIST" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>$SERVICE</string>
+  <key>ProgramArguments</key>
+  <array><string>$SELF</string><string>watch</string></array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>$(dirname "$SELF"):$PATH</string>
+    <key>NIGHTSHIFT_HOME</key><string>$NS</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ExitTimeOut</key><integer>120</integer>
+  <key>StandardOutPath</key><string>$NS/service.log</string>
+  <key>StandardErrorPath</key><string>$NS/service.log</string>
+</dict>
+</plist>
+EOF
 }
 
 # --- one agent run --------------------------------------------------------------
@@ -153,7 +215,7 @@ $intro"
   # shellcheck disable=SC2086 # $resume is two words or none
   (cd "$wt" && exec claude -p "$prompt" --output-format stream-json --verbose --permission-mode "$mode" --allowedTools $ALLOWED_TOOLS $resume </dev/null) >"$dir/stream" 2>>"$dir/log" &
   cpid=$!
-  trap 'kill -TERM $cpid 2>/dev/null; stopped=1' TERM
+  trap 'kill -TERM $cpid 2>/dev/null; stopped=1' TERM INT
   stopped=0
   wait $cpid
   status=$?
@@ -165,12 +227,12 @@ $intro"
   while kill -0 $rpid 2>/dev/null && [ $i -lt 5 ]; do sleep 1; i=$((i + 1)); done
   kill $rpid 2>/dev/null
   rm -f "$dir/stream"
+  sid=$(sed -n 's/.*"session_id" *: *"\([^"]*\)".*/\1/p' "$dir/out.jsonl" | head -1)
+  [ -n "$sid" ] && echo "$sid" >"$dir/session"
   if [ $stopped -eq 1 ]; then
     log "$repo#$n: stopped"
     return
   fi
-  sid=$(sed -n 's/.*"session_id" *: *"\([^"]*\)".*/\1/p' "$dir/out.jsonl" | head -1)
-  [ -n "$sid" ] && echo "$sid" >"$dir/session"
   if [ $status -ne 0 ] || grep '"type" *: *"result"' "$dir/out.jsonl" | grep -q '"is_error" *: *true'; then
     log "$repo#$n: run failed ($status)"
     comment_failure "$repo" "$n" "$(tail -15 "$dir/log")"
@@ -283,15 +345,58 @@ cmd_watch() {
     CLAUDE_CODE_OAUTH_TOKEN=$(cat "$NS/token")
     export CLAUDE_CODE_OAUTH_TOKEN
   fi
+  echo $$ >"$NS/watch.pid"
+  trap stop_watch TERM INT
   log "watching: $(repos | cut -d' ' -f1 | tr '\n' ' ')"
   while :; do
     poll
     trim_log
-    sleep "$(setting interval 30)"
+    sleep "$(setting interval 30)" &
+    spid=$!
+    wait $spid # a signal interrupts `wait`, not `sleep`
   done
 }
 
+# The watcher stopping (the service stopped, a logout, Ctrl-C): stop the runs in
+# flight as `nightshift stop <issue>` does, wait for them, and log the issues.
+stop_watch() {
+  trap '' TERM INT
+  kill "${spid:-}" 2>/dev/null
+  names=""
+  for d in "$NS"/issues/*/; do
+    d=${d%/}
+    running "$d" || continue
+    kill -TERM "$(cat "$d/pid")" 2>/dev/null
+    name=$(basename "$d")
+    names="$names, $(echo "${name%_*}" | sed 's/_/\//')#${name##*_}"
+  done
+  for d in "$NS"/issues/*/; do
+    while running "${d%/}"; do sleep 1; done
+  done
+  if [ -n "$names" ]; then log "watch stopped: interrupted ${names#, }"
+  else log "watch stopped"
+  fi
+  rm -f "$NS/watch.pid"
+  exit 0
+}
+
+cmd_start() {
+  pid=$(service_pid)
+  [ -n "$pid" ] && { echo "service: already running (pid $pid)"; return; }
+  h=$(hand_pid) && die "a nightshift watch already runs by hand (pid $h): stop it first"
+  write_plist
+  launchctl enable "$DOMAIN/$SERVICE"
+  launchctl bootout "$DOMAIN/$SERVICE" 2>/dev/null # loaded but not running
+  launchctl bootstrap "$DOMAIN" "$PLIST" || die "launchctl couldn't start $PLIST"
+  sleep 1
+  service_line
+  if [ -s "$CONFIG" ]; then echo "log: nightshift logs -f"
+  else echo "no repos to watch yet: nightshift add <owner/repo> <clone> (the service picks it up)"
+  fi
+}
+
 cmd_status() {
+  service_line
   found=0
   for d in "$NS"/issues/*/; do
     [ -d "$d" ] || continue
@@ -319,8 +424,22 @@ waited() {
   done
 }
 
+# `nightshift stop`: the service, until `nightshift start` (across logins).
+stop_service() {
+  [ -f "$PLIST" ] || die "the service isn't installed"
+  launchctl disable "$DOMAIN/$SERVICE"
+  pid=$(service_pid)
+  [ -n "$pid" ] && echo "stopping the service (and the runs in flight)…"
+  launchctl bootout "$DOMAIN/$SERVICE" 2>/dev/null
+  if [ -n "$pid" ]; then
+    while kill -0 "$pid" 2>/dev/null; do sleep 1; done
+  fi
+  service_line
+}
+
 cmd_stop() {
-  case "$1" in */*#*) ;; *) die "usage: nightshift stop <owner/repo>#<n>" ;; esac
+  [ -n "$1" ] || { stop_service; return; }
+  case "$1" in */*#*) ;; *) die "usage: nightshift stop [<owner/repo>#<n>]" ;; esac
   d=$(issue_dir "${1%#*}" "${1##*#}")
   running "$d" || die "$1 isn't running"
   kill -TERM "$(cat "$d/pid")" && echo "stopped $1"
@@ -362,8 +481,9 @@ watch) cmd_watch ;;
 once) NIGHTSHIFT_WAIT=1; export NIGHTSHIFT_WAIT; poll ;;
 _run) shift; run_agent "$@"; rm -f "$(issue_dir "$1" "$2")/pid"; touch "$(issue_dir "$1" "$2")/finished" ;;
 status) cmd_status ;;
+start) cmd_start ;;
 stop) shift; cmd_stop "${1:-}" ;;
 logs) shift; cmd_logs "$@" ;;
 add) shift; cmd_add "$@" ;;
-*) sed -n '2,9s/^# \{0,1\}//p' "$0"; exit 2 ;;
+*) sed -n '2,11s/^# \{0,1\}//p' "$0"; exit 2 ;;
 esac
