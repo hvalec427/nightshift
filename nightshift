@@ -23,9 +23,9 @@
 # no label or is closed, `interrupted` (why) if that or the watcher stopping
 # stopped a run, `stop` while a run stopped by hand ends, `stalled` once a run
 # ended while building or updating without commenting (see stalled_run), until
-# the run that resumes it ends, `after` (the issues
-# its open pull request goes after), `update` while an update run waits and
-# `updating` while it runs (its status, then why), `conflict` (the default
+# the run that resumes it ends (stalling again asks the user), `after` (the
+# issues its open pull request goes after), `update` while an update run waits
+# and `updating` while it runs (its status, then why), `conflict` (the default
 # branch's commit its pull request was last updated for), `log` (readable,
 # live) and `out.jsonl` (the last run's raw stream-json), `cost` (what its
 # runs cost, added up), `usage` (its session's totals at the last result),
@@ -265,7 +265,7 @@ idle_status() {
     END { print end, stage }' "$1/log" 2>/dev/null)
   case "$ended" in
   stopped*) echo stopped ;;
-  failed* | *" questions" | *" answer" | *" plan" | *" blocked" | *" look") echo "needs you" ;;
+  failed* | stalled* | *" questions" | *" answer" | *" plan" | *" blocked" | *" look") echo "needs you" ;;
   *) if [ -f "$1/pr" ]; then echo "PR open"
     elif [ -s "$1/session" ]; then echo "needs you"
     else echo queued
@@ -580,14 +580,21 @@ $intro"
     comment_failure "$repo" "$n" "$(show_level 3 <"$dir/log" | tail -15)"
     rm -f "$dir/stalled"
   else
-    run_end "done in $took$note"
-    log "$repo#$n: run done in $took$note"
-    # A stall is resumed once: the run that resumed it ends the marker.
-    if [ ! -f "$dir/stalled" ] && stalled_run "$dir"; then
-      : >"$dir/stalled"
-      log "$repo#$n: stalled while $(cat "$dir/label"): resuming it"
-    else
+    # A stall is resumed once; a second in a row asks the user.
+    if stalled_run "$dir" && [ -f "$dir/stalled" ]; then
+      run_end "stalled twice after $took$note"
+      log "$repo#$n: stalled twice while $(cat "$dir/label"): asking you"
+      comment_stalled "$repo" "$n"
       rm -f "$dir/stalled"
+    else
+      run_end "done in $took$note"
+      log "$repo#$n: run done in $took$note"
+      if [ ! -f "$dir/stalled" ] && stalled_run "$dir"; then
+        : >"$dir/stalled"
+        log "$repo#$n: stalled while $(cat "$dir/label"): resuming it"
+      else
+        rm -f "$dir/stalled"
+      fi
     fi
   fi
   # Once there's a pull request, the worktree's work is on GitHub: remove it
@@ -747,6 +754,12 @@ comment_failure() {
 $3
 \`\`\`
 $MARKER" >/dev/null 2>&1 || log "$1#$2: couldn't comment the failure"
+}
+
+comment_stalled() {
+  gh issue comment "$2" --repo "$1" --body "🤖 **nightshift**: the last run stalled twice: it ended without finishing, maybe waiting on something. Reply to carry on.
+
+$MARKER" >/dev/null 2>&1 || log "$1#$2: couldn't comment the stall"
 }
 
 # --- polling --------------------------------------------------------------------

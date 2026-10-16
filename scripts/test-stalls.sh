@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Tests for a stalled run: one that ends while building or updating without
 # commenting (it stopped to wait on something, but a run ends when it stops)
-# is resumed, told to carry on.
+# is resumed, told to carry on; a second stall in a row asks the user.
 #   bash scripts/test-stalls.sh
 set -euo pipefail
 . "$(dirname "$0")/test-lib.sh"
@@ -42,7 +42,39 @@ STALL_LINE="^Your last run ended without finishing (it stopped, maybe to wait on
   expect "stalled again: resumed once" "$(runs)" 2
   poll
   expect "and not again" "$(runs)" 2
-  expect_line "status: no longer queued to resume" "$(ns status)" "queued to resume" no)
+  expect_line "status: no longer queued to resume" "$(ns status)" "queued to resume" no
+  expect "the issue is told, once" "$(gh_comments o/r 7 | grep -c "the last run stalled twice")" 1
+  expect_line "to reply to carry on" "$(gh_comments o/r 7)" "Reply to carry on\.$"
+  expect_line "the comment is nightshift's" "$(gh_comments o/r 7)" "<!-- nightshift -->"
+  expect "it needs you" "$(status_label 7)" "needs you"
+  runs_do 'comment progress'
+  id=$(gh_comment o/r 7 alice "go on")
+  poll
+  expect "a reply: a resumed run" "$(runs)" 3
+  expect "in its session" "$(run_opt --resume)" session-1
+  prompt=$(run_prompt)
+  expect_line "not told it stalled" "$prompt" "^Your last run ended" no
+  expect_line "told the reply" "$prompt" "^- @alice (comment $id):$"
+  poll
+  expect "then nothing new: no run" "$(runs)" 3
+  expect "the stall comment isn't news" "$(gh_comments o/r 7 | grep -c "the last run stalled twice")" 1
+  expect_no_unexpected)
+
+# Stalled twice while updating, with a pull request open: it needs you too.
+(world
+  gh_issue o/r 7 alice agent
+  runs_do 'case $k in
+    1) label building; commit feature.txt; open_pr; comment done ;;
+    *) ;;
+    esac'
+  poll
+  pr=$(state 7 pr)
+  gh_pr_set o/r "${pr##*/}" mergeable '"CONFLICTING"'
+  poll
+  poll
+  expect "an update that stalled twice: no more runs" "$(runs)" 3
+  expect_line "the issue is told" "$(gh_comments o/r 7)" "the last run stalled twice"
+  expect "it needs you" "$(status_label 7)" "needs you")
 
 # An updating run: an update of the open pull request.
 (world
@@ -63,6 +95,37 @@ STALL_LINE="^Your last run ended without finishing (it stopped, maybe to wait on
   expect_line "told to carry on" "$(run_prompt)" "$STALL_LINE"
   poll
   expect "then nothing new: no run" "$(runs)" 3)
+
+# A resumed run that ends any other way: a later stall is a first one again.
+# $1 says how, $2 what run 2 (the resumed one) does.
+stall_after() {
+  (world
+    gh_issue o/r 7 alice agent
+    runs_do 'case $k in
+      1 | 3) label building ;;
+      2) '"$2"' ;;
+      *) comment progress ;;
+      esac'
+    poll
+    if [ "$1" = stopped ]; then
+      "$ROOT/nightshift" once &
+      bg=$!
+      wait_for "$CLAUDE_FAKE/runs/2/waiting"
+      ns stop o/r#7 >/dev/null
+      wait "$bg"
+    else
+      poll
+    fi
+    gh_comment o/r 7 alice "go on" >/dev/null
+    poll
+    poll
+    expect "resumed run $1, then a stall: resumed" "$(runs)" 4
+    expect_line "told to carry on" "$(run_prompt)" "$STALL_LINE"
+    expect "not stalled twice" "$(gh_comments o/r 7 | grep -c "stalled twice" || true)" 0)
+}
+stall_after commented 'comment progress'
+stall_after failed fail_result
+stall_after stopped hang
 
 # Runs that didn't stall.
 (world
