@@ -24,6 +24,28 @@ cost() { state "$1" cost | awk '{ $5 = "S"; print }'; }
   expect "a failed run: counted" "$(cost 7)" "2.1 1111 2221 777 S 3 -"
   expect_no_unexpected)
 
+# A resumed run's result has the session's totals, its earlier runs' too:
+# each run adds what it spent itself.
+(world
+  gh_issue o/r 7 alice agent
+  runs_do 'costs 1 opus 10 10 10 10; comment questions'
+  poll
+  rm "$(idir 7)/usage"
+  gh_comment o/r 7 alice "1 yes" >/dev/null
+  runs_do 'costs 1 opus 10 10 10 10; comment plan'
+  poll
+  expect "no totals kept (from before they were): the last run's out.jsonl's" "$(cost 7)" "2 20 20 40 S 2 -"
+  gh_comment o/r 7 alice "2 no" >/dev/null
+  runs_do 'forget; costs 0.5 opus 1 1 1 1; comment plan'
+  poll
+  expect "totals lower than the last: all of them" "$(cost 7)" "2.5 21 21 42 S 3 -"
+  rm "$(idir 7)/session"
+  gh_comment o/r 7 alice "go" >/dev/null
+  runs_do 'costs 5 opus 100 100 100 100; comment progress'
+  poll
+  expect "a new session: all of its totals" "$(cost 7)" "7.5 121 121 242 S 4 -"
+  expect_no_unexpected)
+
 (world
   gh_issue o/r 7 alice agent
   runs_do 'comment questions'
@@ -49,6 +71,49 @@ cost() { state "$1" cost | awk '{ $5 = "S"; print }'; }
   poll
   expect "counting from a later run: since today" "$(cost 7)" "0 0 0 0 S 1 $(date +%Y-%m-%d)")
 
+# A plan's "go" builds in a fresh session: all of its first result counts,
+# whatever the planning session's totals were.
+(world
+  gh_issue o/r 7 alice agent enhancement
+  runs_do 'costs 5 opus 100 100 100 100; comment plan'
+  poll
+  gh_comment o/r 7 alice "go" >/dev/null
+  runs_do 'costs 1 opus 10 10 10 10; comment progress'
+  poll
+  expect "the build session: a fresh one" "$(state 7 session)" session-2
+  expect "its cost: all of it, added" "$(cost 7)" "6 110 110 220 S 2 -"
+  expect_no_unexpected)
+
+# Each run's end line: the models it used, the main one first, and its
+# context at the end (its last turn's, not a subagent's).
+OPUS=claude-opus-5-5 HAIKU=claude-haiku-4-5-20251001
+(world
+  gh_issue o/r 7 alice agent
+  runs_do "costs 0.1 $HAIKU 1 1 1 1; costs 1 $OPUS 10 10 10 10; window $OPUS 1000000; window $HAIKU 200000
+    turn $OPUS 5 60000 20000; turn $HAIKU 5 190000 0 toolu_1; comment questions"
+  poll
+  expect_line "its log: the models and the context" "$(cat "$(idir 7)/log")" \
+    "^0	=== [0-9:]* run done in [0-9]*s · opus-5-5, haiku-4-5 · context 80k of 1M$"
+  expect_line "watch.log too" "$(cat "$NS/watch.log")" "o/r#7: run done in [0-9]*s · opus-5-5, haiku-4-5 · context 80k of 1M$"
+  gh_comment o/r 7 alice "1 yes" >/dev/null
+  runs_do "costs 0.5 $OPUS 1 1 1 1; turn $OPUS 5 1500000 0; fail_result"
+  poll
+  expect_line "resumed: the models this run used" "$(tail -1 "$(idir 7)/log")" \
+    "^0	=== [0-9:]* run failed (0) after [0-9]*s · opus-5-5 · context 1.5M of 1M$"
+  gh_comment o/r 7 alice "again" >/dev/null
+  runs_do "comment plan"
+  poll
+  expect_line "no models, no turns: nothing more" "$(tail -1 "$(idir 7)/log")" "^0	=== [0-9:]* run done in [0-9]*s$"
+  gh_comment o/r 7 alice "go" >/dev/null
+  runs_do "turn $OPUS 5 200000 0; hang"
+  "$ROOT/nightshift" once &
+  bg=$!
+  wait_for "$CLAUDE_FAKE/runs/4/waiting"
+  ns stop o/r#7 >/dev/null
+  wait "$bg"
+  expect_line "stopped (no result): its context" "$(tail -1 "$(idir 7)/log")" "^0	=== [0-9:]* run stopped after [0-9]*s · context 200k$"
+  expect_no_unexpected)
+
 # Shown by status.
 (world
   gh_issue o/r 7 alice agent
@@ -62,6 +127,20 @@ cost() { state "$1" cost | awk '{ $5 = "S"; print }'; }
   expect_line "status: thousands" "$(ns status)" '^o/r#7  *needs you · [0-9]*s · spent \$12\.35, 9k tokens, 1d 1h$'
   rm "$(idir 7)/cost"
   expect_line "status: nothing counted, nothing shown" "$(ns status)" '^o/r#7  *needs you · [0-9]*s$')
+
+# status: the context at the end of the last run.
+(world
+  gh_issue o/r 7 alice agent
+  runs_do "costs 1 $OPUS 1 1 1 1; window $OPUS 1000000; turn $OPUS 5 84000 0; comment questions"
+  poll
+  expect_line "status: its context" "$(ns status)" '^o/r#7  *needs you · [0-9]*s · spent \$1\.00, 4 tokens, [0-9]*s · context 84k of 1M$'
+  gh_comment o/r 7 alice "1 yes" >/dev/null
+  runs_do "comment plan"
+  poll
+  expect_line "a run without a turn: the last one's" "$(ns status)" ' · context 84k of 1M$'
+  gh_state o/r 7 closed
+  poll
+  expect_line "done: no context" "$(ns status --all)" '^o/r#7  *done · issue closed .* ago · spent \$1\.00, 4 tokens, [0-9]*s$')
 
 # Posted once it's done.
 COMMENT="🤖 \*\*nightshift\*\* · cost"

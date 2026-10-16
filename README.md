@@ -161,7 +161,7 @@ on GitHub they're yours. It only acts on the label when you added it, and only o
 comments from you (`allowed_users` below).
 
 ```sh
-nightshift status                   # the service, the issues in progress, what each is doing and in which skill (or why it stopped), for how long, what it spent so far, and merge order
+nightshift status                   # the service, the issues in progress, what each is doing and in which skill (or why it stopped), for how long, what it spent so far, its context size, and merge order
 nightshift status --all             # the done ones too: when their pull request merged, or the issue closed
 nightshift start                    # run the service: nightshift watch, in the background whenever you're logged in
 nightshift stop                     # stop the service, and the runs in flight, until nightshift start
@@ -177,7 +177,7 @@ nightshift --version                # the version that runs
 
 | Level | Flag | Adds |
 |---|---|---|
-| `runs` (default) | | issues picked up (or ignored, waiting, stopped), runs started and done (with how long they took), each skill a run invokes, each comment nightshift posts and its stage, pull requests |
+| `runs` (default) | | issues picked up (or ignored, waiting, stopped), runs started and done (with how long they took, the models they used and their context at the end), each skill a run invokes, each comment nightshift posts and its stage, pull requests |
 | `messages` | `-v` | Claude's text |
 | `tools` | `-vv` | tool calls and failed tool results |
 | `all` | `-vvv` | thinking, every tool result, and the polls with nothing new |

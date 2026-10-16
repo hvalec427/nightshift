@@ -25,9 +25,11 @@
 # `updating` while it runs (its status, then why), `conflict` (the default
 # branch's commit its pull request was last updated for), `log` (readable,
 # live) and `out.jsonl` (the last run's raw stream-json), `cost` (what its
-# runs cost, added up), and `done` (why) once its pull request merged or it
-# closed, when only `log`, `session`, `plan-session`, `seen`, `started`, `pr`
-# and `cost` stay (`revived`, the merged pull request a comment brought it back from);
+# runs cost, added up), `usage` (its session's totals at the last result),
+# `context` (its last run's context at the end, and the model's window), and
+# `done` (why) once its pull request merged or it closed, when only `log`,
+# `session`, `plan-session`, `seen`, `started`, `pr`, `cost` and `usage` stay
+# (`revived`, the merged pull request a comment brought it back from);
 # `label`, its status label (see STATUSES); `skill`, the last nightshift skill
 # its run invoked (see SKILL_STATUSES); `type`, its type label as the
 # last run left it (see TYPES); and per repo, `merged/<owner>_<repo>`, the
@@ -433,6 +435,8 @@ $intro"
   # tagged with the issue, into watch.log (closed after each line, which
   # trimming replaces).
   rm -f "$dir/stream" && mkfifo "$dir/stream"
+  # Kept from before `usage` was: the session's totals, from the last run's.
+  [ -s "$dir/usage" ] || [ ! -f "$dir/out.jsonl" ] || save_usage "$dir"
   # A skill the run invokes sets its status (`_skill`) as it goes by.
   rm -f "$dir/skill"
   tee "$dir/out.jsonl" <"$dir/stream" | render | awk -v own="$dir/log" -v all="$NS/watch.log" -v who="$repo#$n:" \
@@ -468,18 +472,18 @@ $intro"
   took=$(duration $secs)
   add_cost "$dir" $secs "$resume"
   if [ $stopped -eq 1 ]; then
-    run_end "stopped after $took"
-    log "$repo#$n: stopped after $took"
+    run_end "stopped after $took$note"
+    log "$repo#$n: stopped after $took$note"
     set_status "$repo" "$n" stopped
     return
   fi
   if [ $status -ne 0 ] || grep '"type" *: *"result"' "$dir/out.jsonl" | grep -q '"is_error" *: *true'; then
-    run_end "failed ($status) after $took"
-    log "$repo#$n: run failed ($status) after $took"
+    run_end "failed ($status) after $took$note"
+    log "$repo#$n: run failed ($status) after $took$note"
     comment_failure "$repo" "$n" "$(show_level 3 <"$dir/log" | tail -15)"
   else
-    run_end "done in $took"
-    log "$repo#$n: run done in $took"
+    run_end "done in $took$note"
+    log "$repo#$n: run done in $took$note"
   fi
   # Once there's a pull request, the worktree's work is on GitHub: remove it
   # (the branch stays; a later comment brings it back).
@@ -521,17 +525,85 @@ type_note() {
   fi
 }
 
-# A run's dollars and tokens (from its result, none without one) and its
-# seconds $2, added to the issue's `cost`: a line of dollars, tokens in, out
-# and cache (read and written), seconds, runs, and the day counting started,
-# or - if with the issue's first run ($3, the run's --resume, empty).
+# The session's totals at the last result in the issue's (dir $1) out.jsonl,
+# into its `usage`: its id, dollars and, per model, its dollars and tokens.
+# claude's result gives them for the whole session, a resumed run's including
+# the runs before it (and subagents'). Nothing without a result.
 # shellcheck disable=SC2016 # a jq program: $ is jq's
-COST='fromjson? | select(.type? == "result") | [.modelUsage[]?] as $m
-  | def sum(f): [$m[] | f // 0] | add // 0;
-  [.total_cost_usd // 0, sum(.inputTokens), sum(.outputTokens), sum((.cacheReadInputTokens // 0) + (.cacheCreationInputTokens // 0))]
+USAGE='[inputs | fromjson? | select(.type? == "result")] | last // empty
+  | {session_id, total_cost_usd: (.total_cost_usd // 0),
+     modelUsage: (.modelUsage // {} | map_values({costUSD, inputTokens, outputTokens, cacheReadInputTokens, cacheCreationInputTokens} | map_values(. // 0)))}'
+save_usage() {
+  u=$(jq -n -R -c "$USAGE" "$1/out.jsonl" 2>/dev/null)
+  [ -z "$u" ] || printf '%s\n' "$u" >"$1/usage"
+}
+
+# What a run spent: the session's totals $now less the ones before it, $prev
+# (null: none), as dollars, tokens in, out and cache, and the models it used
+# (comma-separated, shortened, the main one $main first; - if none). All of
+# $now if $prev is another session's, or any of its totals is higher (they
+# were reset).
+# shellcheck disable=SC2016 # a jq program: $ is jq's
+SPENT='def fields: ["costUSD", "inputTokens", "outputTokens", "cacheReadInputTokens", "cacheCreationInputTokens"];
+  ($prev != null and $prev.session_id == $now.session_id and $now.total_cost_usd >= $prev.total_cost_usd
+    and all($prev.modelUsage | to_entries[]; .key as $m | .value as $p | all(fields[]; ($now.modelUsage[$m][.] // -1) >= $p[.]))) as $same
+  | (if $same then $prev else {total_cost_usd: 0, modelUsage: {}} end) as $was
+  | ($now.modelUsage | with_entries(.key as $m | .value |= with_entries(.value -= ($was.modelUsage[$m][.key] // 0)))) as $run
+  | def sum(f): [$run[] | f] | add // 0;
+  def short: sub("^claude-"; "") | sub("-[0-9]{8}$"; "");
+  [$now.modelUsage | keys_unsorted[] as $m | {m: $m, u: $run[$m]} | select(.u.costUSD > 0 or .u.inputTokens > 0 or .u.outputTokens > 0)
+    | {m: (.m | short), main: (.m == $main)}] | sort_by(.main | not) | map(.m) as $models
+  | [$now.total_cost_usd - $was.total_cost_usd, sum(.inputTokens), sum(.outputTokens), sum(.cacheReadInputTokens + .cacheCreationInputTokens),
+     (if $models == [] then "-" else $models | join(",") end)]
   | map(tostring) | join(" ")'
+
+# The context at the end of a run (its out.jsonl, input), from its last
+# main-thread turn: the model, its tokens (in and cache) and the model's
+# context window (0 if unknown). Nothing without a turn.
+# shellcheck disable=SC2016 # a jq program: $ is jq's
+CONTEXT='[inputs | fromjson?] as $e
+  | ([$e[] | select(.type? == "assistant" and .parent_tool_use_id == null and .message.usage? != null)] | last // empty) as $a
+  | ([$e[] | select(.type? == "result")] | last) as $r
+  | $a.message.model as $m
+  | "\($m) \($a.message.usage | (.input_tokens // 0) + (.cache_read_input_tokens // 0) + (.cache_creation_input_tokens // 0)) \($r.modelUsage[$m].contextWindow? // 0)"'
+
+# Tokens $1 (one argument) as 84k, 1.2M: an awk function.
+TOK='function tok(n,  x, u, s) {
+  if (n < 1000) return sprintf("%d", n)
+  if (n < 1000000) { x = n / 1000; u = "k" } else { x = n / 1000000; u = "M" }
+  s = sprintf(x < 10 ? "%.1f" : "%.0f", x)
+  sub(/\.0$/, "", s)
+  return s u
+}'
+
+# A context, its tokens $1 and its model's window $2 (0: unknown), readable:
+# `context 84k of 1M`.
+context_words() {
+  awk -v n="$1" -v w="$2" "$TOK"' BEGIN { printf "context %s", tok(n); if (w > 0) printf " of %s", tok(w) }'
+}
+
+# A run's dollars and tokens (what its result adds to the session's totals,
+# none without one) and its seconds $2, added to the issue's `cost`: a line of
+# dollars, tokens in, out and cache (read and written), seconds, runs, and the
+# day counting started, or - if with the issue's first run ($3, the run's
+# --resume, empty). Sets $note, for the run's end line: the models it used
+# and its context at the end (` · opus-5-5, haiku-4-5 · context 84k of 1M`).
 add_cost() {
-  run=$(jq -R -r "$COST" "$1/out.jsonl" 2>/dev/null | tail -1)
+  prev=$(cat "$1/usage" 2>/dev/null)
+  save_usage "$1"
+  run=""
+  now=$(cat "$1/usage" 2>/dev/null)
+  ctx=$(jq -n -R -r "$CONTEXT" "$1/out.jsonl" 2>/dev/null)
+  [ -z "$ctx" ] || echo "${ctx#* }" >"$1/context"
+  if [ -n "$now" ] && [ "$now" != "$prev" ]; then
+    run=$(jq -n -r --argjson now "$now" --argjson prev "${prev:-null}" --arg main "${ctx%% *}" "$SPENT" 2>/dev/null) ||
+      run=$(jq -n -r --argjson now "$now" --argjson prev null --arg main "${ctx%% *}" "$SPENT" 2>/dev/null)
+  fi
+  note=""
+  models=$(echo "${run:-0 0 0 0 -}" | awk '{ print $5 }')
+  [ "$models" = - ] || note=" · $(echo "$models" | sed 's/,/, /g')"
+  # shellcheck disable=SC2086 # $ctx: the model, its tokens and window
+  [ -z "$ctx" ] || note="$note · $(set -- $ctx; context_words "$2" "$3")"
   if [ ! -f "$1/cost" ]; then
     since=-
     [ -n "$3" ] && since=$(date +%Y-%m-%d)
@@ -674,7 +746,7 @@ retire() {
   # Dated when it closed, if it already had (a merge closes the issue too).
   echo "$5" >"$4/done"
   [ -f "$4/off" ] && touch -r "$4/off" "$4/done"
-  find "$4" -mindepth 1 -maxdepth 1 ! -name "done" ! -name log ! -name session ! -name plan-session ! -name seen ! -name started ! -name pr ! -name cost -exec rm -rf {} +
+  find "$4" -mindepth 1 -maxdepth 1 ! -name "done" ! -name log ! -name session ! -name plan-session ! -name seen ! -name started ! -name pr ! -name cost ! -name usage -exec rm -rf {} +
   comment_cost "$1" "$2" "$4"
   log "$1#$2: done ($5)$gone"
 }
@@ -1037,22 +1109,20 @@ cmd_status() {
 # with its first run). Fails if there's none.
 cost_words() {
   [ -s "$1/cost" ] || return 1
-  awk 'function tok(n,  x, u, s) {
-      if (n < 1000) return sprintf("%d", n)
-      if (n < 1000000) { x = n / 1000; u = "k" } else { x = n / 1000000; u = "M" }
-      s = sprintf(x < 10 ? "%.1f" : "%.0f", x)
-      sub(/\.0$/, "", s)
-      return s u
-    }
+  awk "$TOK"'
     { printf "$%.2f %s %s %s %s %d %d %s\n", $1, tok($2 + $3 + $4), tok($2), tok($3), tok($4), $5, $6, $7 }' "$1/cost"
 }
 
-# What an issue's runs (its dir $1) cost, for status, if it's counted.
+# What an issue's runs (its dir $1) cost, for status, if it's counted, and
+# its context at the end of its last run, until it's done.
 cost_note() {
   cost_words "$1" | {
     read -r usd tokens _ _ _ secs _ _ || exit 0
     printf ' · spent %s, %s tokens, %s' "$usd" "$tokens" "$(duration "$secs")"
   }
+  [ -s "$1/context" ] && [ ! -f "$1/done" ] || return 0
+  read -r tokens window <"$1/context"
+  printf ' · %s' "$(context_words "$tokens" "${window:-0}")"
 }
 
 # An issue's status label, or $2 if it has none.
@@ -1140,8 +1210,9 @@ or with <owner/repo>#<n> just that issue's.
   -l, --level <level> show this level and the ones above it (a name, or 0-3):
         runs      (0, the default) issues picked up (or ignored, waiting,
                   stopped), runs started and done with how long they took,
-                  each skill a run invokes, each comment nightshift posts
-                  and its stage, pull requests
+                  the models they used and their context at the end, each
+                  skill a run invokes, each comment nightshift posts and its
+                  stage, pull requests
         messages  (1) adds Claude's text
         tools     (2) adds tool calls and failed tool results
         all       (3) adds thinking, every tool result, and the polls with
