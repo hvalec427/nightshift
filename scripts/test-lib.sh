@@ -35,7 +35,7 @@ expect_line() {
 expect_ok() {
   local name=$1
   shift
-  if "$@"; then echo "ok   $name"
+  if "$@" >/dev/null; then echo "ok   $name"
   else
     printf 'FAIL %s\n  this failed: %s\n' "$name" "$*"
     echo "$name" >>"$FAILS"
@@ -64,6 +64,8 @@ world() {
   export HOME="$W/home" NIGHTSHIFT_HOME="$W/ns" GH_FAKE="$W/gh" CLAUDE_FAKE="$W/claude"
   export XDG_CONFIG_HOME="$W/home/.config" GIT_CONFIG_NOSYSTEM=1
   export GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com
+  # A LaunchAgent of its own, never the machine's.
+  export NIGHTSHIFT_LABEL="com.nightshift.test.$$.${W##*.}"
   unset NIGHTSHIFT_REPO NIGHTSHIFT_ISSUE NIGHTSHIFT_WAIT NIGHTSHIFT_LIB CLAUDE_CODE_OAUTH_TOKEN
   # git and jq from wherever they are; nothing else of this machine's own
   # (no real gh, claude or signalbox).
