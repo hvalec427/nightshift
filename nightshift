@@ -105,7 +105,7 @@ $intro"
   log "$repo#$n: run starting"
   printf '\n=== %s run\n' "$(date '+%Y-%m-%d %H:%M:%S')" >>"$dir/log"
   # shellcheck disable=SC2086 # $resume is two words or none
-  (cd "$wt" && exec claude -p "$prompt" --output-format json --permission-mode "$mode" --allowedTools $ALLOWED_TOOLS $resume) >"$dir/out.json" 2>>"$dir/log" &
+  (cd "$wt" && exec claude -p "$prompt" --output-format json --permission-mode "$mode" --allowedTools $ALLOWED_TOOLS $resume </dev/null) >"$dir/out.json" 2>>"$dir/log" &
   cpid=$!
   trap 'kill -TERM $cpid 2>/dev/null; stopped=1' TERM
   stopped=0
