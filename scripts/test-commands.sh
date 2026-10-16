@@ -258,7 +258,15 @@ without() {
   expect_line "doctor: counts them" "$OUT" "^3 to fix"
   set_config isolated false
   try ns doctor
-  expect_line "doctor: not isolated: no plugin copy needed" "$OUT" "plugin for runs" no)
+  expect_line "doctor: isolated=false: still needs the plugin copy" "$OUT" "^  missing nightshift's plugin for runs ($NS/plugin): run install.sh again$")
+
+(healthy
+  set_config isolated false
+  set_config permission_mode bypassPermissions
+  try ns doctor
+  expect_line "doctor: a note for isolated=" "$OUT" "^  note    isolated in the config is ignored now: runs are always isolated$"
+  expect_line "doctor: a note for permission_mode=" "$OUT" "^  note    permission_mode in the config is ignored now: runs always use auto$"
+  expect "doctor: notes aren't problems" "$ST" 0)
 
 (healthy
   echo "mine" >"$NS/instructions.md"

@@ -217,7 +217,6 @@ repo hvalec427/nightshift /Users/me/dev/nightshift
 allowed_users=hvalec427
 max_parallel=2
 interval=5
-permission_mode=auto
 model=opus
 effort=high
 ```
@@ -236,26 +235,27 @@ effort=high
   (what went wrong is in `~/.nightshift/update.log`), and it stays on its version
   until the next check. Only a release install updates itself, not `--master` or
   a clone's.
-- `permission_mode`: Claude Code's permission mode for runs. Commands that reach
-  GitHub (`gh`, `git`) and signalbox and boop are always allowed.
 - `model`: the model runs use, as `claude --model` takes it: an alias (`opus`,
   `sonnet`) or a full model id. Unset (the default), runs get your account's
   default model; your own `model` in `~/.claude/settings.json` doesn't reach
-  isolated runs. A change applies from the next run, resumed ones included.
+  runs. A change applies from the next run, resumed ones included.
 - `effort`: the effort level runs use (`claude --effort`): `low`, `medium`,
   `high`, `xhigh` or `max`. Unset (the default), Claude Code's own.
   `nightshift doctor` shows both, and flags an effort that isn't one of these.
-- `isolated`: `true` (the default) runs Claude without the machine's own
-  user-level setup, so every machine works an issue the same way: no skills from
-  `~/.claude/skills`, no `~/.claude/settings.json`, `~/.claude/CLAUDE.md`,
-  plugins, hooks or MCP servers of yours. A run loads the repo's own `.claude`
-  setup, nightshift's plugin (its copy in `~/.nightshift/plugin`, which the
-  install keeps up to date) and, when it's installed, rn-agent; commits and pull
-  requests get no Claude attribution. `false` runs with your whole setup, as
-  your own sessions do.
 
-Every run, isolated or not, and every Claude session of yours where the
-nightshift plugin is enabled get nightshift's default instructions:
+Runs use Claude Code's `auto` permission mode. Commands that reach GitHub (`gh`,
+`git`) and signalbox and boop are always allowed. Runs are isolated from the
+machine's own user-level setup, so every machine works an issue the same way: no
+skills from `~/.claude/skills`, no `~/.claude/settings.json`,
+`~/.claude/CLAUDE.md`, plugins, hooks or MCP servers of yours. A run loads the
+repo's own `.claude` setup, nightshift's plugin (its copy in
+`~/.nightshift/plugin`, which the install keeps up to date) and, when it's
+installed, rn-agent; commits and pull requests get no Claude attribution.
+`isolated=` and `permission_mode=` lines from older versions are ignored
+(`nightshift doctor` notes them).
+
+Every run and every Claude session of yours where the nightshift plugin is
+enabled get nightshift's default instructions:
 [`plugin/instructions.md`](plugin/instructions.md) (installed at
 `~/.nightshift/plugin/instructions.md`), its rules for commit messages and pull
 requests, Conventional Commits and no AI attribution included. Runs get them in

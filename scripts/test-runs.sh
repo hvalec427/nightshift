@@ -23,7 +23,7 @@ LABELS_NOW='gh api "repos/$NIGHTSHIFT_REPO/issues/$NIGHTSHIFT_ISSUE" --jq ".labe
   expect_line "the prompt: its type" "$(run_prompt)" '^Its type label: `bug`\.$'
   expect_line "the prompt: a first run" "$(run_prompt)" "^This is your first run for this issue\.$"
   expect "no --resume on a first run" "$(run_opt --resume)" ""
-  expect "the permission mode: auto by default" "$(run_opt --permission-mode)" auto
+  expect "the permission mode: auto" "$(run_opt --permission-mode)" auto
   expect "no model set: no --model" "$(run_opt --model)" ""
   expect "no effort set: no --effort" "$(run_opt --effort)" ""
   expect "stream-json out" "$(run_opt --output-format)" stream-json
@@ -182,10 +182,9 @@ AT_LABEL='i=0; until gh api "repos/$NIGHTSHIFT_REPO/issues/$NIGHTSHIFT_ISSUE" --
   set_config permission_mode bypassPermissions
   gh_issue o/r 7 alice agent
   poll
-  expect "isolated false: no --setting-sources" "$(run_opt --setting-sources)" ""
-  expect "isolated false: no --plugin-dir" "$(run_opt --plugin-dir)" ""
-  expect "isolated false: still the instructions" "$(run_opt --append-system-prompt)" "$(cat "$ROOT/plugin/instructions.md")"
-  expect "permission_mode from the config" "$(run_opt --permission-mode)" bypassPermissions)
+  expect "isolated=false is ignored: still isolated" "$(run_opt --setting-sources)" "project,local"
+  expect "isolated=false is ignored: still nightshift's plugin" "$(run_opt --plugin-dir)" "$NS/plugin"
+  expect "permission_mode is ignored: still auto" "$(run_opt --permission-mode)" auto)
 
 (world
   set_config model sonnet
