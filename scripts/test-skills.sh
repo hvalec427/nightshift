@@ -9,7 +9,7 @@ set -euo pipefail
 
 SKILLS="$ROOT/plugin/skills"
 ISSUE="$SKILLS/issue/SKILL.md"
-STAGES="plan"
+STAGES="questions plan update answer"
 
 # The value of the frontmatter field $2 in the skill file $1.
 field() { sed -n '/^---$/,/^---$/p' "$1" | sed -n "s/^$2: *//p"; }
@@ -34,7 +34,7 @@ while IFS= read -r f; do
 done < <(find "$SKILLS" -name '*.md')
 expect "every link in a skill resolves" "$dangling" ""
 
-for old in spec.md tickets.md; do
+for old in questions.md spec.md tickets.md; do
   expect_ok "the issue skill no longer has $old" test ! -e "$SKILLS/issue/$old"
 done
 

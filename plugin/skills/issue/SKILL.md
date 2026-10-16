@@ -31,7 +31,7 @@ with what they need to know or decide, cut what they already know (the issue, ea
 comments, what the diff shows), and fold detail they may want into a collapsed
 `<details>` block. Lengths to aim for:
 
-- `questions`: one line per question or option ([questions.md](questions.md));
+- `questions`: one line per question or option (the questions skill);
 - `plan`: a minute to read, the full spec collapsed (the plan skill);
 - `progress`, `done`, `blocked`: one or two lines, e.g. "T2 done: short comments in the
   issue skill. Tests and shellcheck pass.";
@@ -56,14 +56,9 @@ prompt names it ("Its type label: `bug`") or says it has none. It changes how yo
 - **`enhancement`**: the steps below, as they are.
 - **`documentation`**: the steps below, kept to the docs; a change to code it needs is a
   question for the user.
-- **`question`**: answer it, from the code and the docs, in one `answer` comment, instead
-  of the steps below: no plan, no branch, no commits. Say where the answer comes from
-  (files, commands you ran). The user's reply is a follow-up (another `answer`), or asks
-  for a change: then swap the label to `bug` or `enhancement` and carry on with the steps
-  below from the top.
-- **`duplicate`**: find the issue it duplicates (`gh issue list --state all --search …`)
-  and post an `answer` linking it and saying how the two match; no plan, no pull request.
-  Found none: say so, swap the label for the type it is, and carry on as that type.
+- **`question`**, **`duplicate`**: invoke the `nightshift:answer` skill instead of the
+  steps below: it answers the question, or finds the issue this one duplicates, with no
+  plan and no pull request.
 - **`invalid`, `wontfix`**: the watcher doesn't run you while either is on the issue, and
   you never add them yourself.
 
@@ -80,11 +75,8 @@ theirs stands. Leave labels other than the type and status ones alone.
 Read the thread first (`gh issue view <n> --comments`), then do the first of these that
 applies, and end the run after its comment:
 
-1. **No plan yet, open decisions.** Read the issue and the code. Decisions that are the
-   user's (behaviour, scope, UX, trade-offs) and that the issue and the code don't settle
-   go in one `questions` comment: numbered, each with your recommended answer, so the user
-   can reply "1 yes, 2 b". Ask the questions that change what gets built; settle the rest
-   yourself and say how. How to find and word them: [questions.md](questions.md).
+1. **No plan yet, open decisions.** Decisions that are the user's and that the issue and
+   the code don't settle: invoke the `nightshift:questions` skill, which asks them.
 2. **No plan yet, nothing open** (or the answers are in). Invoke the `nightshift:plan`
    skill with the Skill tool: it writes the plan, with the spec and ticket guidance.
 3. **A plan, and the user asked for changes.** Invoke `nightshift:plan` too, for a revised
@@ -103,22 +95,8 @@ applies, and end the run after its comment:
      request, with the overlap lines in its body. Then a `done` comment with its link and
      what's in it. The watcher removes the worktree after this run.
 5. **An update run:** the watcher's news says the default branch moved under this pull
-   request (it conflicts now, or a pull request it goes after or overlaps merged). Make it
-   fit what's there now, so the pull requests can merge in any order:
-   - `git fetch origin`, check out this branch at `origin/nightshift/issue-<n>`, and
-     rebase it onto `origin/<default branch>`, fixing the conflicts.
-   - Then reread what merged (`git log -p` of the new commits where they touch what this
-     change touches) and update this change wherever it relied on that work or now
-     duplicates it: use what landed instead of a copy, follow a rename, drop what's done.
-     Rebasing alone isn't enough.
-   - Run the full checks again, as for a ticket, then
-     `git push --force-with-lease origin HEAD`.
-   - Update the overlap lines in the PR body (`gh pr edit --body-file`): drop the ones
-     about the merged work, and add any new ones.
-   - A `progress` comment: what conflicted and how you fixed it, then what changed beyond
-     the conflict fixes, and the checks you ran. A conflict that's a real decision between
-     the two changes gets a `blocked` comment instead (after `git rebase --abort`, so the
-     branch stays as it was).
+   request. Invoke the `nightshift:update` skill: it rebases the branch and adapts the
+   change to what merged.
 6. **A pull request is open, and the user commented.** Do what they ask on this branch,
    check it, commit, push, and reply with a `progress` comment. The pull request updates
    with the push.

@@ -1,7 +1,21 @@
-# Questions
+---
+name: questions
+description: Ask the user, in one questions comment on the issue, the decisions the issue and the code don't settle. Started by the issue skill when an issue has no plan yet and open decisions.
+user-invocable: false
+---
 
-Adapted from Matt Pocock's `grilling` skill (see `THIRD_PARTY.md` in the plugin), for an
-issue: every round is one `questions` comment, and the user's reply ends the run's wait.
+# Ask about an issue
+
+The issue skill sent you here, and its rules (comments, the status label, the issue's type,
+overlap, bounds) hold throughout. The guidance below is adapted from Matt Pocock's
+`grilling` skill (see `THIRD_PARTY.md` in the plugin), for an issue: every round is one
+`questions` comment, and the user's reply ends the run's wait.
+
+Read the issue and the code. Decisions that are the user's (behaviour, scope, UX,
+trade-offs) and that the issue and the code don't settle go in one `questions` comment:
+numbered, each with your recommended answer, so the user can reply "1 yes, 2 b". Ask the
+questions that change what gets built; settle the rest yourself and say how. Then end the
+run.
 
 Map the issue as a **design tree**: every decision branches into the decisions that hang
 off it. The **frontier** is every decision whose prerequisites are already settled: the
