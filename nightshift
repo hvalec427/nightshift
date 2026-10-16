@@ -24,7 +24,8 @@
 # live) and `out.jsonl` (the last run's raw stream-json), and `done` (why)
 # once its pull request merged or it closed, when only `log`, `session`,
 # `seen`, `started` and `pr` stay (`revived`, the merged pull request a
-# comment brought it back from); `label`, its status label (see STATUSES); and
+# comment brought it back from); `label`, its status label (see STATUSES);
+# `type`, its type label as the last run left it (see TYPES); and
 # per repo, `merged/<owner>_<repo>`, the merged nightshift pull requests seen,
 # and `labels/<owner>_<repo>`, the version of the status labels created there.
 set -u
@@ -209,12 +210,35 @@ idle_status() {
     END { print end, stage }' "$1/log" 2>/dev/null)
   case "$ended" in
   stopped*) echo stopped ;;
-  failed* | *" questions" | *" plan" | *" blocked") echo "needs you" ;;
+  failed* | *" questions" | *" answer" | *" plan" | *" blocked") echo "needs you" ;;
   *) if [ -f "$1/pr" ]; then echo "PR open"
     elif [ -s "$1/session" ]; then echo "needs you"
     else echo queued
     fi ;;
   esac
+}
+
+# --- issue types ----------------------------------------------------------------
+
+# The types an issue can have, from GitHub's default labels, the first one that
+# wins when it has several. `good first issue` and `help wanted` say who should
+# take it, not what it is, so they're not types.
+TYPES='invalid wontfix duplicate bug question documentation enhancement'
+
+# The type of an issue from its labels (a line each, on stdin): the first of
+# TYPES it has, or nothing.
+issue_type() {
+  tl=$(cat)
+  for t in $TYPES; do
+    printf '%s\n' "$tl" | grep -qx "$t" && { echo "$t"; return; }
+  done
+  return 0
+}
+
+# The type of $repo#$n now, from GitHub; fails if it can't tell.
+fetch_type() {
+  tl=$(gh api "repos/$1/issues/$2" --jq '.labels[].name' 2>/dev/null) || return 1
+  printf '%s\n' "$tl" | issue_type
 }
 
 # --- one agent run --------------------------------------------------------------
@@ -353,13 +377,14 @@ run_agent() {
 
 $news"
     # A run the label's removal (or closing the issue) stopped, now resumed.
-    [ -n "$why" ] && intro="Your last run was stopped partway because the $(echo "$why" | sed 's/^label/agent label was/; s/^issue/issue was/'); that's undone now, so carry on from where it stopped.${news:+
+    [ -n "$why" ] && intro="Your last run was stopped partway because the $(echo "$why" | sed 's/^label/agent label was/; s/^issue/issue was/; s/ label added$/ label was added/'); that's undone now, so carry on from where it stopped.${news:+
 
 $intro}"
     resume="--resume $(cat "$dir/session")"
   fi
   prompt="You are nightshift, working GitHub issue #$n in $repo, unattended: nobody is at a terminal, and you talk to the user only through the issue. Use the issue skill.
 This checkout is the issue's own worktree, on branch nightshift/issue-$n.
+$(type_note "$repo" "$n" "$dir")
 
 $intro"
   mode=$(setting permission_mode auto)
@@ -400,6 +425,8 @@ $intro"
   rm -f "$dir/stream"
   sid=$(sed -n 's/.*"session_id" *: *"\([^"]*\)".*/\1/p' "$dir/out.jsonl" | head -1)
   [ -n "$sid" ] && echo "$sid" >"$dir/session"
+  # The type as the run left it, so a change by the user shows next time.
+  t=$(fetch_type "$repo" "$n") && printf '%s\n' "$t" >"$dir/type"
   took=$(duration $(($(date +%s) - t0)))
   if [ $stopped -eq 1 ]; then
     run_end "stopped after $took"
@@ -427,6 +454,21 @@ $intro"
     fi
   fi
   set_status "$repo" "$n" "$(idle_status "$dir")"
+}
+
+# What a run is told of its issue's type: its type label, or that it has none,
+# and whether the user changed it since the last run ended (then theirs
+# stands). Keeps it in the issue's `type`, for `status`.
+type_note() {
+  t=$(fetch_type "$1" "$2") || { echo "Its type label: couldn't read it; see its labels."; return; }
+  changed=""
+  if [ -f "$3/type" ] && [ "$(cat "$3/type")" != "$t" ]; then
+    changed=" The user changed it since your last run, from $(sed 's/^$/none/' "$3/type"): leave it as they set it."
+  fi
+  printf '%s\n' "$t" >"$3/type"
+  if [ -n "$t" ]; then echo "Its type label: \`$t\`.$changed"
+  else echo "It has no type label.$changed"
+  fi
 }
 
 # The run's last line in its issue log.
@@ -599,12 +641,16 @@ poll_repo() {
   repo=$1 clone=$2
   allowed=$(allowed_json)
   ensure_labels "$repo"
-  open=$(gh api "repos/$repo/issues?labels=$LABEL&state=open&per_page=100" \
-    --jq '.[] | select(.pull_request | not) | "\(.number) \(.updated_at)"' 2>>"$NS/watch.log") || { log "$repo: couldn't list issues"; return; }
+  # Each labelled issue, and the label that holds it (`invalid` or `wontfix`;
+  # `-`, none). A held one isn't worked: it's off, as if unlabelled.
+  all=$(gh api "repos/$repo/issues?labels=$LABEL&state=open&per_page=100" \
+    --jq '.[] | select(.pull_request | not) | "\(.number) \(.updated_at) \([.labels[].name | select(. == "invalid" or . == "wontfix")] | first // "-")"' 2>>"$NS/watch.log") || { log "$repo: couldn't list issues"; return; }
+  open=$(printf '%s\n' "$all" | awk 'NF && $3 == "-" { print $1, $2 }')
+  held=$(printf '%s\n' "$all" | awk 'NF && $3 != "-" { print $1, $3 }')
 
-  # Issues no longer labelled (or closed): note which, once, and stop what's
-  # running there. Back in the list, the note goes (and a stopped run resumes,
-  # below).
+  # Issues no longer labelled (or closed, or held): note which, once, and stop
+  # what's running there. Back in the list, the note goes (and a stopped run
+  # resumes, below).
   for d in "$NS/issues/$(echo "$repo" | tr '/' '_')"_*; do
     [ -d "$d" ] || continue
     n=${d##*_}
@@ -616,7 +662,11 @@ poll_repo() {
     fi
     [ -f "$d/off" ] || [ -f "$d/ignored" ] || [ -f "$d/done" ] && continue
     state=$(gh api "repos/$repo/issues/$n" --jq .state 2>/dev/null) || continue
-    [ "$state" = closed ] && why="issue closed" || why="label removed"
+    hold=$(printf '%s\n' "$held" | awk -v n="$n" '$1 == n { print $2 }')
+    if [ "$state" = closed ]; then why="issue closed"
+    elif [ -n "$hold" ]; then why="$hold label added"
+    else why="label removed"
+    fi
     echo "$why" >"$d/off"
     if running "$d"; then
       echo "$why" >"$d/interrupted"
@@ -795,6 +845,7 @@ cmd_status() {
     elif [ -s "$d/session" ]; then what="$(label_or "$d" "waiting for a reply")$(waited "$d" " · ")"
     else what="queued"
     fi
+    t=$(cat "$d/type" 2>/dev/null) && [ -n "$t" ] && what="$t · $what"
     printf '%-40s %s\n' "$repo#$n" "$what"
   done
   if [ $found -eq 0 ] && [ $hidden -eq 0 ]; then echo "no issues yet"
@@ -816,9 +867,11 @@ after_note() {
 
 # What brings a stopped run back.
 resume_hint() {
-  if [ "$(cat "$1/off")" = "issue closed" ]; then echo "reopen to resume"
-  else echo "add the label back to resume"
-  fi
+  case "$(cat "$1/off")" in
+  "issue closed") echo "reopen to resume" ;;
+  *" label added") echo "remove the $(sed 's/ label added$//' "$1/off") label to resume" ;;
+  *) echo "add the label back to resume" ;;
+  esac
 }
 
 # How long an issue has waited since its last run ended, after a prefix; nothing
@@ -1095,6 +1148,9 @@ cmd_label() {
 }
 
 usage() { sed -n '2,14s/^# \{0,1\}//p' "$SELF"; }
+
+# Sourced for its functions (the tests): stop here.
+[ "${NIGHTSHIFT_LIB:-}" = 1 ] && return 0
 
 mkdir -p "$NS/issues"
 case "${1:-}" in

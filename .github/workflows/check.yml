@@ -27,3 +27,5 @@ jobs:
         run: bash scripts/test-release.sh
       - name: Instructions tests
         run: bash scripts/test-instructions.sh
+      - name: Issue type tests
+        run: bash scripts/test-types.sh

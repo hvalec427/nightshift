@@ -24,7 +24,7 @@ Write every comment with `gh issue comment <n> --body-file <file>`, as:
 ```
 
 `<!-- nightshift -->` is how the watcher tells your comments from the user's; keep it in
-every one. The stages are `questions`, `plan`, `progress`, `done` and `blocked`.
+every one. The stages are `questions`, `answer`, `plan`, `progress`, `done` and `blocked`.
 
 ## Status label
 
@@ -33,6 +33,36 @@ watcher sets it when a run starts and ends; you set it when you move to a step i
 see, with `nightshift label <status>`: `planning` as you start writing or revising a plan,
 `building` as you start building the tickets. If the command isn't there (an older
 nightshift), skip it.
+
+## The issue's type
+
+The user gives an issue its type with one of GitHub's default labels next to `agent`; the
+prompt names it ("Its type label: `bug`") or says it has none. It changes how you work it:
+
+- **`bug`**: find the cause before anything else. The plan is short: the cause, the fix
+  and the test, with the tickets. The first ticket is a test that fails the way the bug
+  does; the fix makes it pass.
+- **`enhancement`**: the steps below, as they are.
+- **`documentation`**: the steps below, kept to the docs; a change to code it needs is a
+  question for the user.
+- **`question`**: answer it, from the code and the docs, in one `answer` comment, instead
+  of the steps below: no plan, no branch, no commits. Say where the answer comes from
+  (files, commands you ran). The user's reply is a follow-up (another `answer`), or asks
+  for a change: then swap the label to `bug` or `enhancement` and carry on with the steps
+  below from the top.
+- **`duplicate`**: find the issue it duplicates (`gh issue list --state all --search …`)
+  and post an `answer` linking it and saying how the two match; no plan, no pull request.
+  Found none: say so, swap the label for the type it is, and carry on as that type.
+- **`invalid`, `wontfix`**: the watcher doesn't run you while either is on the issue, and
+  you never add them yourself.
+
+With **no type label**, pick one of these from the issue and the code, add its label
+(`gh issue edit <n> --add-label <type>`), and say in that run's comment which you took
+and why. When the type turns out wrong (the issue, or the user's reply, says it's another
+kind), swap it (`--remove-label <old> --add-label <new>`) and say why. Use only labels
+the repo has (`gh label list`); if it lacks one, work it as that type anyway and say the
+label is missing. Never set a label the prompt says the user changed since your last run:
+theirs stands. Leave labels other than the type and status ones alone.
 
 ## Where the issue stands
 
