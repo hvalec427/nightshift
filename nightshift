@@ -2,6 +2,7 @@
 # nightshift: work GitHub issues labelled `agent` with Claude Code, unattended.
 #
 #   nightshift watch                     poll the configured repos and run agents
+#   nightshift start                     run `watch` in the background, whenever you're logged in
 #   nightshift once                      one poll, then exit (for testing)
 #   nightshift status                    the service, the issues it knows and what each is doing
 #   nightshift stop <owner/repo>#<n>     stop an issue's running agent
@@ -102,6 +103,32 @@ service_line() {
   fi
   h=$(hand_pid) && s="$s · nightshift watch runs by hand (pid $h)"
   echo "service: $s"
+}
+
+# The LaunchAgent: this `nightshift watch` whenever you're logged in, with the
+# PATH of the shell that ran `start`.
+write_plist() {
+  mkdir -p "$(dirname "$PLIST")"
+  cat >"$PLIST" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>$SERVICE</string>
+  <key>ProgramArguments</key>
+  <array><string>$SELF</string><string>watch</string></array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>$(dirname "$SELF"):$PATH</string>
+    <key>NIGHTSHIFT_HOME</key><string>$NS</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>$NS/service.log</string>
+  <key>StandardErrorPath</key><string>$NS/service.log</string>
+</dict>
+</plist>
+EOF
 }
 
 # --- one agent run --------------------------------------------------------------
@@ -325,6 +352,21 @@ cmd_watch() {
   done
 }
 
+cmd_start() {
+  pid=$(service_pid)
+  [ -n "$pid" ] && { echo "service: already running (pid $pid)"; return; }
+  h=$(hand_pid) && die "a nightshift watch already runs by hand (pid $h): stop it first"
+  write_plist
+  launchctl enable "$DOMAIN/$SERVICE"
+  launchctl bootout "$DOMAIN/$SERVICE" 2>/dev/null # loaded but not running
+  launchctl bootstrap "$DOMAIN" "$PLIST" || die "launchctl couldn't start $PLIST"
+  sleep 1
+  service_line
+  if [ -s "$CONFIG" ]; then echo "log: nightshift logs -f"
+  else echo "no repos to watch yet: nightshift add <owner/repo> <clone> (the service picks it up)"
+  fi
+}
+
 cmd_status() {
   service_line
   found=0
@@ -397,8 +439,9 @@ watch) cmd_watch ;;
 once) NIGHTSHIFT_WAIT=1; export NIGHTSHIFT_WAIT; poll ;;
 _run) shift; run_agent "$@"; rm -f "$(issue_dir "$1" "$2")/pid"; touch "$(issue_dir "$1" "$2")/finished" ;;
 status) cmd_status ;;
+start) cmd_start ;;
 stop) shift; cmd_stop "${1:-}" ;;
 logs) shift; cmd_logs "$@" ;;
 add) shift; cmd_add "$@" ;;
-*) sed -n '2,9s/^# \{0,1\}//p' "$0"; exit 2 ;;
+*) sed -n '2,10s/^# \{0,1\}//p' "$0"; exit 2 ;;
 esac

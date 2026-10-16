@@ -12,9 +12,15 @@ set -e
 REPO="hvalec427/nightshift"
 NS="$HOME/.nightshift"
 BIN="$NS/bin"
-AGENT="$HOME/Library/LaunchAgents/com.nightshift.watch.plist"
+SERVICE="gui/$(id -u)/com.nightshift.watch"
 
 mkdir -p "$BIN"
+# A running service is stopped (its runs cleanly) while its script is replaced.
+restart=0
+if [ -x "$BIN/nightshift" ] && launchctl print "$SERVICE" 2>/dev/null | grep -q '^	pid = '; then
+  restart=1
+  "$BIN/nightshift" stop 2>/dev/null || launchctl bootout "$SERVICE" || true # before `nightshift stop` had no argument
+fi
 here=$(cd "$(dirname "$0")" 2>/dev/null && pwd -P)
 if [ -f "$here/nightshift" ] && [ -f "$here/.claude-plugin/marketplace.json" ]; then
   cp "$here/nightshift" "$BIN/nightshift" # run from a clone
@@ -47,28 +53,10 @@ else
   echo "Claude Code isn't installed: install it and run this again."
 fi
 
-if [ "${1:-}" = "--service" ]; then
-  mkdir -p "$(dirname "$AGENT")"
-  cat >"$AGENT" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>com.nightshift.watch</string>
-  <key>ProgramArguments</key>
-  <array><string>$BIN/nightshift</string><string>watch</string></array>
-  <key>EnvironmentVariables</key>
-  <dict><key>PATH</key><string>$BIN:$PATH</string></dict>
-  <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
-  <key>StandardOutPath</key><string>$NS/service.log</string>
-  <key>StandardErrorPath</key><string>$NS/service.log</string>
-</dict>
-</plist>
-EOF
-  launchctl bootout "gui/$(id -u)" "$AGENT" 2>/dev/null || true
-  launchctl bootstrap "gui/$(id -u)" "$AGENT"
-  echo "nightshift watch runs in the background (log: $NS/watch.log); stop it with: launchctl bootout gui/\$(id -u) $AGENT"
+# `nightshift start` writes the LaunchAgent and starts it; a service that was
+# running is started again on the new version.
+if [ "${1:-}" = "--service" ] || [ $restart -eq 1 ]; then
+  "$BIN/nightshift" start || true
 fi
 
 echo "──"
