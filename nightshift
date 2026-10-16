@@ -240,6 +240,35 @@ worktree() {
 # that reach GitHub, which an automatic reviewer might otherwise hold back.
 ALLOWED_TOOLS='Bash(gh issue *) Bash(gh pr *) Bash(gh repo view *) Bash(gh api *) Bash(git *) Bash(signalbox *) Bash(boop *) Bash(nightshift label *)'
 
+# Runs are isolated from the machine's own Claude setup (isolated=false: not):
+# no user-level skills, settings, plugins or hooks, only the repo's own and
+# nightshift's plugin (its copy in $NS/plugin, which install.sh keeps), plus
+# rn-agent when it's installed. Attribution in commits and pull requests is
+# off; ~/.nightshift/instructions.md, when there is one, says what else to do.
+RUN_SETTINGS='{"attribution":{"commit":"","pr":""}}'
+
+# rn-agent's plugin directory, if it's installed and enabled.
+rn_agent_dir() {
+  d=$(claude plugin list --json 2>/dev/null | jq -r 'first(.[] | select((.id | startswith("rn-agent@")) and .enabled) | .installPath) // empty' 2>/dev/null)
+  [ -n "$d" ] && [ -d "$d" ] && printf '%s' "$d"
+}
+
+# Claude, for a run of $repo#$n with $mode and $resume, in the current
+# directory: exec'd, so it's the subshell's pid. With the issue, for
+# `nightshift label`, and this nightshift on its PATH.
+run_claude() {
+  PATH="$(dirname "$SELF"):$PATH" NIGHTSHIFT_REPO=$repo NIGHTSHIFT_ISSUE=$n
+  export PATH NIGHTSHIFT_REPO NIGHTSHIFT_ISSUE
+  # shellcheck disable=SC2086 # $ALLOWED_TOOLS is a word per tool, $resume two words or none
+  set -- -p "$1" --output-format stream-json --verbose --permission-mode "$mode" --allowedTools $ALLOWED_TOOLS $resume
+  if [ "$(setting isolated true)" != false ]; then
+    set -- "$@" --setting-sources project,local --settings "$RUN_SETTINGS" --plugin-dir "$NS/plugin"
+    rn=$(rn_agent_dir) && set -- "$@" --plugin-dir "$rn"
+  fi
+  [ -s "$NS/instructions.md" ] && set -- "$@" --append-system-prompt-file "$NS/instructions.md"
+  exec claude "$@" </dev/null
+}
+
 # A run's stream-json events, one readable line each, tagged with the level
 # `logs` shows it from (a digit and a tab; see LEVELS): the comments it posts,
 # the agent's text, tool calls and failed results, then thinking and every
@@ -335,9 +364,7 @@ $intro"
     }
     { print >>own; close(own) }' &
   rpid=$!
-  # shellcheck disable=SC2086 # $resume is two words or none
-  # The issue, for `nightshift label`, and this nightshift on its PATH.
-  (cd "$wt" && PATH="$(dirname "$SELF"):$PATH" NIGHTSHIFT_REPO=$repo NIGHTSHIFT_ISSUE=$n exec claude -p "$prompt" --output-format stream-json --verbose --permission-mode "$mode" --allowedTools $ALLOWED_TOOLS $resume </dev/null) >"$dir/stream" 2>>"$dir/log" &
+  (cd "$wt" && run_claude "$prompt") >"$dir/stream" 2>>"$dir/log" &
   cpid=$!
   trap 'kill -TERM $cpid 2>/dev/null; stopped=1' TERM INT
   stopped=0

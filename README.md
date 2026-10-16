@@ -18,7 +18,7 @@ curl -fsSL https://raw.githubusercontent.com/hvalec427/nightshift/master/install
 ```
 
 It installs the `nightshift` command (`~/.nightshift/bin`) and its Claude Code
-plugin, and with `--service` runs `nightshift watch` in the background whenever
+plugin (also copied to `~/.nightshift/plugin`, for runs), and with `--service` runs `nightshift watch` in the background whenever
 you're logged in (a LaunchAgent, through `nightshift start`). Leave out
 `--service` to run it by hand. Run it again to update; a running service is
 restarted on the new version.
@@ -142,6 +142,18 @@ permission_mode=auto
 - `interval`: seconds between polls.
 - `permission_mode`: Claude Code's permission mode for runs. Commands that reach
   GitHub (`gh`, `git`) and signalbox and boop are always allowed.
+- `isolated`: `true` (the default) runs Claude without the machine's own
+  user-level setup, so every machine works an issue the same way: no skills from
+  `~/.claude/skills`, no `~/.claude/settings.json`, `~/.claude/CLAUDE.md`,
+  plugins, hooks or MCP servers of yours. A run loads the repo's own `.claude`
+  setup, nightshift's plugin (its copy in `~/.nightshift/plugin`, which the
+  install keeps up to date) and, when it's installed, rn-agent; commits and pull
+  requests get no Claude attribution. `false` runs with your whole setup, as
+  your own sessions do.
+
+Your own rules for every run (commit style, say) go in
+`~/.nightshift/instructions.md`, which each run gets on top of its system
+prompt, isolated or not. Each machine has its own.
 
 ## A dedicated machine
 

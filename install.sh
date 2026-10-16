@@ -22,13 +22,19 @@ if [ -x "$BIN/nightshift" ] && launchctl print "$SERVICE" 2>/dev/null | grep -q 
   "$BIN/nightshift" stop 2>/dev/null || launchctl bootout "$SERVICE" || true # before `nightshift stop` had no argument
 fi
 here=$(cd "$(dirname "$0")" 2>/dev/null && pwd -P)
+# The script, and the plugin's copy that runs load (`--plugin-dir`).
+rm -rf "$NS/plugin.new"
 if [ -f "$here/nightshift" ] && [ -f "$here/.claude-plugin/marketplace.json" ]; then
   cp "$here/nightshift" "$BIN/nightshift" # run from a clone
+  cp -R "$here/plugin" "$NS/plugin.new"
 else
   curl -fsSL "https://raw.githubusercontent.com/$REPO/master/nightshift" -o "$BIN/nightshift"
+  mkdir "$NS/plugin.new"
+  curl -fsSL "https://codeload.github.com/$REPO/tar.gz/master" | tar -xz -C "$NS/plugin.new" --strip-components 2 '*/plugin'
 fi
+rm -rf "$NS/plugin" && mv "$NS/plugin.new" "$NS/plugin"
 chmod +x "$BIN/nightshift"
-echo "nightshift installed to $BIN/nightshift"
+echo "nightshift installed to $BIN/nightshift (its plugin for runs: $NS/plugin)"
 
 LINE='export PATH="$HOME/.nightshift/bin:$PATH"'
 case ":$PATH:" in
