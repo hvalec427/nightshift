@@ -92,6 +92,26 @@ closed with nothing to resume), only its log and what it needs to come back stay
 in `~/.nightshift`. A merged branch is deleted, here and on GitHub, unless it has
 commits the pull request didn't (a failed delete on GitHub is logged, not fatal). A comment on a done issue (open and labelled) picks it up again.
 
+## Issue types
+
+Give an issue its type with one of GitHub's default labels, next to `agent`;
+nightshift reads it at the start of every run and works the issue the way it
+calls for:
+
+| Label | nightshift |
+|---|---|
+| `bug` | finds the cause, and its plan starts with a test that fails the way the bug does; the fix makes it pass |
+| `enhancement` | asks, plans, builds and opens a pull request, as above |
+| `documentation` | the same, kept to the docs |
+
+With no type label, the run picks one from the issue, adds it, and says so in
+its comment; when a type turns out wrong, it swaps the label and says why. It
+only uses labels the repo has. Change the label yourself and yours stands: the
+next run is told, and leaves it. `good first issue` and `help wanted` say who
+should take an issue, not what it is, so they change nothing. If an issue has
+two type labels, the first of `bug`, `documentation`, `enhancement` wins in
+that order. `nightshift status` shows each issue's type.
+
 ## Status labels
 
 Each issue nightshift works carries one status label at a time, so the issue

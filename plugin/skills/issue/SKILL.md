@@ -34,6 +34,26 @@ see, with `nightshift label <status>`: `planning` as you start writing or revisi
 `building` as you start building the tickets. If the command isn't there (an older
 nightshift), skip it.
 
+## The issue's type
+
+The user gives an issue its type with one of GitHub's default labels next to `agent`; the
+prompt names it ("Its type label: `bug`") or says it has none. It changes how you work it:
+
+- **`bug`**: find the cause before anything else. The plan is short: the cause, the fix
+  and the test, with the tickets. The first ticket is a test that fails the way the bug
+  does; the fix makes it pass.
+- **`enhancement`**: the steps below, as they are.
+- **`documentation`**: the steps below, kept to the docs; a change to code it needs is a
+  question for the user.
+
+With **no type label**, pick one of these from the issue and the code, add its label
+(`gh issue edit <n> --add-label <type>`), and say in that run's comment which you took
+and why. When the type turns out wrong (the issue, or the user's reply, says it's another
+kind), swap it (`--remove-label <old> --add-label <new>`) and say why. Use only labels
+the repo has (`gh label list`); if it lacks one, work it as that type anyway and say the
+label is missing. Never set a label the prompt says the user changed since your last run:
+theirs stands. Leave labels other than the type and status ones alone.
+
 ## Where the issue stands
 
 Read the thread first (`gh issue view <n> --comments`), then do the first of these that
