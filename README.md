@@ -147,14 +147,15 @@ waiting on you:
 | `nightshift: planning` | a run is writing or revising the plan |
 | `nightshift: building` | a run is building the tickets, or changing the open pull request |
 | `nightshift: updating` | a run is updating the pull request after a merge |
+| `nightshift: merging` | a run is checking the pull request and merging it |
 | `nightshift: answering` | a run is answering a `question` or `duplicate` issue |
-| `nightshift: needs you` | waiting on your reply: questions, an answer, a plan, blocked, or a failed run |
+| `nightshift: needs you` | waiting on your reply: questions, an answer, a plan, blocked, a pull request to look at before it merges, or a failed run |
 | `nightshift: PR open` | the pull request is open, nothing running |
 | `nightshift: stopped` | a run was stopped partway |
 
 The watcher sets them as runs start and end, and as a run invokes one of
 nightshift's skills: `nightshift:questions` sets `thinking`, `plan` `planning`,
-`build`, `review` and `finish` `building`, `update` `updating` and `answer` `answering`
+`build`, `review` and `finish` `building`, `update` `updating`, `merge` `merging` and `answer` `answering`
 (`nightshift label <status>` sets one by hand). They come off once it's done, or when you remove the `agent` label with nothing
 running (and come back with it). `nightshift status` says the same, with the
 skill a run is in (or its last one ended in).

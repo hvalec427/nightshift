@@ -57,6 +57,10 @@ after_comment() {
 }
 expect "after questions: needs you" "$(after_comment questions)" "needs you"
 expect "after an answer: needs you" "$(after_comment answer)" "needs you"
+expect "after a look: needs you" "$(after_comment look)" "needs you"
+echo https://github.com/o/r/pull/2 >"$DIR/pr"
+expect "done after merging its pull request: PR open, till the watcher sees the merge" "$(after_comment "done")" "PR open"
+rm "$DIR/pr"
 
 # What brings back an issue stopped for the reason $1.
 hint() { echo "$1" >"$DIR/off"; resume_hint "$DIR"; }

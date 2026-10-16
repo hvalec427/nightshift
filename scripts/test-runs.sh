@@ -44,10 +44,10 @@ NIGHTSHIFT_REPO=o/r"
   expect_line "its log: how it ended" "$log" "^0	=== [0-9:]* run done in [0-9]*s$"
   expect_line "watch.log: the run, with the issue" "$(cat "$NS/watch.log")" "o/r#7: run done in"
   expect "the status labels are created" "$(LC_ALL=C sort "$(gh_dir o/r)/labels" | tr '\n' ,)" \
-    "nightshift: PR open,nightshift: answering,nightshift: building,nightshift: needs you,nightshift: planning,nightshift: proposed,nightshift: queued,nightshift: stopped,nightshift: thinking,nightshift: updating,"
+    "nightshift: PR open,nightshift: answering,nightshift: building,nightshift: merging,nightshift: needs you,nightshift: planning,nightshift: proposed,nightshift: queued,nightshift: stopped,nightshift: thinking,nightshift: updating,"
   poll
   expect "nothing new: no run" "$(runs)" 1
-  expect "the status labels are created once" "$(gh_calls '^label create' | wc -l | tr -d ' ')" 10
+  expect "the status labels are created once" "$(gh_calls '^label create' | wc -l | tr -d ' ')" 11
   expect_no_unexpected)
 
 (world
@@ -102,6 +102,15 @@ AT_LABEL='i=0; until gh api "repos/$NIGHTSHIFT_REPO/issues/$NIGHTSHIFT_ISSUE" --
     skill nightshift:answer; at answering answer'
   poll
   expect "the answer skill: answering" "$(grep '^nightshift: ' "$CLAUDE_FAKE/runs/1/answer")" "nightshift: answering")
+
+(world
+  gh_issue o/r 7 alice agent
+  runs_do 'at() { '"$AT_LABEL"'; '"$LABELS_NOW"'$2"; }
+    skill nightshift:merge; at merging merge
+    comment look'
+  poll
+  expect "the merge skill: merging" "$(grep '^nightshift: ' "$CLAUDE_FAKE/runs/1/merge")" "nightshift: merging"
+  expect "a run ending on a look comment: needs you" "$(status_label 7)" "needs you")
 
 (world
   gh_issue o/r 7 alice agent

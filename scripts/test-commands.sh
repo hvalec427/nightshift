@@ -198,7 +198,7 @@ an old line"
   export NIGHTSHIFT_REPO=o/r NIGHTSHIFT_ISSUE=7
   try ns label loud
   expect "label, an unknown status: the statuses" "$ST $OUT" \
-    "1 nightshift: usage: nightshift label <status>: one of proposed, queued, thinking, planning, building, updating, answering, needs you, PR open, stopped"
+    "1 nightshift: usage: nightshift label <status>: one of proposed, queued, thinking, planning, building, updating, merging, answering, needs you, PR open, stopped"
   ns label building
   expect "label: sets it" "$(status_label 7)" building
   ns label "needs you"

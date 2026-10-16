@@ -206,6 +206,7 @@ thinking|1D76DB|nightshift is reading the issue and the code
 planning|1D76DB|nightshift is writing the plan
 building|1D76DB|nightshift is building it
 updating|1D76DB|nightshift is updating its pull request after a merge
+merging|1D76DB|nightshift is checking its pull request and merging it
 answering|1D76DB|nightshift is answering the question
 needs you|D93F0B|nightshift is waiting on your reply
 PR open|0E8A16|its pull request is open
@@ -219,6 +220,7 @@ build|building
 review|building
 finish|building
 update|updating
+merge|merging
 answer|answering'
 
 # Create the status labels in a repo (or update their colours), once per
@@ -261,7 +263,7 @@ idle_status() {
     END { print end, stage }' "$1/log" 2>/dev/null)
   case "$ended" in
   stopped*) echo stopped ;;
-  failed* | *" questions" | *" answer" | *" plan" | *" blocked") echo "needs you" ;;
+  failed* | *" questions" | *" answer" | *" plan" | *" blocked" | *" look") echo "needs you" ;;
   *) if [ -f "$1/pr" ]; then echo "PR open"
     elif [ -s "$1/session" ]; then echo "needs you"
     else echo queued
