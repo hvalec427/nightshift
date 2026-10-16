@@ -210,7 +210,7 @@ idle_status() {
     END { print end, stage }' "$1/log" 2>/dev/null)
   case "$ended" in
   stopped*) echo stopped ;;
-  failed* | *" questions" | *" plan" | *" blocked") echo "needs you" ;;
+  failed* | *" questions" | *" answer" | *" plan" | *" blocked") echo "needs you" ;;
   *) if [ -f "$1/pr" ]; then echo "PR open"
     elif [ -s "$1/session" ]; then echo "needs you"
     else echo queued

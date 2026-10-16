@@ -75,7 +75,7 @@ For React Native repos (required once a watched repo's `package.json` has
 
 | You | nightshift |
 |---|---|
-| Open an issue, add the `agent` label | Reads it and the code; asks its questions in one comment (each with its recommended answer), or goes straight to the plan |
+| Open an issue, add the `agent` label (and a [type](#issue-types) label) | Reads it and the code; asks its questions in one comment (each with its recommended answer), or goes straight to the plan |
 | Reply | More questions, or a plan: the spec and its tickets, in the to-spec and to-tickets format of [Matt Pocock's skills](https://github.com/mattpocock/skills) |
 | Reply **go** (or what to change) | Builds the tickets in order, a progress comment per ticket, then opens the pull request and links it |
 | Comment on the issue after that | Makes the change on the same branch and pushes it |
@@ -103,14 +103,16 @@ calls for:
 | `bug` | finds the cause, and its plan starts with a test that fails the way the bug does; the fix makes it pass |
 | `enhancement` | asks, plans, builds and opens a pull request, as above |
 | `documentation` | the same, kept to the docs |
+| `question` | answers it in a comment: no plan, no pull request. Reply to follow up, or ask for a change to have it built |
+| `duplicate` | a comment linking the issue it duplicates; no pull request |
 
 With no type label, the run picks one from the issue, adds it, and says so in
 its comment; when a type turns out wrong, it swaps the label and says why. It
 only uses labels the repo has. Change the label yourself and yours stands: the
 next run is told, and leaves it. `good first issue` and `help wanted` say who
 should take an issue, not what it is, so they change nothing. If an issue has
-two type labels, the first of `bug`, `documentation`, `enhancement` wins in
-that order. `nightshift status` shows each issue's type.
+two type labels, the first of `duplicate`, `bug`, `question`, `documentation`,
+`enhancement` wins in that order. `nightshift status` shows each issue's type.
 
 ## Status labels
 
@@ -125,7 +127,7 @@ waiting on you:
 | `nightshift: planning` | a run is writing or revising the plan |
 | `nightshift: building` | a run is building the tickets, or changing the open pull request |
 | `nightshift: updating` | a run is updating the pull request after a merge |
-| `nightshift: needs you` | waiting on your reply: questions, a plan, blocked, or a failed run |
+| `nightshift: needs you` | waiting on your reply: questions, an answer, a plan, blocked, or a failed run |
 | `nightshift: PR open` | the pull request is open, nothing running |
 | `nightshift: stopped` | a run was stopped partway |
 

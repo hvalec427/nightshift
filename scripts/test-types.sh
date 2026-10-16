@@ -59,6 +59,14 @@ enhancement")" 'Its type label: `enhancement`. The user changed it since your la
 rm -f "$DIR/type"
 expect "a first run, unlabelled" "$(note agent)" "It has no type label."
 
+# An issue's status once its last run posted a comment at stage $1.
+after_comment() {
+  printf '0\t=== 2026-10-16 10:00:00 run\n0\t10:00:05 commented (%s)\n0\t=== 10:00:09 run done in 9s\n' "$1" >"$DIR/log"
+  idle_status "$DIR"
+}
+expect "after questions: needs you" "$(after_comment questions)" "needs you"
+expect "after an answer: needs you" "$(after_comment answer)" "needs you"
+
 if [ -s "$FAILS" ]; then
   echo "$(wc -l <"$FAILS" | tr -d ' ') failed"
   exit 1

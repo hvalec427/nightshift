@@ -24,7 +24,7 @@ Write every comment with `gh issue comment <n> --body-file <file>`, as:
 ```
 
 `<!-- nightshift -->` is how the watcher tells your comments from the user's; keep it in
-every one. The stages are `questions`, `plan`, `progress`, `done` and `blocked`.
+every one. The stages are `questions`, `answer`, `plan`, `progress`, `done` and `blocked`.
 
 ## Status label
 
@@ -45,6 +45,14 @@ prompt names it ("Its type label: `bug`") or says it has none. It changes how yo
 - **`enhancement`**: the steps below, as they are.
 - **`documentation`**: the steps below, kept to the docs; a change to code it needs is a
   question for the user.
+- **`question`**: answer it, from the code and the docs, in one `answer` comment, instead
+  of the steps below: no plan, no branch, no commits. Say where the answer comes from
+  (files, commands you ran). The user's reply is a follow-up (another `answer`), or asks
+  for a change: then swap the label to `bug` or `enhancement` and carry on with the steps
+  below from the top.
+- **`duplicate`**: find the issue it duplicates (`gh issue list --state all --search …`)
+  and post an `answer` linking it and saying how the two match; no plan, no pull request.
+  Found none: say so, swap the label for the type it is, and carry on as that type.
 
 With **no type label**, pick one of these from the issue and the code, add its label
 (`gh issue edit <n> --add-label <type>`), and say in that run's comment which you took
