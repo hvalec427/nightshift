@@ -14,8 +14,12 @@
 # issue `issues/<owner>_<repo>_<n>/` with `session` (the Claude session id),
 # `seen` (the last comment handed to the agent), `pid` while it runs,
 # `finished` once a run ended, `pr` once it opened one, `off` (why) while it has
-# no label or is closed, `interrupted` if that stopped a run, `log` (readable, live) and
-# `out.jsonl` (the last run's raw stream-json).
+# no label or is closed, `interrupted` if that stopped a run, `after` (the issues
+# its open pull request goes after), `update` while an update run waits and
+# `updating` while it runs (its status, then why), `conflict` (the default
+# branch's commit its pull request was last updated for), `log` (readable,
+# live) and `out.jsonl` (the last run's raw stream-json); and per repo,
+# `merged/<owner>_<repo>`, the merged nightshift pull requests seen.
 set -u
 
 NS="${NIGHTSHIFT_HOME:-$HOME/.nightshift}"
@@ -158,6 +162,8 @@ worktree() {
     grep -qxF '.claude/worktrees/' "$exclude" 2>/dev/null || echo '.claude/worktrees/' >>"$exclude"
     if git -C "$clone" rev-parse -q --verify "refs/heads/$branch" >/dev/null; then
       git -C "$clone" worktree add -q "$wt" "$branch"
+    elif git -C "$clone" rev-parse -q --verify "refs/remotes/origin/$branch" >/dev/null; then
+      git -C "$clone" worktree add -q -b "$branch" "$wt" "origin/$branch"
     else
       git -C "$clone" worktree add -q -b "$branch" "$wt" "origin/$base"
     fi
@@ -313,6 +319,88 @@ $MARKER" >/dev/null 2>&1 || log "$1#$2: couldn't comment the failure"
 
 # --- polling --------------------------------------------------------------------
 
+# The repo's open nightshift pull requests, a line each: the issue, the branch
+# it merges into, GitHub's mergeable state, and the issues its body's markers say it goes after and
+# overlaps (comma-separated, or -).
+open_prs() {
+  # shellcheck disable=SC2016 # jq's \(…), not the shell's
+  gh pr list --repo "$1" --state open --limit 100 --json headRefName,baseRefName,mergeable,body --jq '
+    def marked($m): [.body | scan("<!-- nightshift:\($m) #([0-9]+) -->") | .[0] | tonumber] | unique | map(tostring) | join(",") | if . == "" then "-" else . end;
+    .[] | select(.headRefName | startswith("nightshift/issue-"))
+    | "\(.headRefName | ltrimstr("nightshift/issue-")) \(.baseRefName) \(.mergeable) \(marked("after")) \(marked("overlaps"))"'
+}
+
+# The repo's merged nightshift pull requests, the last 30, a line each: the
+# pull request and its issue.
+merged_prs() {
+  gh pr list --repo "$1" --state merged --limit 30 --json number,headRefName --jq '
+    .[] | select(.headRefName | startswith("nightshift/issue-"))
+    | "\(.number) \(.headRefName | ltrimstr("nightshift/issue-"))"'
+}
+
+# What the open nightshift pull requests say about each other (each issue's
+# `after`, for status), and an update run for each labelled one that conflicts
+# with its branch now (once per commit of that branch), or goes after or
+# overlaps a nightshift pull request that merged since the last poll. The
+# merges it has seen are in merged/<owner>_<repo>; the first poll only notes them.
+check_prs() {
+  repo=$1 open=$2
+  prs=$(open_prs "$repo" 2>>"$NS/watch.log") || { log "$repo: couldn't list pull requests"; return; }
+  seen="$NS/merged/$(echo "$repo" | tr '/' '_')"
+  new=""
+  if merged=$(merged_prs "$repo" 2>>"$NS/watch.log"); then
+    [ -f "$seen" ] && new=$(printf '%s\n' "$merged" | grep -vxF -f "$seen")
+    mkdir -p "$NS/merged"
+    printf '%s\n' "$merged" | cat - "$seen" 2>/dev/null | grep . | sort -u >"$seen.tmp"
+    mv "$seen.tmp" "$seen"
+  else
+    log "$repo: couldn't list merged pull requests"
+  fi
+  rm -f "$NS/issues/$(echo "$repo" | tr '/' '_')"_*/after
+  printf '%s\n' "$prs" | while read -r n base mergeable after overlaps; do
+    d=$(issue_dir "$repo" "$n")
+    [ -n "$n" ] && [ -d "$d" ] || continue
+    [ "$after" = - ] || echo "$after" >"$d/after"
+    printf '%s\n' "$open" | grep -q "^$n " || continue
+    if [ -f "$d/ignored" ] || [ -f "$d/update" ]; then continue; fi
+    # A merge it goes after or overlaps: #<issue> (PR #<pr>), and which.
+    rel="" how=""
+    for pm in $(printf '%s\n' "$new" | tr ' ' :); do
+      p=${pm%:*} m=${pm#*:}
+      case ",$after," in *",$m,"*) rel="#$m (PR #$p)" how="goes after it"; break ;; esac
+      case ",$overlaps," in *",$m,"*) rel="#$m (PR #$p)" how="overlaps it"; break ;; esac
+    done
+    # A conflict waits for a run in flight; it's still there on the next poll.
+    conflicts=0 sha=""
+    [ "$mergeable" = CONFLICTING ] && ! running "$d" && conflicts=1
+    [ $conflicts -eq 1 ] || [ -n "$rel" ] || continue
+    sha=$(gh api "repos/$repo/commits/$base" --jq .sha 2>/dev/null)
+    [ -n "$sha" ] && [ "$(cat "$d/conflict" 2>/dev/null)" != "$sha" ] || conflicts=0
+    if [ $conflicts -eq 1 ]; then
+      echo "$sha" >"$d/conflict"
+      queue_update "$repo" "$n" "conflicts, rebasing" \
+        "${rel:-$base moved}${rel:+ merged}, and this pull request conflicts with $base now, so I'm rebasing it onto $base and updating it to fit."
+    elif [ -n "$rel" ]; then
+      # Its update run makes it fit this commit, conflict or not.
+      [ -n "$sha" ] && echo "$sha" >"$d/conflict"
+      queue_update "$repo" "$n" "updating after ${rel%% *}" \
+        "$rel merged, and this pull request $how, so I'm rebasing it onto $base and updating it to fit what merged."
+    fi
+  done
+}
+
+# An update run for an issue's pull request, started by the issue loop: its
+# status, and why, which the issue gets as a comment and the run as its news.
+queue_update() {
+  printf '%s\n%s\n' "$3" "$4" >"$(issue_dir "$1" "$2")/update"
+  gh issue comment "$2" --repo "$1" --body "🤖 **nightshift** · progress
+
+$4
+
+$MARKER <!-- nightshift:progress -->" >/dev/null 2>&1 || log "$1#$2: couldn't comment the update"
+  log "$1#$2: pull request $3"
+}
+
 poll_repo() {
   repo=$1 clone=$2
   allowed=$(allowed_json)
@@ -342,6 +430,8 @@ poll_repo() {
     fi
   done
 
+  check_prs "$repo" "$open"
+
   printf '%s\n' "$open" | {
   count=0 did=""
   while read -r n updated; do
@@ -349,7 +439,7 @@ poll_repo() {
     count=$((count + 1))
     d=$(issue_dir "$repo" "$n")
     running "$d" && { did="$did, #$n running"; continue; }
-    [ -f "$d/updated" ] && [ "$(cat "$d/updated")" = "$updated" ] && continue
+    [ ! -f "$d/update" ] && [ -f "$d/updated" ] && [ "$(cat "$d/updated")" = "$updated" ] && continue
     if [ ! -d "$d" ]; then
       # Only a label added by an allowed user starts work.
       by=$(gh api --paginate "repos/$repo/issues/$n/events" \
@@ -369,7 +459,7 @@ poll_repo() {
     last=$(gh api --paginate "repos/$repo/issues/$n/comments?per_page=100" --jq "$filter | .id" 2>/dev/null | tail -1)
     first_run=0
     [ -s "$d/session" ] || [ -f "$d/started" ] || first_run=1
-    if [ $first_run -eq 0 ] && [ -z "$news" ] && [ ! -f "$d/interrupted" ]; then
+    if [ $first_run -eq 0 ] && [ -z "$news" ] && [ ! -f "$d/interrupted" ] && [ ! -f "$d/update" ]; then
       echo "$updated" >"$d/updated"
       continue
     fi
@@ -380,6 +470,14 @@ poll_repo() {
     [ -n "$last" ] && echo "$last" >"$d/seen"
     echo "$updated" >"$d/updated"
     touch "$d/started"
+    if [ -f "$d/update" ]; then
+      mv "$d/update" "$d/updating"
+      news="$news${news:+
+}- the watcher: $(sed -n 2p "$d/updating")
+
+This is an update run: the issue skill's step for one.
+"
+    fi
     printf '%s' "$news" >"$d/news"
     "$SELF" _run "$repo" "$n" "$clone" &
     echo $! >"$d/pid"
@@ -470,18 +568,25 @@ cmd_status() {
     n=${name##*_}
     repo=$(echo "${name%_*}" | sed 's/_/\//')
     if [ -f "$d/ignored" ]; then what="ignored (labelled by someone else)"
+    elif running "$d" && [ -f "$d/updating" ]; then what="PR $(cat "$d/pr") · $(head -1 "$d/updating") $(age "$d/pid") (pid $(cat "$d/pid"))"
     elif running "$d"; then what="running $(age "$d/pid") (pid $(cat "$d/pid"))"
     elif [ -f "$d/off" ] && [ -f "$d/interrupted" ]; then what="stopped $(age "$d/off") ago ($(cat "$d/off")) · $(resume_hint "$d")"
     elif [ -f "$d/off" ] && [ -f "$d/pr" ]; then what="PR $(cat "$d/pr") · $(cat "$d/off")"
     elif [ -f "$d/off" ]; then what="$(cat "$d/off") $(age "$d/off") ago"
     elif [ -f "$d/interrupted" ]; then what="queued to resume"
-    elif [ -f "$d/pr" ]; then what="PR $(cat "$d/pr")$(waited "$d" " · waiting ")"
+    elif [ -f "$d/update" ]; then what="PR $(cat "$d/pr") · queued: $(head -1 "$d/update")"
+    elif [ -f "$d/pr" ]; then what="PR $(cat "$d/pr")$(after_note "$d")$(waited "$d" " · waiting ")"
     elif [ -s "$d/session" ]; then what="waiting for a reply$(waited "$d" " · ")"
     else what="queued"
     fi
     printf '%-40s %s\n' "$repo#$n" "$what"
   done
   [ $found -eq 1 ] || echo "no issues yet"
+}
+
+# The issues an open pull request goes after: " · after #10, #11", or nothing.
+after_note() {
+  [ -s "$1/after" ] && printf ' · after #%s' "$(sed 's/,/, #/g' "$1/after")"
 }
 
 # What brings a stopped run back.
@@ -618,7 +723,7 @@ mkdir -p "$NS/issues"
 case "${1:-}" in
 watch) cmd_watch ;;
 once) NIGHTSHIFT_WAIT=1; export NIGHTSHIFT_WAIT; poll ;;
-_run) shift; run_agent "$@"; rm -f "$(issue_dir "$1" "$2")/pid"; touch "$(issue_dir "$1" "$2")/finished" ;;
+_run) shift; run_agent "$@"; rm -f "$(issue_dir "$1" "$2")/pid" "$(issue_dir "$1" "$2")/updating"; touch "$(issue_dir "$1" "$2")/finished" ;;
 status) cmd_status ;;
 start) cmd_start ;;
 stop) shift; cmd_stop "${1:-}" ;;
