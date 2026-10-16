@@ -4,7 +4,7 @@
 #   nightshift watch                     poll the configured repos and run agents
 #   nightshift start                     run `watch` in the background, whenever you're logged in
 #   nightshift once                      one poll, then exit (for testing)
-#   nightshift status                    the service, the issues it knows and what each is doing
+#   nightshift status [--all]            the service, the issues in progress (--all: done too) and what each is doing
 #   nightshift stop                      stop the service (until `nightshift start`)
 #   nightshift stop <owner/repo>#<n>     stop an issue's running agent
 #   nightshift logs [<owner/repo>#<n>] [-f] [-v…]  what every issue (or one) does, at a level
@@ -18,8 +18,11 @@
 # its open pull request goes after), `update` while an update run waits and
 # `updating` while it runs (its status, then why), `conflict` (the default
 # branch's commit its pull request was last updated for), `log` (readable,
-# live) and `out.jsonl` (the last run's raw stream-json); and per repo,
-# `merged/<owner>_<repo>`, the merged nightshift pull requests seen.
+# live) and `out.jsonl` (the last run's raw stream-json), and `done` (why)
+# once its pull request merged or it closed, when only `log`, `session`,
+# `seen`, `started` and `pr` stay (`revived`, the merged pull request a
+# comment brought it back from); and per repo, `merged/<owner>_<repo>`, the
+# merged nightshift pull requests seen.
 set -u
 
 NS="${NIGHTSHIFT_HOME:-$HOME/.nightshift}"
@@ -389,6 +392,54 @@ check_prs() {
   done
 }
 
+# Issues that are done, with nothing running: their pull request merged, or
+# the issue closed with no stopped run to resume. A merge is one in
+# merged/<owner>_<repo>, or for a closed issue, GitHub says so.
+check_done() {
+  repo=$1 clone=$2
+  seen="$NS/merged/$(echo "$repo" | tr '/' '_')"
+  for d in "$NS/issues/$(echo "$repo" | tr '/' '_')"_*; do
+    [ -d "$d" ] || continue
+    [ -f "$d/done" ] || [ -f "$d/ignored" ] || running "$d" && continue
+    n=${d##*_}
+    pr=$(cat "$d/pr" 2>/dev/null)
+    why=""
+    if [ -n "$pr" ] && [ "$(cat "$d/revived" 2>/dev/null)" != "$pr" ] && grep -qxF "${pr##*/} $n" "$seen" 2>/dev/null; then
+      why="PR merged"
+    elif [ "$(cat "$d/off" 2>/dev/null)" = "issue closed" ] && [ ! -f "$d/interrupted" ]; then
+      why="issue closed"
+      [ -n "$pr" ] && [ "$(gh pr view "$pr" --repo "$repo" --json state -q .state 2>/dev/null)" = MERGED ] && why="PR merged"
+    fi
+    [ -n "$why" ] && retire "$repo" "$n" "$clone" "$d" "$why"
+  done
+}
+
+# A done issue: its worktree goes if it's clean, and after a merge its branch,
+# if all of it was in the pull request (-D: a squash merge leaves its commits
+# off the default branch). Of its state,
+# what's worth looking back at and what a comment needs to bring it back stays.
+retire() {
+  wt="$3/.claude/worktrees/issue-$2"
+  branch="nightshift/issue-$2"
+  if [ -d "$wt" ] && [ -z "$(git -C "$wt" status --porcelain 2>/dev/null)" ]; then
+    (cd "$wt" && signalbox down --detached-only >/dev/null 2>&1) || true
+    git -C "$3" worktree remove --force "$wt" 2>>"$4/log"
+  fi
+  if [ "$5" = "PR merged" ] && [ ! -d "$wt" ] && git -C "$3" rev-parse -q --verify "refs/heads/$branch" >/dev/null; then
+    head=$(gh pr view "$(cat "$4/pr")" --repo "$1" --json headRefOid -q .headRefOid 2>/dev/null)
+    if [ -n "$head" ] && git -C "$3" merge-base --is-ancestor "$branch" "$head" 2>/dev/null; then
+      git -C "$3" branch -q -D "$branch" 2>>"$4/log"
+    else
+      log "$1#$2: kept $branch: it has commits the merged pull request doesn't"
+    fi
+  fi
+  # Dated when it closed, if it already had (a merge closes the issue too).
+  echo "$5" >"$4/done"
+  [ -f "$4/off" ] && touch -r "$4/off" "$4/done"
+  find "$4" -mindepth 1 -maxdepth 1 ! -name "done" ! -name log ! -name session ! -name seen ! -name started ! -name pr -exec rm -rf {} +
+  log "$1#$2: done ($5)"
+}
+
 # An update run for an issue's pull request, started by the issue loop: its
 # status, and why, which the issue gets as a comment and the run as its news.
 queue_update() {
@@ -417,7 +468,7 @@ poll_repo() {
       rm -f "$d/off"
       continue
     fi
-    [ -f "$d/off" ] || [ -f "$d/ignored" ] && continue
+    [ -f "$d/off" ] || [ -f "$d/ignored" ] || [ -f "$d/done" ] && continue
     state=$(gh api "repos/$repo/issues/$n" --jq .state 2>/dev/null) || continue
     [ "$state" = closed ] && why="issue closed" || why="label removed"
     echo "$why" >"$d/off"
@@ -431,6 +482,7 @@ poll_repo() {
   done
 
   check_prs "$repo" "$open"
+  check_done "$repo" "$clone"
 
   printf '%s\n' "$open" | {
   count=0 did=""
@@ -477,6 +529,12 @@ poll_repo() {
 
 This is an update run: the issue skill's step for one.
 "
+    fi
+    # A comment brings a done issue back; its merged pull request no longer
+    # makes it done.
+    if [ -f "$d/done" ]; then
+      cp "$d/pr" "$d/revived" 2>/dev/null
+      rm -f "$d/done"
     fi
     printf '%s' "$news" >"$d/news"
     "$SELF" _run "$repo" "$n" "$clone" &
@@ -557,17 +615,22 @@ cmd_start() {
   fi
 }
 
+# `status [--all]`: done issues only with --all.
 cmd_status() {
+  case "$1" in "" | --all) ;; *) usage_error "usage: nightshift status [--all]" ;; esac
   service_line
-  found=0
+  found=0 hidden=0
   for d in "$NS"/issues/*/; do
     [ -d "$d" ] || continue
     d=${d%/}
+    if [ -f "$d/done" ] && [ "$1" != --all ]; then hidden=$((hidden + 1)); continue; fi
     found=1
     name=$(basename "$d")
     n=${name##*_}
     repo=$(echo "${name%_*}" | sed 's/_/\//')
     if [ -f "$d/ignored" ]; then what="ignored (labelled by someone else)"
+    elif [ -f "$d/done" ] && [ "$(cat "$d/done")" = "PR merged" ]; then what="done · PR $(cat "$d/pr") merged $(age "$d/done") ago"
+    elif [ -f "$d/done" ]; then what="done · $(cat "$d/done") $(age "$d/done") ago"
     elif running "$d" && [ -f "$d/updating" ]; then what="PR $(cat "$d/pr") · $(head -1 "$d/updating") $(age "$d/pid") (pid $(cat "$d/pid"))"
     elif running "$d"; then what="running $(age "$d/pid") (pid $(cat "$d/pid"))"
     elif [ -f "$d/off" ] && [ -f "$d/interrupted" ]; then what="stopped $(age "$d/off") ago ($(cat "$d/off")) · $(resume_hint "$d")"
@@ -581,7 +644,10 @@ cmd_status() {
     fi
     printf '%-40s %s\n' "$repo#$n" "$what"
   done
-  [ $found -eq 1 ] || echo "no issues yet"
+  if [ $found -eq 0 ] && [ $hidden -eq 0 ]; then echo "no issues yet"
+  elif [ $found -eq 0 ]; then echo "no issues in progress"
+  fi
+  [ $hidden -eq 0 ] || echo "($hidden done: nightshift status --all)"
 }
 
 # The issues an open pull request goes after: " · after #10, #11", or nothing.
@@ -724,7 +790,7 @@ case "${1:-}" in
 watch) cmd_watch ;;
 once) NIGHTSHIFT_WAIT=1; export NIGHTSHIFT_WAIT; poll ;;
 _run) shift; run_agent "$@"; rm -f "$(issue_dir "$1" "$2")/pid" "$(issue_dir "$1" "$2")/updating"; touch "$(issue_dir "$1" "$2")/finished" ;;
-status) cmd_status ;;
+status) shift; cmd_status "${1:-}" ;;
 start) cmd_start ;;
 stop) shift; cmd_stop "${1:-}" ;;
 logs) shift; cmd_logs "$@" ;;
