@@ -20,7 +20,7 @@ planned() {
   poll
   expect "go to a plan: a run" "$(runs)" 2
   expect "it's a fresh session" "$(run_opt --resume)" ""
-  expect_line "the prompt: the plan is approved" "$(run_prompt)" "^The plan is approved: build it"
+  expect_line "the prompt: the plan is approved" "$(run_prompt)" "^The plan is approved: build it with the nightshift:build skill"
   expect_line "the prompt: the issue's title" "$(run_prompt)" "^Issue 7$"
   expect_line "the prompt: the issue's body" "$(run_prompt)" "^Make it faster\.$"
   expect_line "the prompt: the plan" "$(run_prompt)" "^T1: the fast path\.$"
@@ -68,11 +68,11 @@ planned() {
   poll
   expect "with a pull request: the session resumes" "$(run_opt --resume)" session-1)
 
-# Any other approval: the planning run hands off with `nightshift label building`.
+# Any other approval: the planning run hands off with `nightshift build`.
 (world
   planned
   id=$(gh_comment o/r 7 alice "looks good, build it")
-  runs_do 'if [ "$k" = 2 ]; then nightshift label building >"$RUN/said"; else label building; comment progress; fi'
+  runs_do 'nightshift build >"$RUN/said"; [ "$k" = 2 ] || comment progress'
   poll
   expect "the reply resumes the planning session" "$(run_opt --resume)" session-1
   expect_line "the run is told to end" "$(cat "$CLAUDE_FAKE/runs/2/said")" "fresh session"
@@ -84,7 +84,8 @@ planned() {
   expect_line "the prompt: the approval" "$(run_prompt)" "^- @alice (comment $id):$"
   expect "the planning session is kept" "$(state 7 plan-session)" session-1
   expect "the build's is the session now" "$(state 7 session)" session-3
-  expect_ok "the build's own label hands nothing off" test ! -f "$(idir 7)/build"
+  expect_line "the build session builds" "$(cat "$CLAUDE_FAKE/runs/3/said")" "in this session"
+  expect_ok "and hands nothing off" test ! -f "$(idir 7)/build"
   poll
   expect "then nothing new: no run" "$(runs)" 3
   expect_no_unexpected)
@@ -93,16 +94,16 @@ planned() {
   planned
   echo "https://github.com/o/r/pull/9" >"$(idir 7)/pr"
   gh_comment o/r 7 alice "build it" >/dev/null
-  runs_do 'nightshift label building >"$RUN/said"'
+  runs_do 'nightshift build >"$RUN/said"'
   poll
-  expect "with a pull request: no hand-off" "$(cat "$CLAUDE_FAKE/runs/2/said")" ""
+  expect_line "with a pull request: no hand-off" "$(cat "$CLAUDE_FAKE/runs/2/said")" "in this session"
   expect_ok "nothing pending" test ! -f "$(idir 7)/build")
 
 (world
   gh_issue o/r 7 alice agent
-  runs_do 'nightshift label building >"$RUN/said"'
+  runs_do 'nightshift build >"$RUN/said"'
   poll
-  expect "a first run: no hand-off" "$(cat "$CLAUDE_FAKE/runs/1/said")" ""
+  expect_line "a first run: no hand-off" "$(cat "$CLAUDE_FAKE/runs/1/said")" "in this session"
   expect_ok "nothing pending" test ! -f "$(idir 7)/build")
 
 report

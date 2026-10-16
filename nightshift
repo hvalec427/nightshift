@@ -10,6 +10,7 @@
 #   nightshift logs [<owner/repo>#<n>] [-f] [-v…]  what every issue (or one) does, at a level
 #   nightshift add <owner/repo> <clone>  watch a repo, using this clone of it
 #   nightshift label <status>            (in a run) set its issue's status label
+#   nightshift build                     (in a run) build the approved plan, in a fresh session if it's the planning one
 #   nightshift doctor                    check the tools and setup it needs on this machine
 #   nightshift --version                 the version that runs
 #
@@ -500,7 +501,7 @@ build_intro() {
   plan=$(gh api --paginate "repos/$1/issues/$2/comments?per_page=100" \
     --jq ".[] | select(.body | contains(\"$MARKER\") and contains(\"nightshift:plan -->\")) | .body | @json" 2>/dev/null | tail -1 | jq -r . 2>/dev/null)
   printf '%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s' \
-    "The plan is approved: build it (the issue skill's step for an approved plan). This is a fresh session: the plan holds what was settled before it, so read the thread only for what came after it." \
+    "The plan is approved: build it with the nightshift:build skill. This is a fresh session: the plan holds what was settled before it, so read the thread only for what came after it." \
     "The issue:" "$issue" "The approved plan:" "$plan" "The approval:" "$(cat "$3/build")"
 }
 
@@ -1374,12 +1375,19 @@ cmd_label() {
   printf '%s\n' "$STATUSES" | cut -d'|' -f1 | grep -qxF "$1" ||
     die "usage: nightshift label <status>: one of $(printf '%s\n' "$STATUSES" | cut -d'|' -f1 | paste -sd, - | sed 's/,/, /g')"
   set_status "$NIGHTSHIFT_REPO" "$NIGHTSHIFT_ISSUE" "$1" || die "couldn't set the label: see nightshift logs"
-  # Building in the planning session: the approval. The build gets a fresh
-  # session, with the comments this run was given (see run_agent).
-  ld=$(issue_dir "$NIGHTSHIFT_REPO" "$NIGHTSHIFT_ISSUE")
-  if [ "$1" = building ] && handoff_ok "$ld" && [ ! -f "$ld/updating" ]; then
-    cp "$ld/news" "$ld/build" 2>/dev/null || : >"$ld/build"
-    echo "The plan is approved: nightshift builds it in a fresh session, with the issue, the plan and the approval. End this run now, without building."
+}
+
+# `build`: a run about to build the approved plan. In the planning session,
+# the build gets a fresh one, with the comments this run was given (see
+# run_agent), and the run ends; otherwise it builds here.
+cmd_build() {
+  [ -n "${NIGHTSHIFT_REPO:-}" ] && [ -n "${NIGHTSHIFT_ISSUE:-}" ] || die "nightshift build only works in a nightshift run"
+  bd=$(issue_dir "$NIGHTSHIFT_REPO" "$NIGHTSHIFT_ISSUE")
+  if handoff_ok "$bd" && [ ! -f "$bd/updating" ]; then
+    cp "$bd/news" "$bd/build" 2>/dev/null || : >"$bd/build"
+    echo "A fresh session builds it, with the issue, the plan and the approval: end this run now, with no comment."
+  else
+    echo "Build it in this session: invoke the nightshift:build skill."
   fi
 }
 
@@ -1391,7 +1399,7 @@ cmd_skill() {
   printf '%s\n' "$3" >"$(issue_dir "$1" "$2")/skill"
 }
 
-usage() { sed -n '2,14s/^# \{0,1\}//p' "$SELF"; }
+usage() { sed -n '2,15s/^# \{0,1\}//p' "$SELF"; }
 
 # Sourced for its functions (the tests): stop here.
 [ "${NIGHTSHIFT_LIB:-}" = 1 ] && return 0
@@ -1407,6 +1415,7 @@ stop) shift; cmd_stop "${1:-}" ;;
 logs) shift; cmd_logs "$@" ;;
 add) shift; cmd_add "$@" ;;
 label) shift; cmd_label "$*" ;;
+build) cmd_build ;;
 _skill) shift; cmd_skill "$@" ;;
 doctor) cmd_doctor ;;
 -V | --version | version) echo "nightshift $VERSION" ;;
