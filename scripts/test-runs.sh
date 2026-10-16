@@ -113,6 +113,18 @@ AT_LABEL='i=0; until gh api "repos/$NIGHTSHIFT_REPO/issues/$NIGHTSHIFT_ISSUE" --
   expect "a new run: the last one's skill is gone" "$(state 7 skill)" ""
   expect_no_unexpected)
 
+# A resumed session has its skill loaded already: it starts at that skill's label.
+(world
+  gh_issue o/r 7 alice agent
+  runs_do 'skill nightshift:build; comment questions'
+  poll
+  runs_do "$LABELS_NOW"'start"'
+  gh_comment o/r 7 alice "1 yes" >/dev/null
+  poll
+  expect "the reply resumes the session" "$(run_opt --resume)" session-1
+  expect "a resumed build run: building from the start" "$(grep '^nightshift: ' "$CLAUDE_FAKE/runs/2/start")" "nightshift: building"
+  expect_no_unexpected)
+
 (world
   gh_issue o/r 7 alice agent question
   runs_do 'at() { '"$AT_LABEL"'; '"$LABELS_NOW"'$2"; }
