@@ -321,8 +321,9 @@ The fake `claude` keeps each run's arguments and plays a script: its text,
 comments, skills it invokes, `nightshift label`, commits, a pull request, a failure, or waiting to be
 stopped. The fake `curl` answers the latest release and serves its `install.sh`.
 `scripts/test-service.sh` is the exception: it starts and stops a real
-LaunchAgent, `com.nightshift.test` (skipped where there's no GUI session), and
-runs `install.sh` into a throwaway `HOME`. `scripts/test-skills.sh` and
+LaunchAgent, one of `com.nightshift.test.1` … `.8`, claimed for the run so suites
+can run at once (skipped where there's no GUI session), and runs `install.sh` into
+a throwaway `HOME`. `scripts/test-skills.sh` and
 `scripts/test-review.sh` check the skills' wiring in the skill files themselves,
 since the fake `claude` can't see a run invoke a skill.
 

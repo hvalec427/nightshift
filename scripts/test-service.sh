@@ -55,7 +55,10 @@ labels() {
 }
 
 (labels
-  (claim_label && echo "$NIGHTSHIFT_LABEL" >"$NIGHTSHIFT_TEST_LABELS/a" && while [ ! -e "$NIGHTSHIFT_TEST_LABELS/done" ]; do sleep 0.1; done) &
+  # One holds its slot until done (or the pool is gone, if this one failed).
+  (claim_label
+    echo "$NIGHTSHIFT_LABEL" >"$NIGHTSHIFT_TEST_LABELS/a"
+    while [ -d "$NIGHTSHIFT_TEST_LABELS" ] && [ ! -e "$NIGHTSHIFT_TEST_LABELS/done" ]; do sleep 0.1; done) &
   wait_for "$NIGHTSHIFT_TEST_LABELS/a"
   b=$(claim_label && echo "$NIGHTSHIFT_LABEL")
   touch "$NIGHTSHIFT_TEST_LABELS/done"

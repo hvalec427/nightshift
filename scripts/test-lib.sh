@@ -111,16 +111,14 @@ NIGHTSHIFT_TEST_LABELS=${NIGHTSHIFT_TEST_LABELS:-${TMPDIR:-/tmp}/nightshift-test
 # Claim a free slot for the current (sub)shell, as NIGHTSHIFT_LABEL, waiting
 # for one 10 minutes at most.
 claim_label() {
-  local me slot lock holder tries=0
+  local me slot lock tries=0
   # This (sub)shell's pid ($$ is the top shell's; bash 3.2 has no BASHPID).
   me=$(exec sh -c 'echo $PPID')
   mkdir -p "$NIGHTSHIFT_TEST_LABELS"
   while [ $tries -lt 600 ]; do
-    for slot in 1 2 3 4 5 6 7 8; do
+    for slot in $(seq 8); do
       lock="$NIGHTSHIFT_TEST_LABELS/$slot"
-      holder=$(cat "$lock/pid" 2>/dev/null) || true
-      # A dead holder's slot: freed (a holder with no pid yet is mid-claim).
-      [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null && rm -rf "$lock"
+      free_dead_label "$lock"
       if mkdir "$lock" 2>/dev/null; then
         echo "$me" >"$lock/pid"
         export NIGHTSHIFT_LABEL="com.nightshift.test.$slot" NIGHTSHIFT_LABEL_LOCK="$lock"
@@ -130,8 +128,19 @@ claim_label() {
     sleep 1
     tries=$((tries + 1))
   done
-  echo "claim_label: all 8 test labels stayed taken for 10 minutes ($NIGHTSHIFT_TEST_LABELS)" >&2
+  echo "claim_label: every test label stayed taken for 10 minutes ($NIGHTSHIFT_TEST_LABELS)" >&2
   return 1
+}
+
+# Free a slot whose holder died (one with no pid yet is mid-claim). Under a
+# lock of its own, with the pid read again inside, so two claims can't both
+# free it, the second removing the first's fresh claim.
+free_dead_label() {
+  local holder
+  mkdir "$1.free" 2>/dev/null || return 0
+  holder=$(cat "$1/pid" 2>/dev/null) || true
+  if [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; then rm -rf "$1"; fi
+  rmdir "$1.free"
 }
 
 # Give back the slot claim_label took.
