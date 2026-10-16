@@ -282,10 +282,11 @@ change applies from the next run. Then come the repo's `instructions=` file, if
 it names one, which wins where the two disagree; nightshift only reads it. A
 repo that tracks its own `CLAUDE.local.md` keeps it, without nightshift's
 instructions (`nightshift doctor` flags it). Runs skip the clone's own
-`CLAUDE.md` and `CLAUDE.local.md` (the worktree has its branch's `CLAUDE.md`), so
-personal notes in the clone don't change them. What runs should learn about a
-project belongs in its committed `CLAUDE.md`. A `~/.nightshift/instructions.md`
-from an older version is ignored (`nightshift doctor` notes it).
+`CLAUDE.md`, `.claude/CLAUDE.md` and `CLAUDE.local.md` (the worktree has its
+branch's), so personal notes in the clone don't change them. What runs should
+learn about a project belongs in its committed `CLAUDE.md`. A
+`~/.nightshift/instructions.md` from an older version is ignored (`nightshift
+doctor` notes it).
 
 ## A dedicated machine
 

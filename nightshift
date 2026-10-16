@@ -307,20 +307,28 @@ worktree() {
   printf '%s' "$wt"
 }
 
-# Worktree $1's CLAUDE.local.md, rewritten for every run: nightshift's
-# instructions, which every agent and subagent in it loads (none without the
-# plugin's copy), then repo $3's own from its `instructions=` file, which win
-# (alone without the plugin's copy; only read, never written). One the repo
-# tracks is left alone; that, and a missing instructions= file, said in log
-# dir $2's log.
+# Whether checkout $1 tracks a CLAUDE.local.md of its own.
+tracks_local_md() { [ -n "$(git -C "$1" ls-files CLAUDE.local.md 2>/dev/null)" ]; }
+
+# Repo $1's instructions= file, `~/` expanded, or empty. Only ever read.
+repo_instructions() {
+  f=$(repo_option "$1" instructions)
+  case "$f" in \~/*) f="$HOME/${f#\~/}" ;; esac
+  printf '%s' "$f"
+}
+
+# Worktree $1's CLAUDE.local.md, which every agent and subagent in it loads,
+# rewritten for every run: nightshift's instructions, then repo $3's own,
+# which win. A tracked one is left alone, and a missing instructions= file
+# skipped, each said in log dir $2's log.
 write_instructions() {
-  git_exclude "$1" CLAUDE.local.md
-  if [ -n "$(git -C "$1" ls-files CLAUDE.local.md)" ]; then
+  git_exclude "$1" /CLAUDE.local.md
+  if tracks_local_md "$1"; then
     printf "0\t=== CLAUDE.local.md is tracked in the repo: nightshift's instructions aren't in it\n" >>"$2/log"
     return
   fi
-  own=$(repo_option "$3" instructions)
-  if [ -n "$own" ] && [ ! -r "$own" ]; then
+  own=$(repo_instructions "$3")
+  if [ -n "$own" ] && [ ! -f "$own" ]; then
     printf "0\t=== %s (this repo's instructions=) doesn't exist: runs on with nightshift's instructions only\n" "$own" >>"$2/log"
     own=""
   fi
@@ -343,12 +351,13 @@ ALLOWED_TOOLS='Bash(gh issue *) Bash(gh pr *) Bash(gh repo view *) Bash(gh api *
 # rn-agent when it's installed. Attribution in commits and pull requests is
 # off; the plugin's instructions.md, in the worktree's CLAUDE.local.md, says
 # what else to do (see write_instructions).
-RUN_SETTINGS='"attribution":{"commit":"","pr":""}'
+# A settings JSON member, joined into the run's --settings.
+ATTRIBUTION_OFF='"attribution":{"commit":"","pr":""}'
 
-# Every run skips the clone's own CLAUDE.md and CLAUDE.local.md, which it would
-# load walking up from the worktree: the worktree has its branch's CLAUDE.md,
-# and the clone's personal notes shouldn't change runs.
-md_excludes() { printf '"claudeMdExcludes":["%s/CLAUDE.md","%s/CLAUDE.local.md"]' "$1" "$1"; }
+# Every run skips clone $1's own CLAUDE.md files, which it would load walking
+# up from the worktree: the worktree has its branch's CLAUDE.md, and the
+# clone's personal notes shouldn't change runs. A settings JSON member.
+md_excludes() { printf '"claudeMdExcludes":["%s/CLAUDE.md","%s/.claude/CLAUDE.md","%s/CLAUDE.local.md"]' "$1" "$1" "$1"; }
 
 # rn-agent's plugin directory, if it's installed and enabled.
 rn_agent_dir() {
@@ -370,15 +379,15 @@ run_claude() {
   [ -n "$effort" ] && set -- "$@" --effort "$effort"
   # Without the plugin's copy (install.sh not run since), not isolated: the
   # run needs the issue skill.
-  settings="{$(md_excludes "$clone")}"
+  settings=$(md_excludes "$clone")
   if [ ! -d "$NS/plugin" ]; then
     printf "0\t=== no %s (run install.sh again): this run isn't isolated\n" "$NS/plugin" >>"$dir/log"
   else
-    settings="{$RUN_SETTINGS,$(md_excludes "$clone")}"
+    settings="$ATTRIBUTION_OFF,$settings"
     set -- "$@" --setting-sources project,local --plugin-dir "$NS/plugin"
     rn=$(rn_agent_dir) && set -- "$@" --plugin-dir "$rn"
   fi
-  set -- "$@" --settings "$settings"
+  set -- "$@" --settings "{$settings}"
   exec claude "$@" </dev/null
 }
 
@@ -1479,12 +1488,12 @@ cmd_doctor() {
     elif gh api "repos/$repo/labels/$LABEL" >/dev/null 2>&1; then pass "$repo: clone $clone, \`$LABEL\` label"
     else fail missing "$repo: its \`$LABEL\` label" "gh label create $LABEL --repo $repo --color 5319E7"
     fi
-    own=$(repo_option "$repo" instructions)
+    own=$(repo_instructions "$repo")
     if [ -z "$own" ]; then :
-    elif [ -r "$own" ]; then pass "$repo: instructions $own"
+    elif [ -f "$own" ]; then pass "$repo: instructions $own"
     else fail missing "$repo: its instructions ($own)" "create it, or fix its repo line in $CONFIG"
     fi
-    [ -n "$(git -C "$clone" ls-files CLAUDE.local.md 2>/dev/null)" ] &&
+    tracks_local_md "$clone" &&
       fail tracked "$repo: CLAUDE.local.md, so runs don't get nightshift's instructions" "untrack it: git -C $clone rm --cached CLAUDE.local.md"
     # A hint, not a problem: nightshift deletes its own merged branches.
     [ -n "$ghv" ] && [ "$(gh api "repos/$repo" -q .delete_branch_on_merge 2>/dev/null)" = false ] &&

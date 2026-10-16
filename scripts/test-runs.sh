@@ -151,7 +151,7 @@ AT_LABEL='i=0; until gh api "repos/$NIGHTSHIFT_REPO/issues/$NIGHTSHIFT_ISSUE" --
   expect_line "no plugin copy: says the run isn't isolated" "$(cat "$(idir 7)/log")" "run install.sh again): this run isn't isolated"
   expect "no plugin copy: no --setting-sources" "$(run_opt --setting-sources)" ""
   expect "no plugin copy: still the clone's CLAUDE.md and CLAUDE.local.md excluded" "$(run_opt --settings)" \
-    "{\"claudeMdExcludes\":[\"$CLONE/CLAUDE.md\",\"$CLONE/CLAUDE.local.md\"]}"
+    "{\"claudeMdExcludes\":[\"$CLONE/CLAUDE.md\",\"$CLONE/.claude/CLAUDE.md\",\"$CLONE/CLAUDE.local.md\"]}"
   expect_ok "no plugin copy: no CLAUDE.local.md" test ! -e "$CLONE/.claude/worktrees/issue-7/CLAUDE.local.md")
 
 (world
@@ -167,7 +167,7 @@ AT_LABEL='i=0; until gh api "repos/$NIGHTSHIFT_REPO/issues/$NIGHTSHIFT_ISSUE" --
   poll
   expect "isolated: only the project's settings" "$(run_opt --setting-sources)" "project,local"
   expect "isolated: attribution off, the clone's CLAUDE.md and CLAUDE.local.md excluded" "$(run_opt --settings)" \
-    "{\"attribution\":{\"commit\":\"\",\"pr\":\"\"},\"claudeMdExcludes\":[\"$CLONE/CLAUDE.md\",\"$CLONE/CLAUDE.local.md\"]}"
+    "{\"attribution\":{\"commit\":\"\",\"pr\":\"\"},\"claudeMdExcludes\":[\"$CLONE/CLAUDE.md\",\"$CLONE/.claude/CLAUDE.md\",\"$CLONE/CLAUDE.local.md\"]}"
   expect "isolated: nightshift's plugin" "$(run_opt --plugin-dir)" "$NS/plugin"
   expect "no instructions in the system prompt" "$(run_args | grep -cx -- --append-system-prompt)" 0
   expect "the run's CLAUDE.local.md: nightshift's instructions" "$(cat "$CLONE/.claude/worktrees/issue-7/CLAUDE.local.md")" "$(cat "$ROOT/plugin/instructions.md")"
@@ -232,6 +232,28 @@ Run make check.")
   gh_issue o/r 7 alice agent
   poll
   expect "instructions= before another option: still the clone's worktree, with the project's" "$(tail -1 "$CLONE/.claude/worktrees/issue-7/CLAUDE.local.md")" "Ours.")
+
+(world
+  cp -R "$ROOT/plugin" "$NS/plugin"
+  mkdir -p "$HOME/notes" && echo "Ours." >"$HOME/notes/ours.md"
+  printf 'repo %s %s instructions=~/notes/ours.md\n' "$REPO" "$CLONE" >"$NS/config"
+  gh_issue o/r 7 alice agent
+  poll
+  expect "instructions=~/ written by hand: home expanded" "$(tail -1 "$CLONE/.claude/worktrees/issue-7/CLAUDE.local.md")" "Ours.")
+
+(world
+  cp -R "$ROOT/plugin" "$NS/plugin"
+  mkdir "$W/dir.md"
+  printf 'repo %s %s instructions=%s\n' "$REPO" "$CLONE" "$W/dir.md" >"$NS/config"
+  gh_issue o/r 7 alice agent
+  poll
+  expect "instructions= a directory: nightshift's only" "$(cat "$CLONE/.claude/worktrees/issue-7/CLAUDE.local.md")" "$(cat "$ROOT/plugin/instructions.md")")
+
+(world
+  cp -R "$ROOT/plugin" "$NS/plugin"
+  gh_issue o/r 7 alice agent
+  poll
+  expect "only the root CLAUDE.local.md is excluded" "$(grep -c CLAUDE.local.md "$(git -C "$CLONE" rev-parse --path-format=absolute --git-common-dir)/info/exclude")$(grep -x /CLAUDE.local.md "$(git -C "$CLONE" rev-parse --path-format=absolute --git-common-dir)/info/exclude")" "1/CLAUDE.local.md")
 
 (world
   echo "Ours." >"$W/ours.md"
