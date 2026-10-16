@@ -7,7 +7,7 @@
 #   nightshift status                    the service, the issues it knows and what each is doing
 #   nightshift stop                      stop the service (until `nightshift start`)
 #   nightshift stop <owner/repo>#<n>     stop an issue's running agent
-#   nightshift logs [<owner/repo>#<n>] [-f] [-v…]  the watcher's log, or an issue's runs
+#   nightshift logs [<owner/repo>#<n>] [-f] [-v…]  what every issue (or one) does, at a level
 #   nightshift add <owner/repo> <clone>  watch a repo, using this clone of it
 #
 # State lives in $NIGHTSHIFT_HOME (default ~/.nightshift): `config`, and per
@@ -27,13 +27,16 @@ DOMAIN="gui/$(id -u)"
 MARKER="<!-- nightshift -->"
 LABEL=agent
 
-log() { printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >>"$NS/watch.log"; }
+# A line in watch.log, at the `runs` level (log_at: at another; see LEVELS).
+log() { log_at 0 "$*"; }
+log_at() { printf '%s\t%s %s\n' "$1" "$(date '+%Y-%m-%d %H:%M:%S')" "$2" >>"$NS/watch.log"; }
 
-# Keep watch.log to its last 5,000 lines once it passes 10,000 (a line per repo per poll).
+# Keep watch.log to its last 20,000 lines once it passes 40,000 (a line per repo
+# per poll, and every issue's lines).
 trim_log() {
   f="$NS/watch.log"
-  [ -f "$f" ] && [ "$(wc -l <"$f")" -gt 10000 ] || return 0
-  tail -n 5000 "$f" >"$f.tmp" && mv "$f.tmp" "$f"
+  [ -f "$f" ] && [ "$(wc -l <"$f")" -gt 40000 ] || return 0
+  tail -n 20000 "$f" >"$f.tmp" && mv "$f.tmp" "$f"
 }
 die() { echo "nightshift: $*" >&2; exit 1; }
 
@@ -167,9 +170,10 @@ ALLOWED_TOOLS='Bash(gh issue *) Bash(gh pr *) Bash(gh repo view *) Bash(gh api *
 # A run's stream-json events, one readable line each, tagged with the level
 # `logs` shows it from (a digit and a tab; see LEVELS): the comments it posts,
 # the agent's text, tool calls and failed results, then thinking and every
-# result. Raw lines (and everything without jq) stay untagged.
+# result. Raw lines (and everything without jq) stay untagged. `run` writes
+# them to the issue's log and to watch.log.
 RENDER='def line: tostring | gsub("\\s+"; " ") | if length > 300 then .[0:300] + "…" else . end;
-  def tag($l): "\($l)\t" + (now | strflocaltime("%H:%M:%S "));
+  def tag($l): "\($l)\t" + (now | strflocaltime("%Y-%m-%d %H:%M:%S "));
   def stage: (capture("nightshift:(?<s>[a-z]+) -->").s)? // null;
   def text: if type == "array" then map(.text? // "") | join(" ") else . end;
   # The comment stage of a `gh issue comment`: its body, or the file it was written to.
@@ -231,9 +235,18 @@ $intro"
   log "$repo#$n: run starting"
   t0=$(date +%s)
   printf '\n0\t=== %s run\n' "$(date '+%Y-%m-%d %H:%M:%S')" >>"$dir/log"
-  # The events go to out.jsonl as they come, and readably into the log.
+  # The events go to out.jsonl as they come, and readably into the log and,
+  # tagged with the issue, into watch.log (closed after each line, which
+  # trimming replaces).
   rm -f "$dir/stream" && mkfifo "$dir/stream"
-  tee "$dir/out.jsonl" <"$dir/stream" | render >>"$dir/log" &
+  tee "$dir/out.jsonl" <"$dir/stream" | render | awk -v own="$dir/log" -v all="$NS/watch.log" -v who="$repo#$n:" '
+    /^[0-3]\t[0-9-]+ [0-9:]+ / {
+      tag = substr($0, 1, 2); day = substr($0, 3, 11); time = substr($0, 14, 9); rest = substr($0, 23)
+      print tag time rest >>own; close(own)
+      print tag day time who " " rest >>all; close(all)
+      next
+    }
+    { print >>own; close(own) }' &
   rpid=$!
   # shellcheck disable=SC2086 # $resume is two words or none
   (cd "$wt" && exec claude -p "$prompt" --output-format stream-json --verbose --permission-mode "$mode" --allowedTools $ALLOWED_TOOLS $resume </dev/null) >"$dir/stream" 2>>"$dir/log" &
@@ -255,21 +268,22 @@ $intro"
   took=$(duration $(($(date +%s) - t0)))
   if [ $stopped -eq 1 ]; then
     run_end "stopped after $took"
-    log "$repo#$n: stopped"
+    log "$repo#$n: stopped after $took"
     return
   fi
   if [ $status -ne 0 ] || grep '"type" *: *"result"' "$dir/out.jsonl" | grep -q '"is_error" *: *true'; then
     run_end "failed ($status) after $took"
-    log "$repo#$n: run failed ($status)"
+    log "$repo#$n: run failed ($status) after $took"
     comment_failure "$repo" "$n" "$(show_level 3 <"$dir/log" | tail -15)"
   else
     run_end "done in $took"
-    log "$repo#$n: run done"
+    log "$repo#$n: run done in $took"
   fi
   # Once there's a pull request, the worktree's work is on GitHub: remove it
   # (the branch stays; a later comment brings it back).
   pr=$(gh pr list --repo "$repo" --head "nightshift/issue-$n" --state all --json url -q '.[0].url' 2>/dev/null)
   if [ -n "$pr" ]; then
+    [ "$(cat "$dir/pr" 2>/dev/null)" = "$pr" ] || log "$repo#$n: pull request $pr"
     echo "$pr" >"$dir/pr"
     if [ -z "$(git -C "$wt" status --porcelain 2>/dev/null)" ]; then
       (cd "$wt" && signalbox down --detached-only >/dev/null 2>&1) || true
@@ -354,7 +368,9 @@ poll_repo() {
     did="$did, started #$n"
   done
   [ $count -eq 1 ] && s="" || s="s"
-  log "polled $repo: $count labelled issue$s${did:-, nothing new}"
+  # Shown by default when it started an issue or one waits; otherwise at `all`.
+  case "$did" in *started* | *waits*) l=0 ;; *) l=3 ;; esac
+  log_at $l "polled $repo: $count labelled issue$s${did:-, nothing new}"
   # `once` waits for the runs it started (they're children of this pipeline).
   if [ "${NIGHTSHIFT_WAIT:-}" = 1 ]; then wait; fi
   }
