@@ -28,7 +28,7 @@ until mkdir "$CLAUDE_FAKE/runs/$k" 2>/dev/null; do k=$((k + 1)); done
 RUN="$CLAUDE_FAKE/runs/$k"
 printf '%s\0' "$@" >"$RUN/args"
 pwd -P >"$RUN/cwd"
-env | grep '^NIGHTSHIFT_' | sort >"$RUN/env"
+env | grep -E '^(NIGHTSHIFT_|CLAUDE_CODE_OAUTH_TOKEN=)' | sort >"$RUN/env"
 
 session="session-$k"
 prev=""
@@ -73,13 +73,12 @@ open_pr() {
 # The run's result is an error.
 error=false
 fail_result() { error=true; }
-# Wait until stopped (TERM): $RUN/waiting says it's waiting.
+# Wait until stopped (TERM): $RUN/waiting says it's waiting. Ends too if
+# nightshift's run (its parent) is gone.
 hang() {
-  trap 'kill "$spid" 2>/dev/null; touch "$RUN/stopped"; exit 143' TERM
-  sleep 600 &
-  spid=$!
+  trap 'touch "$RUN/stopped"; exit 143' TERM
   touch "$RUN/waiting"
-  wait "$spid"
+  while kill -0 "$PPID" 2>/dev/null; do sleep 0.2; done
 }
 
 event "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"$session\"}"

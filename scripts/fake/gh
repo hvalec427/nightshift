@@ -151,7 +151,7 @@ issue() {
 }
 
 case "${POS[0]:-}" in
-"") opt --version >/dev/null && { echo "gh version 2.99.0 (2026-01-01)"; exit 0; }; unexpected ;;
+"") opt --version >/dev/null && { echo "gh version ${FAKE_GH_VERSION:-2.99.0} (2026-01-01)"; exit 0; }; unexpected ;;
 api) api ;;
 pr) pr ;;
 issue) issue ;;

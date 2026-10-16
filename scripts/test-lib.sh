@@ -84,6 +84,17 @@ world() {
   git -C "$CLONE" push -q origin master
   gh_repo "$REPO" "$ORIGIN"
   printf 'repo %s %s\n' "$REPO" "$CLONE" >"$NS/config"
+  trap end_world EXIT
+}
+
+# Whatever a test left running in its world (on a failure): stopped.
+end_world() {
+  local p
+  for p in "$NS/watch.pid" "$NS"/issues/*/pid; do
+    [ -f "$p" ] && { kill -9 "$(cat "$p")" 2>/dev/null || true; }
+  done
+  pkill -9 -f "$W/" 2>/dev/null || true
+  return 0
 }
 
 # nightshift, as the user runs it.
