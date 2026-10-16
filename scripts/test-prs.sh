@@ -133,7 +133,7 @@ started"
   expect_line "the watch log says so" "$(cat "$NS/watch.log")" "o/r#7: done (PR merged), branch deleted$"
   expect_line "status: hidden" "$(ns status)" "^no issues in progress$"
   expect_line "status: counted" "$(ns status)" "^(1 done: nightshift status --all)$"
-  expect_line "status --all: shown" "$(ns status --all)" "^o/r#7  *done · PR $PR merged .* ago$"
+  expect_line "status --all: shown" "$(ns status --all)" "^o/r#7  *done · PR $PR merged .* ago · spent .*$"
   poll
   expect "done: no run" "$(runs)" 1
   gh_comment o/r 7 alice "one more thing" >/dev/null
@@ -188,7 +188,7 @@ started"
   expect "closed, nothing running: done" "$(state 7 "done")" "issue closed"
   expect_ok "its worktree is removed" test ! -d "$CLONE/.claude/worktrees/issue-7"
   expect_ok "its branch stays (nothing merged)" git -C "$CLONE" rev-parse -q --verify refs/heads/nightshift/issue-7
-  expect_line "status --all: closed" "$(ns status --all)" "^o/r#7  *done · issue closed .* ago$")
+  expect_line "status --all: closed" "$(ns status --all)" "^o/r#7  *done · issue closed .* ago · spent .*$")
 
 (world
   built

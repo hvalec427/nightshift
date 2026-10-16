@@ -70,6 +70,14 @@ open_pr() {
   gh pr create --repo "$NIGHTSHIFT_REPO" --head "nightshift/issue-$NIGHTSHIFT_ISSUE" --base master \
     --title "feat: issue $NIGHTSHIFT_ISSUE" --body "${1:-Closes #$NIGHTSHIFT_ISSUE}" >"$RUN/pr"
 }
+# What the run cost: dollars $1, and of model $2 tokens in $3, out $4, cache
+# read $5 and cache written $6 (again for another model: added).
+result_extra={}
+costs() {
+  result_extra=$(jq -cn --argjson x "$result_extra" --argjson usd "$1" --arg m "$2" --argjson i "$3" --argjson o "$4" --argjson r "$5" --argjson w "$6" \
+    '$x | .total_cost_usd = (.total_cost_usd // 0) + $usd
+      | .modelUsage[$m] = {inputTokens: $i, outputTokens: $o, cacheReadInputTokens: $r, cacheCreationInputTokens: $w, costUSD: $usd}')
+}
 # The run's result is an error.
 error=false
 fail_result() { error=true; }
@@ -85,5 +93,6 @@ event "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"$session\"}"
 code=0
 # shellcheck disable=SC1091
 [ -f "$CLAUDE_FAKE/script" ] && . "$CLAUDE_FAKE/script"
-event "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":$error,\"result\":\"done\",\"session_id\":\"$session\"}"
+event "$(jq -cn --argjson x "$result_extra" --argjson e "$error" --arg s "$session" \
+  '{type: "result", subtype: "success", is_error: $e, result: "done", session_id: $s} + $x')"
 exit "$code"
