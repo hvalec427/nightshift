@@ -13,7 +13,8 @@
 # State lives in $NIGHTSHIFT_HOME (default ~/.nightshift): `config`, and per
 # issue `issues/<owner>_<repo>_<n>/` with `session` (the Claude session id),
 # `seen` (the last comment handed to the agent), `pid` while it runs,
-# `finished` once a run ended, `pr` once it opened one, `log` (readable, live) and
+# `finished` once a run ended, `pr` once it opened one, `off` (why) while it has
+# no label or is closed, `interrupted` if that stopped a run, `log` (readable, live) and
 # `out.jsonl` (the last run's raw stream-json).
 set -u
 
@@ -268,15 +269,25 @@ poll_repo() {
   open=$(gh api "repos/$repo/issues?labels=$LABEL&state=open&per_page=100" \
     --jq '.[] | select(.pull_request | not) | "\(.number) \(.updated_at)"' 2>>"$NS/watch.log") || { log "$repo: couldn't list issues"; return; }
 
-  # Issues no longer labelled (or closed): stop what's running there.
+  # Issues no longer labelled (or closed): note which, once, and stop what's
+  # running there. Back in the list, the note goes.
   for d in "$NS/issues/$(echo "$repo" | tr '/' '_')"_*; do
     [ -d "$d" ] || continue
     n=${d##*_}
-    if ! printf '%s\n' "$open" | grep -q "^$n "; then
-      if running "$d"; then
-        kill -TERM "$(cat "$d/pid")" 2>/dev/null
-        log "$repo#$n: label removed or issue closed: stopped"
-      fi
+    if printf '%s\n' "$open" | grep -q "^$n "; then
+      rm -f "$d/off" "$d/interrupted"
+      continue
+    fi
+    [ -f "$d/off" ] || [ -f "$d/ignored" ] && continue
+    state=$(gh api "repos/$repo/issues/$n" --jq .state 2>/dev/null) || continue
+    [ "$state" = closed ] && why="issue closed" || why="label removed"
+    echo "$why" >"$d/off"
+    if running "$d"; then
+      echo "$why" >"$d/interrupted"
+      kill -TERM "$(cat "$d/pid")" 2>/dev/null
+      log "$repo#$n: $why: stopped"
+    else
+      log "$repo#$n: $why"
     fi
   done
 
@@ -407,6 +418,9 @@ cmd_status() {
     repo=$(echo "${name%_*}" | sed 's/_/\//')
     if [ -f "$d/ignored" ]; then what="ignored (labelled by someone else)"
     elif running "$d"; then what="running $(age "$d/pid") (pid $(cat "$d/pid"))"
+    elif [ -f "$d/off" ] && [ -f "$d/interrupted" ]; then what="stopped $(age "$d/off") ago ($(cat "$d/off"))"
+    elif [ -f "$d/off" ] && [ -f "$d/pr" ]; then what="PR $(cat "$d/pr") · $(cat "$d/off")"
+    elif [ -f "$d/off" ]; then what="$(cat "$d/off") $(age "$d/off") ago"
     elif [ -f "$d/pr" ]; then what="PR $(cat "$d/pr")$(waited "$d" " · waiting ")"
     elif [ -s "$d/session" ]; then what="waiting for a reply$(waited "$d" " · ")"
     else what="queued"
