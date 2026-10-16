@@ -75,16 +75,29 @@ applies, and end the run after its comment:
    can reply "1 yes, 2 b". Ask the questions that change what gets built; settle the rest
    yourself and say how. How to find and word them: [questions.md](questions.md).
 2. **No plan yet, nothing open** (or the answers are in). `nightshift label planning`,
-   then write the plan as one `plan` comment:
-   - **Spec**, following [spec.md](spec.md) (problem, solution, user stories,
-     implementation and testing decisions), sized to the issue: a small change gets a few
-     lines.
-   - **Tickets**, following [tickets.md](tickets.md): tracer-bullet vertical slices in
-     build order, each with what it delivers, what blocks it and its acceptance criteria,
-     numbered `T1`, `T2`, …, all in this comment (no new issues).
-   - **Overlap** (below) with other nightshift work, if any: "touches the same code as
-     #10", "relies on the flag #10 adds", and which goes first.
+   then write the plan as one `plan` comment, short enough to read in a minute:
+   - **On top:** what gets built, in two or three lines; the decisions the user should
+     see; the tickets, one line each, in build order (`**T1: <title>.** <what it
+     delivers>`); and the **overlap** (below) with other nightshift work, if any.
+   - **Collapsed,** in one `<details><summary>Full spec</summary>` block: the **spec**,
+     following [spec.md](spec.md), and each ticket's blockers and acceptance criteria,
+     following [tickets.md](tickets.md). All tickets are in this comment (no new issues).
    - It ends with "Reply **go** to build it, or tell me what to change."
+
+   ```
+   **What changes:** <two or three lines>.
+
+   **Tickets**
+   - **T1: <title>.** <what it delivers>
+   - **T2: <title>.** <what it delivers>
+
+   <details><summary>Full spec</summary>
+
+   <the spec, then each ticket's blockers and criteria>
+   </details>
+
+   Reply **go** to build it, or tell me what to change.
+   ```
 3. **A plan, and the user asked for changes.** `nightshift label planning`, a revised
    `plan` comment, then wait again.
 4. **A plan the user approved** ("go", or anything that clearly means build it).
