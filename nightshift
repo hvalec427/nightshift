@@ -3,7 +3,7 @@
 #
 #   nightshift watch                     poll the configured repos and run agents
 #   nightshift once                      one poll, then exit (for testing)
-#   nightshift status                    the issues it knows and what each is doing
+#   nightshift status                    the service, the issues it knows and what each is doing
 #   nightshift stop <owner/repo>#<n>     stop an issue's running agent
 #   nightshift logs [<owner/repo>#<n>] [-f]  the watcher's log, or an issue's runs
 #   nightshift add <owner/repo> <clone>  watch a repo, using this clone of it
@@ -18,6 +18,10 @@ set -u
 NS="${NIGHTSHIFT_HOME:-$HOME/.nightshift}"
 SELF="$(cd "$(dirname "$0")" && pwd -P)/$(basename "$0")"
 CONFIG="$NS/config"
+# The LaunchAgent that runs `nightshift watch` (NIGHTSHIFT_LABEL is for tests).
+SERVICE="${NIGHTSHIFT_LABEL:-com.nightshift.watch}"
+PLIST="$HOME/Library/LaunchAgents/$SERVICE.plist"
+DOMAIN="gui/$(id -u)"
 MARKER="<!-- nightshift -->"
 LABEL=agent
 
@@ -69,6 +73,35 @@ count_running() {
     [ -d "$d" ] && running "${d%/}" && n=$((n + 1))
   done
   echo $n
+}
+
+# --- the service ------------------------------------------------------------------
+
+# The service's pid, if launchd is running it.
+service_pid() {
+  launchctl print "$DOMAIN/$SERVICE" 2>/dev/null | sed -n 's/^	pid = \([0-9]*\)$/\1/p'
+}
+
+service_disabled() {
+  launchctl print-disabled "$DOMAIN" 2>/dev/null | grep -Eq "\"$SERVICE\" => (disabled|true)"
+}
+
+# The pid of a `nightshift watch` run by hand (not by the service), if one runs.
+hand_pid() {
+  p=$(cat "$NS/watch.pid" 2>/dev/null)
+  [ -n "$p" ] && kill -0 "$p" 2>/dev/null && [ "$p" != "$(service_pid)" ] && printf '%s' "$p"
+}
+
+service_line() {
+  pid=$(service_pid)
+  if [ -n "$pid" ]; then s="running (pid $pid)"
+  elif [ -f "$PLIST" ]; then
+    s="stopped"
+    service_disabled && s="$s (disabled)"
+  else s="not installed"
+  fi
+  h=$(hand_pid) && s="$s · nightshift watch runs by hand (pid $h)"
+  echo "service: $s"
 }
 
 # --- one agent run --------------------------------------------------------------
@@ -283,6 +316,7 @@ cmd_watch() {
     CLAUDE_CODE_OAUTH_TOKEN=$(cat "$NS/token")
     export CLAUDE_CODE_OAUTH_TOKEN
   fi
+  echo $$ >"$NS/watch.pid"
   log "watching: $(repos | cut -d' ' -f1 | tr '\n' ' ')"
   while :; do
     poll
@@ -292,6 +326,7 @@ cmd_watch() {
 }
 
 cmd_status() {
+  service_line
   found=0
   for d in "$NS"/issues/*/; do
     [ -d "$d" ] || continue
