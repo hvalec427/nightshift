@@ -80,8 +80,8 @@ branch `nightshift/issue-<n>`) and one Claude session that every run continues, 
 it remembers the whole conversation. Once the pull request is open, the worktree is
 removed; the branch stays. Once it's done (its pull request merged, or the issue
 closed with nothing to resume), only its log and what it needs to come back stay
-in `~/.nightshift`. A merged branch is deleted, unless it has commits the pull
-request didn't. A comment on a done issue (open and labelled) picks it up again.
+in `~/.nightshift`. A merged branch is deleted, here and on GitHub, unless it has
+commits the pull request didn't (a failed delete on GitHub is logged, not fatal). A comment on a done issue (open and labelled) picks it up again.
 
 ## Status labels
 
