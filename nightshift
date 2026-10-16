@@ -21,9 +21,9 @@
 # its open pull request goes after), `update` while an update run waits and
 # `updating` while it runs (its status, then why), `conflict` (the default
 # branch's commit its pull request was last updated for), `log` (readable,
-# live) and `out.jsonl` (the last run's raw stream-json), and `done` (why)
-# once its pull request merged or it closed, when only `log`, `session`,
-# `seen`, `started` and `pr` stay (`revived`, the merged pull request a
+# live) and `out.jsonl` (the last run's raw stream-json), `cost` (what its
+# runs cost, added up), and `done` (why) once its pull request merged or it
+# closed, when only `log`, `session`, `seen`, `started` and `pr` stay (`revived`, the merged pull request a
 # comment brought it back from); `label`, its status label (see STATUSES);
 # `type`, its type label as the last run left it (see TYPES); and
 # per repo, `merged/<owner>_<repo>`, the merged nightshift pull requests seen,
@@ -427,7 +427,9 @@ $intro"
   [ -n "$sid" ] && echo "$sid" >"$dir/session"
   # The type as the run left it, so a change by the user shows next time.
   t=$(fetch_type "$repo" "$n") && printf '%s\n' "$t" >"$dir/type"
-  took=$(duration $(($(date +%s) - t0)))
+  secs=$(($(date +%s) - t0))
+  took=$(duration $secs)
+  add_cost "$dir" $secs "$resume"
   if [ $stopped -eq 1 ]; then
     run_end "stopped after $took"
     log "$repo#$n: stopped after $took"
@@ -469,6 +471,28 @@ type_note() {
   if [ -n "$t" ]; then echo "Its type label: \`$t\`.$changed"
   else echo "It has no type label.$changed"
   fi
+}
+
+# A run's dollars and tokens (from its result, none without one) and its
+# seconds $2, added to the issue's `cost`: a line of dollars, tokens in, out
+# and cache (read and written), seconds, runs, and the day counting started,
+# or - if with the issue's first run ($3, the run's --resume, empty).
+# shellcheck disable=SC2016 # a jq program: $ is jq's
+COST='fromjson? | select(.type? == "result") | [.modelUsage[]?] as $m
+  | def sum(f): [$m[] | f // 0] | add // 0;
+  [.total_cost_usd // 0, sum(.inputTokens), sum(.outputTokens), sum((.cacheReadInputTokens // 0) + (.cacheCreationInputTokens // 0))]
+  | map(tostring) | join(" ")'
+add_cost() {
+  run=$(jq -R -r "$COST" "$1/out.jsonl" 2>/dev/null | tail -1)
+  if [ ! -f "$1/cost" ]; then
+    since=-
+    [ -n "$3" ] && since=$(date +%Y-%m-%d)
+    echo "0 0 0 0 0 0 $since" >"$1/cost"
+  fi
+  awk -v run="${run:-0 0 0 0}" -v s="$2" '{
+    split(run, r, " ")
+    printf "%s %.0f %.0f %.0f %.0f %d %s\n", $1 + r[1], $2 + r[2], $3 + r[3], $4 + r[4], $5 + s, $6 + 1, $7
+  }' "$1/cost" >"$1/cost.tmp" && mv "$1/cost.tmp" "$1/cost"
 }
 
 # The run's last line in its issue log.
