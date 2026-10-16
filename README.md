@@ -214,6 +214,8 @@ allowed_users=hvalec427
 max_parallel=2
 interval=5
 permission_mode=auto
+model=opus
+effort=high
 ```
 
 - `allowed_users`: whose labels and comments count (default: your gh account).
@@ -232,6 +234,13 @@ permission_mode=auto
   a clone's.
 - `permission_mode`: Claude Code's permission mode for runs. Commands that reach
   GitHub (`gh`, `git`) and signalbox and boop are always allowed.
+- `model`: the model runs use, as `claude --model` takes it: an alias (`opus`,
+  `sonnet`) or a full model id. Unset (the default), runs get your account's
+  default model; your own `model` in `~/.claude/settings.json` doesn't reach
+  isolated runs. A change applies from the next run, resumed ones included.
+- `effort`: the effort level runs use (`claude --effort`): `low`, `medium`,
+  `high`, `xhigh` or `max`. Unset (the default), Claude Code's own.
+  `nightshift doctor` shows both, and flags an effort that isn't one of these.
 - `isolated`: `true` (the default) runs Claude without the machine's own
   user-level setup, so every machine works an issue the same way: no skills from
   `~/.claude/skills`, no `~/.claude/settings.json`, `~/.claude/CLAUDE.md`,

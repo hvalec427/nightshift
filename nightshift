@@ -307,6 +307,10 @@ run_claude() {
   export PATH NIGHTSHIFT_REPO NIGHTSHIFT_ISSUE
   # shellcheck disable=SC2086 # $ALLOWED_TOOLS is a word per tool, $resume two words or none
   set -- -p "$1" --output-format stream-json --verbose --permission-mode "$mode" --allowedTools $ALLOWED_TOOLS $resume
+  # The config's model and effort, if set; unset, the account's default.
+  model=$(setting model "") effort=$(setting effort "")
+  [ -n "$model" ] && set -- "$@" --model "$model"
+  [ -n "$effort" ] && set -- "$@" --effort "$effort"
   # Without the plugin's copy (install.sh not run since), not isolated: the
   # run needs the issue skill.
   if [ "$(setting isolated true)" != false ] && [ ! -d "$NS/plugin" ]; then
@@ -1217,6 +1221,19 @@ version_line() {
   return 0
 }
 
+# doctor's line for the model and effort runs use: the config's, or the
+# defaults (the account's model, Claude Code's effort) where it has none.
+runs_line() {
+  model=$(setting model "") effort=$(setting effort "") unset=""
+  case "$effort" in
+  "" | low | medium | high | xhigh | max) ;;
+  *) fail invalid "runs: effort $effort" "set effort= in $CONFIG to low, medium, high, xhigh or max"; return 0 ;;
+  esac
+  if [ -n "$model" ]; then m="model $model"; else m="the account's default model" unset="model="; fi
+  if [ -n "$effort" ]; then e="effort $effort"; else e="the default effort" unset="${unset:+$unset and }effort="; fi
+  pass "runs: $m, $e${unset:+ (set $unset in $CONFIG to choose)}"
+}
+
 # A clone whose app is React Native.
 is_rn() { grep -q '"react-native" *:' "$1/package.json" 2>/dev/null; }
 
@@ -1256,6 +1273,7 @@ cmd_doctor() {
   if [ -s "$NS/plugin/instructions.md" ]; then pass "instructions: nightshift's defaults $mine"
   else fail missing "nightshift's default instructions ($NS/plugin/instructions.md)" "run install.sh again"
   fi
+  runs_line
 
   echo "repos"
   rn=""
