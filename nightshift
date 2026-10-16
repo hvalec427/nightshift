@@ -216,6 +216,7 @@ set_status() {
 # The status of an issue with nothing running, from its log's last run: how it
 # ended, and the stage of the last comment it posted.
 idle_status() {
+  [ -f "$1/build" ] && { echo queued; return; }
   # shellcheck disable=SC2016 # awk's $0, not the shell's
   ended=$(awk '
     /^0\t=== [0-9-]+ [0-9:]+ run$/ { end = ""; stage = "" }
@@ -1010,6 +1011,7 @@ cmd_status() {
     elif [ -f "$d/off" ] && [ -f "$d/pr" ]; then what="PR $(cat "$d/pr") · $(cat "$d/off")"
     elif [ -f "$d/off" ]; then what="$(cat "$d/off") $(age "$d/off") ago"
     elif [ -f "$d/interrupted" ]; then what="queued to resume"
+    elif [ -f "$d/build" ]; then what="queued to build"
     elif [ -f "$d/update" ]; then what="PR $(cat "$d/pr") · queued: $(head -1 "$d/update")"
     elif [ -f "$d/pr" ] && [ "$(label_or "$d" "PR open")" = "PR open" ]; then what="PR $(cat "$d/pr")$(after_note "$d")$(skill_note "$d")$(waited "$d" " · waiting ")"
     elif [ -f "$d/pr" ]; then what="PR $(cat "$d/pr")$(after_note "$d") · $(cat "$d/label")$(skill_note "$d")$(waited "$d" " · ")"
@@ -1370,6 +1372,13 @@ cmd_label() {
   printf '%s\n' "$STATUSES" | cut -d'|' -f1 | grep -qxF "$1" ||
     die "usage: nightshift label <status>: one of $(printf '%s\n' "$STATUSES" | cut -d'|' -f1 | paste -sd, - | sed 's/,/, /g')"
   set_status "$NIGHTSHIFT_REPO" "$NIGHTSHIFT_ISSUE" "$1" || die "couldn't set the label: see nightshift logs"
+  # Building in the planning session: the approval. The build gets a fresh
+  # session, with the comments this run was given (see run_agent).
+  ld=$(issue_dir "$NIGHTSHIFT_REPO" "$NIGHTSHIFT_ISSUE")
+  if [ "$1" = building ] && handoff_ok "$ld" && [ ! -f "$ld/updating" ]; then
+    cp "$ld/news" "$ld/build" 2>/dev/null || : >"$ld/build"
+    echo "The plan is approved: nightshift builds it in a fresh session, with the issue, the plan and the approval. End this run now, without building."
+  fi
 }
 
 # `_skill <repo> <n> nightshift:<name>`: a run invoked the skill; keep it, and
