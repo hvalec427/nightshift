@@ -81,7 +81,7 @@ For React Native repos (required once a watched repo's `package.json` has
 |---|---|
 | Open an issue, add the `agent` label (and a [type](#issue-types) label) | Reads it and the code; asks its questions in one comment (each with its recommended answer), or goes straight to the plan |
 | Reply | More questions, or a plan: the spec and its tickets, in the to-spec and to-tickets format of [Matt Pocock's skills](https://github.com/mattpocock/skills) |
-| Reply **go** (or what to change) | Builds the tickets in order, each in a subagent of its own (so one ticket's work doesn't crowd the next; a one-ticket plan is built directly), a progress comment per ticket, then opens the pull request and links it |
+| Reply **go** (or what to change) | Builds the tickets in order, each in a subagent of its own (so one ticket's work doesn't crowd the next; a one-ticket plan is built directly), a progress comment per ticket; has two fresh subagents review the change against the plan and the repo's standards, and fixes what they found in one pass; then opens the pull request and links it, with what the review found |
 | Comment on the issue after that | Makes the change on the same branch and pushes it |
 | Merge another pull request | Rebases and updates the ones it affects (below) |
 | Remove the label, add `invalid` or `wontfix`, or close the issue | Stops it; `nightshift status` says so and why |
@@ -101,9 +101,9 @@ in `~/.nightshift`. A merged branch is deleted, here and on GitHub, unless it ha
 commits the pull request didn't (a failed delete on GitHub is logged, not fatal). A comment on a done issue (open and labelled) picks it up again.
 
 Each run starts in the plugin's `issue` skill, which reads the thread and hands the
-stage to a skill of its own: `questions`, `plan`, `build` (then `finish`), `update`, or
-`answer` for question and duplicate issues. Invoking a skill loads all of its guidance,
-so no stage runs without it. The status label follows the skill, `nightshift logs`
+stage to a skill of its own: `questions`, `plan`, `build` (then `review` and
+`finish`), `update`, or `answer` for question and duplicate issues. Invoking a
+skill loads all of its guidance, so no stage runs without it. The status label follows the skill, `nightshift logs`
 shows each one a run invokes, and each comment names the skill that wrote it
 (`🤖 nightshift · plan · nightshift:plan`).
 
@@ -150,7 +150,7 @@ waiting on you:
 
 The watcher sets them as runs start and end, and as a run invokes one of
 nightshift's skills: `nightshift:questions` sets `thinking`, `plan` `planning`,
-`build` and `finish` `building`, `update` `updating` and `answer` `answering`
+`build`, `review` and `finish` `building`, `update` `updating` and `answer` `answering`
 (`nightshift label <status>` sets one by hand). They come off once it's done, or when you remove the `agent` label with nothing
 running (and come back with it). `nightshift status` says the same, with the
 skill a run is in (or its last one ended in).
@@ -322,7 +322,9 @@ comments, skills it invokes, `nightshift label`, commits, a pull request, a fail
 stopped. The fake `curl` answers the latest release and serves its `install.sh`.
 `scripts/test-service.sh` is the exception: it starts and stops a real
 LaunchAgent, `com.nightshift.test` (skipped where there's no GUI session), and
-runs `install.sh` into a throwaway `HOME`.
+runs `install.sh` into a throwaway `HOME`. `scripts/test-skills.sh` and
+`scripts/test-review.sh` check the skills' wiring in the skill files themselves,
+since the fake `claude` can't see a run invoke a skill.
 
 A test is a few lines in a subshell, with the helpers in `scripts/test-lib.sh`:
 
@@ -336,8 +338,8 @@ A test is a few lines in a subshell, with the helpers in `scripts/test-lib.sh`:
 
 ## Credits
 
-How nightshift asks, specs, tickets and tests (the plugin's `questions`, `plan` and
-`build` skills) is adapted from
+How nightshift asks, specs, tickets, tests and reviews (the plugin's `questions`, `plan`,
+`build` and `review` skills) is adapted from
 [Matt Pocock's skills](https://github.com/mattpocock/skills) (MIT): see
 [plugin/THIRD_PARTY.md](plugin/THIRD_PARTY.md). They ship in the plugin, so a run
 doesn't depend on which skills the machine has.

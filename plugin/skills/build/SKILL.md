@@ -22,11 +22,21 @@ Build the tickets in order, one at a time, in this worktree:
   you build yourself: there's no next ticket to keep clean.
 - A ticket that can't be finished (a decision the plan didn't cover, a broken
   dependency): a `blocked` comment saying what's needed, and end the run.
-- After the last ticket, check the **overlap** (in the issue skill) again, since other
-  work may have started or merged since the plan, and invoke the `nightshift:finish`
-  skill to open the pull request, with the overlap lines in its body. Then a `done`
-  comment with its link and what's in it. The watcher removes the worktree after this
-  run.
+- After the last ticket, review the change with the `nightshift:review` skill (invoke it
+  with the Skill tool): one review, one fix pass.
+- Then check the **overlap** (in the issue skill) again, since other work may have
+  started or merged since the plan, and invoke the `nightshift:finish` skill to open the
+  pull request, with the overlap lines in its body. The review's findings left open go in
+  the pull request body too, as what's left open. Then a `done` comment with its link and
+  what's in it, and the review: a line counting it, then each finding in a `<details>`
+  block, a line each (its axis, what it found, and fixed, or dismissed and why, or left
+  open):
+
+  ```
+  **Review:** <n> found: <n> fixed, <n> dismissed, <n> left open.
+  ```
+
+  The watcher removes the worktree after this run.
 
 ## Ticket subagents
 

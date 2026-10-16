@@ -94,6 +94,14 @@ AT_LABEL='i=0; until gh api "repos/$NIGHTSHIFT_REPO/issues/$NIGHTSHIFT_ISSUE" --
 
 (world
   gh_issue o/r 7 alice agent
+  runs_do 'at() { '"$AT_LABEL"'; '"$LABELS_NOW"'$2"; }
+    skill nightshift:plan; at planning plan
+    skill nightshift:review; at building review'
+  poll
+  expect "the review skill: building" "$(grep '^nightshift: ' "$CLAUDE_FAKE/runs/1/review")" "nightshift: building")
+
+(world
+  gh_issue o/r 7 alice agent
   runs_do ''
   poll
   expect "a run that posts nothing: needs you" "$(status_label 7)" "needs you")
