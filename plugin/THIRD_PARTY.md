@@ -1,7 +1,8 @@
 # Third-party notices
 
-The guidance in the `questions`, `plan` and `build` skills is adapted from Matt Pocock's
-skills (`grilling` in `questions`, `to-spec` and `to-tickets` in `plan`, `tdd` in `build`),
+The guidance in the `questions`, `plan`, `build` and `review` skills is adapted from Matt
+Pocock's skills (`grilling` in `questions`, `to-spec` and `to-tickets` in `plan`, `tdd` in
+`build`, `code-review` in `review`),
 https://github.com/mattpocock/skills, under the MIT License:
 
 ```

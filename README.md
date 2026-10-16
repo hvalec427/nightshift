@@ -81,7 +81,7 @@ For React Native repos (required once a watched repo's `package.json` has
 |---|---|
 | Open an issue, add the `agent` label (and a [type](#issue-types) label) | Reads it and the code; asks its questions in one comment (each with its recommended answer), or goes straight to the plan |
 | Reply | More questions, or a plan: the spec and its tickets, in the to-spec and to-tickets format of [Matt Pocock's skills](https://github.com/mattpocock/skills) |
-| Reply **go** (or what to change) | Builds the tickets in order, each in a subagent of its own (so one ticket's work doesn't crowd the next; a one-ticket plan is built directly), a progress comment per ticket, then opens the pull request and links it |
+| Reply **go** (or what to change) | Builds the tickets in order, each in a subagent of its own (so one ticket's work doesn't crowd the next; a one-ticket plan is built directly), a progress comment per ticket; has two fresh subagents review the change against the plan and the repo's standards, and fixes what they found in one pass; then opens the pull request and links it, with what the review found |
 | Comment on the issue after that | Makes the change on the same branch and pushes it |
 | Merge another pull request | Rebases and updates the ones it affects (below) |
 | Remove the label, add `invalid` or `wontfix`, or close the issue | Stops it; `nightshift status` says so and why |
@@ -332,8 +332,8 @@ A test is a few lines in a subshell, with the helpers in `scripts/test-lib.sh`:
 
 ## Credits
 
-How nightshift asks, specs, tickets and tests (the plugin's `questions`, `plan` and
-`build` skills) is adapted from
+How nightshift asks, specs, tickets, tests and reviews (the plugin's `questions`, `plan`,
+`build` and `review` skills) is adapted from
 [Matt Pocock's skills](https://github.com/mattpocock/skills) (MIT): see
 [plugin/THIRD_PARTY.md](plugin/THIRD_PARTY.md). They ship in the plugin, so a run
 doesn't depend on which skills the machine has.
