@@ -318,7 +318,9 @@ comments, skills it invokes, `nightshift label`, commits, a pull request, a fail
 stopped. The fake `curl` answers the latest release and serves its `install.sh`.
 `scripts/test-service.sh` is the exception: it starts and stops a real
 LaunchAgent, `com.nightshift.test` (skipped where there's no GUI session), and
-runs `install.sh` into a throwaway `HOME`.
+runs `install.sh` into a throwaway `HOME`. `scripts/test-skills.sh` and
+`scripts/test-review.sh` check the skills' wiring in the skill files themselves,
+since the fake `claude` can't see a run invoke a skill.
 
 A test is a few lines in a subshell, with the helpers in `scripts/test-lib.sh`:
 
