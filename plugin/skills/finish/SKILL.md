@@ -41,7 +41,9 @@ own check; stop and say so at the first one that fails, leaving everything in pl
 6. **Clean up.** If this checkout's app is running, stop it: `signalbox down
    --detached-only`, which deletes its simulator.
    - **Under nightshift** (started on an issue), stop here: the watcher removes the
-     worktree after the run.
+     worktree after the run. When the run prompt says "This repo auto-merges", the build
+     skill hands the pull request to the merge skill after its `done` comment, so the
+     review it reports is there to read; you don't merge.
    - **In an interactive `claude --worktree` session,** remove the worktree from the main
      checkout, keeping the branch: `git -C <main checkout> worktree remove --force <this
      worktree>`, where the main checkout is `git rev-parse --path-format=absolute

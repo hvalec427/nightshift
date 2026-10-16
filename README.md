@@ -85,7 +85,9 @@ For React Native repos (required once a watched repo's `package.json` has
 | Open an issue, add the `agent` label (and a [type](#issue-types) label) | Reads it and the code; asks its questions in one comment (each with its recommended answer), or goes straight to the plan |
 | Reply | More questions, or a plan: the spec and its tickets, in the to-spec and to-tickets format of [Matt Pocock's skills](https://github.com/mattpocock/skills) |
 | Reply **go** (or what to change) | Builds the tickets in order, each in a subagent of its own (so one ticket's work doesn't crowd the next; a one-ticket plan is built directly), a progress comment per ticket; has two fresh subagents review the change against the plan and the repo's standards, and fixes what they found in one pass; then opens the pull request and links it, with what the review found |
-| Comment on the issue after that | Makes the change on the same branch and pushes it |
+| (unless the repo has `auto_merge=false`) | Once the pull request is open or updated and its checks pass, squash-merges it when nothing in it needs you; otherwise lists what does in a look comment (a decision the plan didn't cover, a finding left open, a breaking or security-relevant change, …) |
+| Reply **merge** to a look comment | Checks it again (checks, conflicts, the pull requests it goes after) and merges it |
+| Comment on the issue after that | Makes the change on the same branch and pushes it (and checks it for merging again) |
 | Merge another pull request | Rebases and updates the ones it affects (below) |
 | Remove the label, add `invalid` or `wontfix`, or close the issue | Stops it; `nightshift status` says so and why |
 | Add the label back, remove `invalid`/`wontfix`, or reopen it | Picks up the stopped run where it left off |
@@ -104,8 +106,9 @@ in `~/.nightshift`. A merged branch is deleted, here and on GitHub, unless it ha
 commits the pull request didn't (a failed delete on GitHub is logged, not fatal). A comment on a done issue (open and labelled) picks it up again.
 
 Each run starts in the plugin's `issue` skill, which reads the thread and hands the
-stage to a skill of its own: `questions`, `plan`, `build` (then `review` and
-`finish`), `update`, or `answer` for question and duplicate issues. Invoking a
+stage to a skill of its own: `questions`, `plan`, `build` (then `review`,
+`finish` and `merge`), `update` (then `merge`), or `answer` for question and
+duplicate issues. Invoking a
 skill loads all of its guidance, so no stage runs without it. The status label follows the skill, `nightshift logs`
 shows each one a run invokes, and each comment names the skill that wrote it
 (`🤖 nightshift · plan · nightshift:plan`).
@@ -221,7 +224,8 @@ conflicts, and updates the change to fit what merged, not just to apply. It runs
 checks again, force-pushes (`--force-with-lease`), and says what changed beyond the
 conflict fixes. A conflict that needs your decision gets a question on the issue
 instead. Meanwhile `status` shows `conflicts, rebasing` or `updating after #10`. So
-the pull requests can be merged in any order.
+the pull requests can be merged in any order. With auto-merge on, a pull request
+that goes after another waits for it, then merges after that update run.
 
 ## Config
 

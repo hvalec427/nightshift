@@ -13,6 +13,10 @@ STAGES="questions plan build update answer"
 
 # The value of the frontmatter field $2 in the skill file $1.
 field() { sed -n '/^---$/,/^---$/p' "$1" | sed -n "s/^$2: *//p"; }
+# The file $1 as one line, so a phrase matches however the prose wraps.
+flat() { tr -s ' \n' ' ' <"$1"; }
+# The number of the first line in $1 matching the grep pattern $2, or 0.
+line_of() { grep -n -m1 -- "$2" "$1" | cut -d: -f1 || echo 0; }
 
 for s in $STAGES; do
   f="$SKILLS/$s/SKILL.md"
@@ -24,15 +28,26 @@ for s in $STAGES; do
   expect_line "the issue skill routes to nightshift:$s" "$(cat "$ISSUE")" "nightshift:$s\`"
 done
 
-# The merge skill: started by the finish, update and issue skills, not routed to as a stage.
+# The merge skill: started by the build, update and issue skills, not routed to as a stage.
 merge="$SKILLS/merge/SKILL.md"
 expect "the merge skill is named merge" "$(field "$merge" name 2>/dev/null)" merge
 expect "the merge skill isn't user-invocable" "$(field "$merge" user-invocable 2>/dev/null)" false
-expect_line "the merge skill says who starts it" "$(field "$merge" description 2>/dev/null)" "finish, update and issue skills"
+expect_line "the merge skill says who starts it" "$(field "$merge" description 2>/dev/null)" "build, update and issue skills"
 expect "the merge skill reaches only gh pr, gh issue and git" \
   "$(field "$merge" allowed-tools 2>/dev/null | grep -o '[A-Za-z]*([^)]*)' | grep -Ev '^Bash\((gh pr|gh issue|git [a-z-]+) \*\)$')" ""
 expect_line "the merge skill merges only when the prompt says the repo auto-merges" "$(cat "$merge" 2>/dev/null)" '"This repo auto-merges"'
 expect_line "the merge skill merges only the head it checked" "$(cat "$merge" 2>/dev/null)" "match-head-commit"
+
+# A skill that hands the pull request to the merge skill does it only under the auto-merge line.
+for s in issue build update; do
+  expect_line "the $s skill routes to nightshift:merge when the repo auto-merges" "$(flat "$SKILLS/$s/SKILL.md")" \
+    '"This repo auto-merges"[^.]*`nightshift:merge`'
+done
+expect_ok "the build posts its done comment (the review in it) before the merge skill" \
+  test "$(line_of "$SKILLS/build/SKILL.md" '\*\*Review:\*\*')" -lt "$(line_of "$SKILLS/build/SKILL.md" 'nightshift:merge`')"
+expect_line "with auto_merge=false, a merge reply doesn't merge" "$(flat "$ISSUE")" \
+  '`auto_merge=false`[^.]*you don.t merge'
+expect_line "the issue skill lists the look stage" "$(flat "$ISSUE")" 'The stages are [^.]*`look`'
 
 # Every relative link to a markdown file in a skill, as "<file>: <target>", that doesn't resolve.
 dangling=""

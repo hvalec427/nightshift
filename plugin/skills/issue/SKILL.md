@@ -24,7 +24,8 @@ Write every comment with `gh issue comment <n> --body-file <file>`, as:
 ```
 
 `<!-- nightshift -->` is how the watcher tells your comments from the user's; keep it in
-every one. The stages are `questions`, `answer`, `plan`, `progress`, `done` and `blocked`.
+every one. The stages are `questions`, `answer`, `plan`, `progress`, `done`, `blocked`
+and `look`.
 `<skill>` is the skill you're in as you write it (`plan`, `build`, …, or `issue` for a
 comment of this skill's own), so the user can see which guidance wrote it.
 
@@ -38,6 +39,7 @@ comments, what the diff shows), and fold detail they may want into a collapsed
 - `progress`, `done`, `blocked`: one or two lines, e.g. "T2 done: short comments in the
   issue skill. Tests and shellcheck pass.";
 - `answer`: the answer first, in a few lines, then where it comes from.
+- `look`: a line per thing the user needs to see before it merges (the merge skill).
 
 ## Status label
 
@@ -87,13 +89,20 @@ guidance is in that skill, not here.
 4. **A plan the user approved** ("go", or anything that clearly means build it). Run
    `nightshift build` first: when it says a fresh session builds it, end the run there,
    with no comment. Otherwise invoke the `nightshift:build` skill: it builds the tickets
-   test-first and opens the pull request.
+   test-first and opens the pull request (and hands it to the merge skill when the repo
+   auto-merges).
 5. **An update run:** the watcher's news says the default branch moved under this pull
    request. Invoke the `nightshift:update` skill: it rebases the branch and adapts the
    change to what merged.
-6. **A pull request is open, and the user commented.** Do what they ask on this branch,
+6. **A `look` comment, and the user approved it** ("merge", or anything that clearly
+   means merge it). When the run prompt says "This repo auto-merges", invoke the
+   `nightshift:merge` skill: it runs its hard gates again and merges. With
+   `auto_merge=false`, a **merge** reply is a request like any other (the next case), but
+   you don't merge: that's the user's.
+7. **A pull request is open, and the user commented.** Do what they ask on this branch,
    check it, commit, push, and reply with a `progress` comment. The pull request updates
-   with the push.
+   with the push. Then, when the run prompt says "This repo auto-merges", invoke the
+   `nightshift:merge` skill: it checks the updated pull request again.
 
 ## Overlap with other nightshift work
 
