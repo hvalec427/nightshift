@@ -21,7 +21,9 @@
 # `seen` (the last comment handed to the agent), `pid` while it runs,
 # `finished` once a run ended, `pr` once it opened one, `off` (why) while it has
 # no label or is closed, `interrupted` (why) if that or the watcher stopping
-# stopped a run, `stop` while a run stopped by hand ends, `after` (the issues
+# stopped a run, `stop` while a run stopped by hand ends, `stalled` once a run
+# ended while building or updating without commenting (see stalled_run), until
+# the run that resumes it ends, `after` (the issues
 # its open pull request goes after), `update` while an update run waits and
 # `updating` while it runs (its status, then why), `conflict` (the default
 # branch's commit its pull request was last updated for), `log` (readable,
@@ -254,7 +256,7 @@ set_status() {
 # The status of an issue with nothing running, from its log's last run: how it
 # ended, and the stage of the last comment it posted.
 idle_status() {
-  [ -f "$1/build" ] && { echo queued; return; }
+  [ -f "$1/build" ] || [ -f "$1/stalled" ] && { echo queued; return; }
   # shellcheck disable=SC2016 # awk's $0, not the shell's
   ended=$(awk '
     /^0\t=== [0-9-]+ [0-9:]+ run$/ { end = ""; stage = "" }
@@ -499,6 +501,11 @@ $intro}"
       intro="Your last run was stopped partway because the $(echo "$why" | sed 's/^label/agent label was/; s/^issue/issue was/; s/ label added$/ label was added/'); that's undone now, so carry on from where it stopped.${news:+
 
 $intro}"
+    # A run that stalled (see stalled_run), now resumed.
+    elif [ -f "$dir/stalled" ]; then
+      intro="Your last run ended without finishing (it stopped, maybe to wait on something, but a run ends when you stop); carry on from where it stopped.${news:+
+
+$intro}"
     fi
     resume="--resume $(cat "$dir/session")"
   fi
@@ -564,15 +571,24 @@ $intro"
     if [ "$(cat "$dir/interrupted" 2>/dev/null)" = "watch stopped" ]; then set_status "$repo" "$n" queued
     else set_status "$repo" "$n" stopped
     fi
+    rm -f "$dir/stalled"
     return
   fi
   if [ $status -ne 0 ] || grep '"type" *: *"result"' "$dir/out.jsonl" | grep -q '"is_error" *: *true'; then
     run_end "failed ($status) after $took$note"
     log "$repo#$n: run failed ($status) after $took$note"
     comment_failure "$repo" "$n" "$(show_level 3 <"$dir/log" | tail -15)"
+    rm -f "$dir/stalled"
   else
     run_end "done in $took$note"
     log "$repo#$n: run done in $took$note"
+    # A stall is resumed once: the run that resumed it ends the marker.
+    if [ ! -f "$dir/stalled" ] && stalled_run "$dir"; then
+      : >"$dir/stalled"
+      log "$repo#$n: stalled while $(cat "$dir/label"): resuming it"
+    else
+      rm -f "$dir/stalled"
+    fi
   fi
   # Once there's a pull request, the worktree's work is on GitHub: remove it
   # (the branch stays; a later comment brings it back).
@@ -586,6 +602,16 @@ $intro"
     fi
   fi
   set_status "$repo" "$n" "$(idle_status "$dir")"
+}
+
+# Whether the run that just ended in issue dir $1 stalled: it ended while
+# building or updating, with no comment posted and no build handed off. (It
+# stopped to wait on something, but a run ends when it stops.)
+stalled_run() {
+  case "$(cat "$1/label" 2>/dev/null)" in building | updating) ;; *) return 1 ;; esac
+  [ ! -f "$1/build" ] || return 1
+  # shellcheck disable=SC2016 # awk's, not the shell's
+  ! awk '/^0\t=== [0-9-]+ [0-9:]+ run$/ { c = 0 } /^0\t[0-9:]+ +commented/ { c = 1 } END { exit !c }' "$1/log" 2>/dev/null
 }
 
 # What a build session's first run is told, for $1#$2 (its dir $3): the issue,
@@ -972,7 +998,7 @@ poll_repo() {
     count=$((count + 1))
     d=$(issue_dir "$repo" "$n")
     running "$d" && { did="$did, #$n running"; continue; }
-    [ ! -f "$d/update" ] && [ ! -f "$d/build" ] && [ ! -f "$d/interrupted" ] && [ -f "$d/updated" ] && [ "$(cat "$d/updated")" = "$updated" ] && continue
+    [ ! -f "$d/update" ] && [ ! -f "$d/build" ] && [ ! -f "$d/interrupted" ] && [ ! -f "$d/stalled" ] && [ -f "$d/updated" ] && [ "$(cat "$d/updated")" = "$updated" ] && continue
     if [ ! -d "$d" ]; then
       # Only a label added by an allowed user starts work.
       by=$(gh api --paginate "repos/$repo/issues/$n/events" \
@@ -1002,7 +1028,7 @@ poll_repo() {
     if [ -n "$news" ] && handoff_ok "$d" && approves "$repo" "$n" "$filter"; then
       printf '%s' "$news" >"$d/build"
     fi
-    if [ $first_run -eq 0 ] && [ -z "$news" ] && [ ! -f "$d/interrupted" ] && [ ! -f "$d/update" ] && [ ! -f "$d/build" ]; then
+    if [ $first_run -eq 0 ] && [ -z "$news" ] && [ ! -f "$d/interrupted" ] && [ ! -f "$d/stalled" ] && [ ! -f "$d/update" ] && [ ! -f "$d/build" ]; then
       echo "$updated" >"$d/updated"
       continue
     fi
@@ -1194,7 +1220,7 @@ cmd_status() {
     elif [ -f "$d/off" ] && [ -f "$d/interrupted" ]; then what="stopped $(age "$d/off") ago ($(cat "$d/off")) · $(resume_hint "$d")"
     elif [ -f "$d/off" ] && [ -f "$d/pr" ]; then what="PR $(cat "$d/pr") · $(cat "$d/off")"
     elif [ -f "$d/off" ]; then what="$(cat "$d/off") $(age "$d/off") ago"
-    elif [ -f "$d/interrupted" ]; then what="queued to resume"
+    elif [ -f "$d/interrupted" ] || [ -f "$d/stalled" ]; then what="queued to resume"
     elif [ -f "$d/build" ]; then what="queued to build"
     elif [ -f "$d/update" ]; then what="PR $(cat "$d/pr") · queued: $(head -1 "$d/update")"
     elif [ -f "$d/pr" ] && [ "$(label_or "$d" "PR open")" = "PR open" ]; then what="PR $(cat "$d/pr")$(after_note "$d")$(skill_note "$d")$(waited "$d" " · waiting ")"
