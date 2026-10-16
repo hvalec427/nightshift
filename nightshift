@@ -276,7 +276,14 @@ run_claude() {
     set -- "$@" --setting-sources project,local --settings "$RUN_SETTINGS" --plugin-dir "$NS/plugin"
     rn=$(rn_agent_dir) && set -- "$@" --plugin-dir "$rn"
   fi
-  [ -s "$NS/instructions.md" ] && set -- "$@" --append-system-prompt-file "$NS/instructions.md"
+  # nightshift's defaults and this machine's instructions.md (the plugin's
+  # SessionStart hook skips runs); without the plugin's copy, the latter alone.
+  if [ -f "$NS/plugin/hooks/instructions.sh" ]; then
+    ins=$(NIGHTSHIFT_HOME=$NS sh "$NS/plugin/hooks/instructions.sh")
+  else
+    ins=$(cat "$NS/instructions.md" 2>/dev/null)
+  fi
+  [ -n "$ins" ] && set -- "$@" --append-system-prompt "$ins"
   exec claude "$@" </dev/null
 }
 
