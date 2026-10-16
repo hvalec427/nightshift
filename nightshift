@@ -10,6 +10,7 @@
 #   nightshift logs [<owner/repo>#<n>] [-f] [-v…]  what every issue (or one) does, at a level
 #   nightshift add <owner/repo> <clone>  watch a repo, using this clone of it
 #   nightshift label <status>            (in a run) set its issue's status label
+#   nightshift doctor                    check the tools and setup it needs on this machine
 #
 # State lives in $NIGHTSHIFT_HOME (default ~/.nightshift): `config`, and per
 # issue `issues/<owner>_<repo>_<n>/` with `session` (the Claude session id),
@@ -261,7 +262,11 @@ run_claude() {
   export PATH NIGHTSHIFT_REPO NIGHTSHIFT_ISSUE
   # shellcheck disable=SC2086 # $ALLOWED_TOOLS is a word per tool, $resume two words or none
   set -- -p "$1" --output-format stream-json --verbose --permission-mode "$mode" --allowedTools $ALLOWED_TOOLS $resume
-  if [ "$(setting isolated true)" != false ]; then
+  # Without the plugin's copy (install.sh not run since), not isolated: the
+  # run needs the issue skill.
+  if [ "$(setting isolated true)" != false ] && [ ! -d "$NS/plugin" ]; then
+    printf "0\t=== no %s (run install.sh again): this run isn't isolated\n" "$NS/plugin" >>"$dir/log"
+  elif [ "$(setting isolated true)" != false ]; then
     set -- "$@" --setting-sources project,local --settings "$RUN_SETTINGS" --plugin-dir "$NS/plugin"
     rn=$(rn_agent_dir) && set -- "$@" --plugin-dir "$rn"
   fi
@@ -711,6 +716,10 @@ cmd_start() {
   pid=$(service_pid)
   [ -n "$pid" ] && { echo "service: already running (pid $pid)"; return; }
   h=$(hand_pid) && die "a nightshift watch already runs by hand (pid $h): stop it first"
+  out=$(cmd_doctor) || {
+    printf '%s\n' "$out" | grep -v '^  ok ' >&2
+    die "not starting: fix what's missing, then nightshift start"
+  }
   write_plist
   launchctl enable "$DOMAIN/$SERVICE"
   launchctl bootout "$DOMAIN/$SERVICE" 2>/dev/null # loaded but not running
@@ -885,6 +894,119 @@ see nightshift logs --help"
   show_level "$level" <"$f"
 }
 
+# --- doctor -----------------------------------------------------------------------
+
+# The oldest versions nightshift works with: git for `rev-parse --path-format`,
+# gh for `pr create --attach`, jq for `strflocaltime`, and claude the version
+# its run flags were checked on.
+MIN_GIT=2.31 MIN_GH=2.99 MIN_JQ=1.6 MIN_CLAUDE=2.1.286
+RN_INSTALL='curl -fsSL https://raw.githubusercontent.com/hvalec427/rn-agent/master/install.sh | sh'
+
+# Whether version $1 is at least $2 (dot-separated numbers; 2.1.0-dev is 2.1.0).
+version_ge() {
+  awk -v a="$1" -v b="$2" 'BEGIN {
+    n = split(a, x, "."); m = split(b, y, "."); if (m > n) n = m
+    for (i = 1; i <= n; i++) { if (x[i] + 0 > y[i] + 0) exit 0; if (x[i] + 0 < y[i] + 0) exit 1 }
+  }'
+}
+
+# A doctor line: ok, or what's wrong and how to fix it (counted while
+# $required is 1).
+pass() { printf '  ok      %s\n' "$1"; }
+fail() {
+  printf '  %-7s %s: %s\n' "$1" "$2" "$3"
+  [ "$required" -eq 1 ] && problems=$((problems + 1))
+  return 0
+}
+
+# A tool: its name, its version (empty: not installed), the minimum (or
+# empty), how to install it and how to update it.
+tool() {
+  if [ -z "$2" ]; then fail missing "$1" "$4"
+  elif [ -n "$3" ] && ! version_ge "$2" "$3"; then fail old "$1 $2" "needs $3 or newer: $5"
+  else pass "$1 $2"
+  fi
+}
+
+# A Claude Code plugin, installed and enabled: its name, its line and how to
+# install it.
+plugin() {
+  if [ -z "$cv" ] || ! command -v jq >/dev/null; then fail "?" "$2" "needs claude and jq to check"
+  elif claude plugin list --json 2>/dev/null | jq -e --arg p "$1@" 'any(.[]; (.id | startswith($p)) and .enabled)' >/dev/null; then pass "$2"
+  else fail missing "$2" "$3"
+  fi
+}
+
+# A clone whose app is React Native.
+is_rn() { grep -q '"react-native" *:' "$1/package.json" 2>/dev/null; }
+
+# `doctor`: everything nightshift needs on this machine, what's missing and how
+# to get it. Fails when something required is.
+cmd_doctor() {
+  problems=0 required=1
+  echo "always needed"
+  tool git "$(git --version 2>/dev/null | awk '{print $3}')" $MIN_GIT \
+    "xcode-select --install, or brew install git" "brew install git"
+  ghv=$(gh --version 2>/dev/null | awk 'NR == 1 {print $3}')
+  tool gh "$ghv" $MIN_GH "brew install gh, then gh auth login" "brew upgrade gh"
+  if [ -n "$ghv" ]; then
+    if who=$(gh api user -q .login 2>/dev/null) && [ -n "$who" ]; then pass "gh logged in as $who"
+    else fail no "gh logged in" "gh auth login"
+    fi
+  fi
+  tool jq "$(jq --version 2>/dev/null | sed 's/^jq-//')" $MIN_JQ "brew install jq" "brew upgrade jq"
+  cv=$(claude --version 2>/dev/null | awk '{print $1}')
+  tool claude "$cv" $MIN_CLAUDE "curl -fsSL https://claude.ai/install.sh | bash" "claude update"
+  if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then pass "Claude token (CLAUDE_CODE_OAUTH_TOKEN)"
+  elif [ -s "$NS/token" ]; then pass "Claude token ($NS/token)"
+  elif [ -n "$cv" ] && claude auth status 2>/dev/null | grep -q '"loggedIn": *true'; then
+    pass "Claude logged in (for unattended runs, a token lasts longer: claude setup-token, saved to $NS/token)"
+  else fail missing "Claude token" "claude setup-token, and save the token to $NS/token (chmod 600)"
+  fi
+  if [ "$(setting isolated true)" != false ]; then
+    if [ -f "$NS/plugin/skills/issue/SKILL.md" ]; then pass "nightshift's plugin for runs ($NS/plugin)"
+    else fail missing "nightshift's plugin for runs ($NS/plugin)" "run install.sh again"
+    fi
+  else plugin nightshift "nightshift's plugin (installed in Claude Code)" "run install.sh again"
+  fi
+
+  echo "repos"
+  rn=""
+  r=$(repos)
+  [ -n "$r" ] || echo "  none watched yet: nightshift add <owner/repo> <clone>"
+  while read -r repo clone; do
+    [ -n "$repo" ] || continue
+    if ! git -C "$clone" rev-parse --git-dir >/dev/null 2>&1; then
+      fail missing "$repo: its clone ($clone)" "clone it there, or fix its repo line in $CONFIG"
+      continue
+    fi
+    is_rn "$clone" && rn="${rn:+$rn, }$repo"
+    if [ -z "$ghv" ]; then fail "?" "$repo: its \`$LABEL\` label" "needs gh to check"
+    elif gh api "repos/$repo/labels/$LABEL" >/dev/null 2>&1; then pass "$repo: clone $clone, \`$LABEL\` label"
+    else fail missing "$repo: its \`$LABEL\` label" "gh label create $LABEL --repo $repo --color 5319E7"
+    fi
+  done <<EOF
+$r
+EOF
+
+  if [ -n "$rn" ]; then echo "React Native (needed: $rn)"
+  else echo "React Native (optional: no watched repo is React Native)"; required=0
+  fi
+  plugin rn-agent "rn-agent plugin" "$RN_INSTALL"
+  tool signalbox "$(signalbox --version 2>/dev/null | awk '{print $2}')" "" "$RN_INSTALL" ""
+  tool boop "$(boop --version 2>/dev/null | awk '{print $2}')" "" "$RN_INSTALL" ""
+  tool tmux "$(tmux -V 2>/dev/null | awk '{print $2}')" "" "brew install tmux" ""
+  if xv=$(xcodebuild -version 2>/dev/null | awk 'NR == 1 {print $2}') && [ -n "$xv" ]; then pass "Xcode $xv"
+  elif [ -d /Applications/Xcode.app ]; then fail "not set" "Xcode" "sudo xcode-select -s /Applications/Xcode.app"
+  else fail missing "Xcode" "install it from the App Store, then sudo xcode-select -s /Applications/Xcode.app"
+  fi
+
+  echo
+  if [ $problems -eq 0 ]; then echo "all good"
+  else echo "$problems to fix, then run nightshift doctor again"; return 1
+  fi
+}
+
 cmd_add() {
   [ $# -eq 2 ] || die "usage: nightshift add <owner/repo> <clone path>"
   clone=$(cd "$2" 2>/dev/null && pwd -P) || die "$2 doesn't exist"
@@ -906,7 +1028,7 @@ cmd_label() {
   set_status "$NIGHTSHIFT_REPO" "$NIGHTSHIFT_ISSUE" "$1" || die "couldn't set the label: see nightshift logs"
 }
 
-usage() { sed -n '2,12s/^# \{0,1\}//p' "$SELF"; }
+usage() { sed -n '2,13s/^# \{0,1\}//p' "$SELF"; }
 
 mkdir -p "$NS/issues"
 case "${1:-}" in
@@ -919,6 +1041,7 @@ stop) shift; cmd_stop "${1:-}" ;;
 logs) shift; cmd_logs "$@" ;;
 add) shift; cmd_add "$@" ;;
 label) shift; cmd_label "$*" ;;
+doctor) cmd_doctor ;;
 -h | --help | help) usage; echo; echo "nightshift logs --help: the log levels and their flags" ;;
 *) usage >&2; exit 2 ;;
 esac

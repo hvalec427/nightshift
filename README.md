@@ -21,7 +21,8 @@ It installs the `nightshift` command (`~/.nightshift/bin`) and its Claude Code
 plugin (also copied to `~/.nightshift/plugin`, for runs), and with `--service` runs `nightshift watch` in the background whenever
 you're logged in (a LaunchAgent, through `nightshift start`). Leave out
 `--service` to run it by hand. Run it again to update; a running service is
-restarted on the new version.
+restarted on the new version. It ends with `nightshift doctor` (below), and
+only starts the service once nothing required is missing.
 
 Then:
 
@@ -31,6 +32,35 @@ Then:
 3. For each repo: a clone of it on the machine, then
    `nightshift add <owner/repo> <path to the clone>`. That also creates its
    `agent` label and the status labels.
+
+## What it needs
+
+`nightshift doctor` checks all of it on this machine: what's installed and its
+version, gh's login, a Claude token, nightshift's plugin, and each watched repo's
+clone and `agent` label. It says what's missing and how to get it, and fails
+when something required is; `nightshift start` won't start the service until
+nothing is.
+
+Always:
+
+| Tool | For | Minimum |
+|---|---|---|
+| git | worktrees and branches | 2.31 |
+| [gh](https://cli.github.com), logged in | issues, labels and pull requests (with screenshots attached) | 2.99 |
+| [Claude Code](https://claude.com/claude-code) (`claude`), with a token in `~/.nightshift/token` (or logged in) | the runs | 2.1.286 (the version its run flags were checked on) |
+| jq | reading GitHub's and Claude's JSON, and the logs | 1.6 |
+
+For React Native repos (required once a watched repo's `package.json` has
+`react-native`; optional otherwise), all from
+[rn-agent's installer](https://github.com/hvalec427/rn-agent) except tmux and Xcode:
+
+| Tool | For |
+|---|---|
+| the rn-agent plugin | the run-app skill and its session hooks |
+| signalbox | Metro, builds and a simulator per run |
+| boop | screenshots, taps and recordings |
+| tmux | signalbox's sessions (`brew install tmux`) |
+| Xcode, selected (`sudo xcode-select -s /Applications/Xcode.app`) | building and simulating the app |
 
 ## Working an issue
 
@@ -88,6 +118,7 @@ nightshift stop <owner/repo>#<n>    # stop one
 nightshift logs -f                  # every issue, as it happens: picked up, runs started and done, comments, PRs
 nightshift logs <owner/repo>#<n> -f # the same for one issue
 nightshift logs -f -vv              # more: -v Claude's messages, -vv its tool calls, -vvv everything
+nightshift doctor                   # what this machine is missing, and how to get it
 ```
 
 `logs` shows a level and the ones above it, with or without an issue:

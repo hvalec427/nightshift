@@ -59,18 +59,16 @@ else
   echo "Claude Code isn't installed: install it and run this again."
 fi
 
-# `nightshift start` writes the LaunchAgent and starts it; a service that was
-# running is started again on the new version.
-if [ "${1:-}" = "--service" ] || [ $restart -eq 1 ]; then
-  "$BIN/nightshift" start || true
-fi
-
+# What's missing on this machine, and how to get it. `nightshift start` writes
+# the LaunchAgent and starts it; a service that was running is started again on
+# the new version, once nothing required is missing.
 echo "──"
-ghv=$(gh --version 2>/dev/null | sed -n 's/^gh version \([0-9]*\)\.\([0-9]*\).*/\1 \2/p')
-if [ -z "$ghv" ]; then
-  echo "Also needed: GitHub's CLI (brew install gh, then gh auth login)."
-elif [ "${ghv% *}" -eq 2 ] && [ "${ghv#* }" -lt 99 ]; then
-  echo "Update GitHub's CLI (brew upgrade gh): pull requests get screenshots from gh 2.99 on."
+"$BIN/nightshift" doctor && ok=1 || ok=0
+if [ "${1:-}" = "--service" ] || [ $restart -eq 1 ]; then
+  echo "──"
+  if [ "$ok" -eq 1 ]; then
+    "$BIN/nightshift" start || true
+  else
+    echo "The service starts once that's fixed: nightshift start"
+  fi
 fi
-[ -s "$NS/token" ] || echo "For unattended runs: claude setup-token, and save the token to $NS/token (chmod 600)."
-[ -s "$NS/config" ] || echo "Then watch a repo: nightshift add <owner/repo> <path to a clone of it>"
