@@ -4,9 +4,8 @@
 # NIGHTSHIFT_HOME.
 #   bash scripts/test-types.sh
 set -euo pipefail
+. "$(dirname "$0")/test-lib.sh"
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
-FAILS=$(mktemp)
 NIGHTSHIFT_HOME=$(mktemp -d)
 export NIGHTSHIFT_HOME
 set +u
@@ -14,14 +13,6 @@ set +u
 NIGHTSHIFT_LIB=1 . "$ROOT/nightshift"
 set -u
 
-# Whether $2 (what it gave) is $3, for the test named $1.
-expect() {
-  if [ "$2" = "$3" ]; then echo "ok   $1"
-  else
-    printf 'FAIL %s\n  expected: %s\n  got:      %s\n' "$1" "$3" "$2"
-    echo "$1" >>"$FAILS"
-  fi
-}
 
 # The type of an issue with these labels, a line each.
 type_of() { printf '%s\n' "$@" | issue_type; }
@@ -73,8 +64,4 @@ expect "wontfix added: remove it to resume" "$(hint "wontfix label added")" "rem
 expect "invalid added: remove it to resume" "$(hint "invalid label added")" "remove the invalid label to resume"
 expect "agent removed: add it back" "$(hint "label removed")" "add the label back to resume"
 
-if [ -s "$FAILS" ]; then
-  echo "$(wc -l <"$FAILS" | tr -d ' ') failed"
-  exit 1
-fi
-echo "all passed"
+report

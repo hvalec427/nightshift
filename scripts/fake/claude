@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# A fake claude for the tests. `--version`, `auth status` and `plugin …`
+# answer from $CLAUDE_FAKE; anything else is a run: it's numbered, its
+# arguments (NUL-separated), directory and environment are kept in
+# $CLAUDE_FAKE/runs/<k>/, and it prints stream-json while it plays the script
+# in $CLAUDE_FAKE/script (shell, with the steps below; none: it just ends).
+set -u
+: "${CLAUDE_FAKE:?}"
+echo "$*" | tr '\n' ' ' >>"$CLAUDE_FAKE/calls"
+echo >>"$CLAUDE_FAKE/calls"
+
+case "${1:-}" in
+--version) echo "${FAKE_CLAUDE_VERSION:-2.1.300} (Claude Code)"; exit 0 ;;
+auth) printf '{\n  "loggedIn": %s\n}\n' "$([ -f "$CLAUDE_FAKE/logged-out" ] && echo false || echo true)"; exit 0 ;;
+plugin)
+  case "$*" in
+  "plugin list --json") cat "$CLAUDE_FAKE/plugins.json" 2>/dev/null || echo '[]' ;;
+  "plugin marketplace list --json") cat "$CLAUDE_FAKE/marketplaces.json" 2>/dev/null || echo '[]' ;;
+  "plugin marketplace "* | "plugin install "* | "plugin update "* | "plugin enable "*) ;;
+  *) echo "fake claude: unexpected: $*" >&2; exit 2 ;;
+  esac
+  exit 0 ;;
+esac
+
+mkdir -p "$CLAUDE_FAKE/runs"
+k=1
+until mkdir "$CLAUDE_FAKE/runs/$k" 2>/dev/null; do k=$((k + 1)); done
+RUN="$CLAUDE_FAKE/runs/$k"
+printf '%s\0' "$@" >"$RUN/args"
+pwd -P >"$RUN/cwd"
+env | grep '^NIGHTSHIFT_' | sort >"$RUN/env"
+
+session="session-$k"
+prev=""
+for a in "$@"; do
+  [ "$prev" = --resume ] && session=$a
+  prev=$a
+done
+
+# One stream-json event.
+event() { printf '%s\n' "$1"; }
+tool_use() {
+  jq -cn --arg c "$1" '{type: "assistant", message: {content: [{type: "tool_use", name: "Bash", input: {command: $c}}]}}'
+}
+
+# The steps a script plays.
+# The agent's text.
+say() { jq -cn --arg t "$1" '{type: "assistant", message: {content: [{type: "text", text: $t}]}}'; }
+# A comment on the issue at stage $1 (text $2), posted with gh.
+comment() {
+  local body
+  body="🤖 **nightshift** · $1
+
+${2:-Some $1.}
+
+<!-- nightshift --> <!-- nightshift:$1 -->"
+  tool_use "gh issue comment $NIGHTSHIFT_ISSUE --body \"$body\""
+  gh issue comment "$NIGHTSHIFT_ISSUE" --repo "$NIGHTSHIFT_REPO" --body "$body" >/dev/null
+}
+# The status label $1, through nightshift.
+label() { tool_use "nightshift label $1"; nightshift label "$1"; }
+# A commit of file $1 (with content $2) on the issue's branch.
+commit() {
+  printf '%s\n' "${2:-$1}" >"$1"
+  git add "$1" && git commit -q -m "feat: $1"
+}
+# The branch pushed and a pull request for it opened (its URL in $RUN/pr).
+open_pr() {
+  git push -q origin HEAD
+  gh pr create --repo "$NIGHTSHIFT_REPO" --head "nightshift/issue-$NIGHTSHIFT_ISSUE" --base master \
+    --title "feat: issue $NIGHTSHIFT_ISSUE" --body "${1:-Closes #$NIGHTSHIFT_ISSUE}" >"$RUN/pr"
+}
+# The run's result is an error.
+error=false
+fail_result() { error=true; }
+# Wait until stopped (TERM): $RUN/waiting says it's waiting.
+hang() {
+  trap 'kill "$spid" 2>/dev/null; touch "$RUN/stopped"; exit 143' TERM
+  sleep 600 &
+  spid=$!
+  touch "$RUN/waiting"
+  wait "$spid"
+}
+
+event "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"$session\"}"
+code=0
+# shellcheck disable=SC1091
+[ -f "$CLAUDE_FAKE/script" ] && . "$CLAUDE_FAKE/script"
+event "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":$error,\"result\":\"done\",\"session_id\":\"$session\"}"
+exit "$code"

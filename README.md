@@ -262,9 +262,35 @@ Breaking changes, Features and Fixes, each line linking its pull request.
 
 Each pull request is checked (`.github/workflows/check.yml`): its title must be a
 Conventional Commit (`scripts/commit-lint.sh`), `shellcheck` must pass on the
-scripts, and so must `scripts/test-release.sh`. To keep a pull request with a bad
+scripts, and so must the tests (below, on macOS). To keep a pull request with a bad
 title from merging, make the `title` check required: Settings → Branches (or
 Rules) → a rule for `master` → Require status checks to pass → `title`.
+
+## Tests
+
+```sh
+bash scripts/test.sh            # all of them
+bash scripts/test.sh runs prs   # scripts/test-runs.sh and scripts/test-prs.sh
+```
+
+Each `scripts/test-*.sh` drives nightshift the way it's used, in a throwaway
+`HOME` and `NIGHTSHIFT_HOME`, against a fake GitHub and a fake Claude
+(`scripts/fake`): nothing reaches GitHub, Claude or your own `~/.nightshift`. The
+fake `gh` keeps GitHub as files (issues, comments, labels, pull requests) and runs
+nightshift's own `--jq` filters on them; it fails on any call it doesn't know.
+The fake `claude` keeps each run's arguments and plays a script: its text,
+comments, `nightshift label`, commits, a pull request, a failure, or waiting to be
+stopped.
+
+A test is a few lines in a subshell, with the helpers in `scripts/test-lib.sh`:
+
+```sh
+(world                                       # a machine watching o/r
+  gh_issue o/r 7 alice agent                 # alice labels issue 7
+  runs_do 'comment plan; label "needs you"'  # what the run does
+  poll                                       # nightshift once
+  expect "a plan: needs you" "$(status_label 7)" "needs you")
+```
 
 ## Credits
 

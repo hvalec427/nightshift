@@ -16,16 +16,18 @@ jobs:
           TITLE: ${{ github.event.pull_request.title }}
         run: bash scripts/commit-lint.sh --title "$TITLE"
 
-  scripts:
+  shellcheck:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       # Warnings and errors: info notes vary between shellcheck versions.
       - name: shellcheck
-        run: shellcheck -S warning nightshift install.sh scripts/*.sh
-      - name: Release script tests
-        run: bash scripts/test-release.sh
-      - name: Instructions tests
-        run: bash scripts/test-instructions.sh
-      - name: Issue type tests
-        run: bash scripts/test-types.sh
+        run: shellcheck -S warning nightshift install.sh scripts/*.sh scripts/fake/*
+
+  # nightshift runs on macOS (launchd, BSD date), so its tests do too.
+  tests:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tests
+        run: bash scripts/test.sh
