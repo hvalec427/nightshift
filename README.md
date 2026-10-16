@@ -240,6 +240,7 @@ effort=high
   isolated runs. A change applies from the next run, resumed ones included.
 - `effort`: the effort level runs use (`claude --effort`): `low`, `medium`,
   `high`, `xhigh` or `max`. Unset (the default), Claude Code's own.
+  `nightshift doctor` shows both, and flags an effort that isn't one of these.
 - `isolated`: `true` (the default) runs Claude without the machine's own
   user-level setup, so every machine works an issue the same way: no skills from
   `~/.claude/skills`, no `~/.claude/settings.json`, `~/.claude/CLAUDE.md`,

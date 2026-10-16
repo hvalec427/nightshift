@@ -195,10 +195,22 @@ without() {
   expect_line "doctor: the plugin copy" "$OUT" "^  ok      nightshift's plugin for runs ($NS/plugin)$"
   expect_line "doctor: the plugin in Claude Code" "$OUT" "^  ok      nightshift's plugin in Claude Code"
   expect_line "doctor: the instructions" "$OUT" "^  ok      instructions: nightshift's defaults (no $NS/instructions.md)$"
+  expect_line "doctor: runs' model and effort, unset" "$OUT" "^  ok      runs: the account's default model, the default effort (set model= and effort= in $NS/config to choose)$"
   expect_line "doctor: the repo" "$OUT" "^  ok      o/r: clone $CLONE, \`agent\` label$"
   expect_line "doctor: a hint for merged branches" "$OUT" "^  hint    o/r: GitHub keeps merged branches"
   expect_line "doctor: React Native is optional" "$OUT" "^React Native (optional: no watched repo is React Native)$"
   expect_line "doctor: all good" "$OUT" "^all good$")
+
+(healthy
+  set_config model sonnet
+  set_config effort high
+  try ns doctor
+  expect "doctor: model and effort set: passes" "$ST" 0
+  expect_line "doctor: runs' model and effort" "$OUT" "^  ok      runs: model sonnet, effort high$"
+  set_config effort extreme
+  try ns doctor
+  expect "doctor: a bad effort: fails" "$ST" 1
+  expect_line "doctor: says which efforts there are" "$OUT" "^  invalid runs: effort extreme: set effort= in $NS/config to low, medium, high, xhigh or max$")
 
 (healthy
   gh_edit "$(gh_dir o/r)/repo.json" '.delete_branch_on_merge = true'
