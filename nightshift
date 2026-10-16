@@ -44,6 +44,16 @@ issue_dir() { printf '%s/issues/%s_%s' "$NS" "$(echo "$1" | tr '/' '_')" "$2"; }
 
 running() { [ -f "$1/pid" ] && kill -0 "$(cat "$1/pid")" 2>/dev/null; }
 
+# How long ago a file was last modified, in its two largest units: 45s, 12m, 2h 5m, 3d 4h.
+age() {
+  s=$(($(date +%s) - $(date -r "$1" +%s)))
+  if [ $s -lt 60 ]; then echo "${s}s"
+  elif [ $s -lt 3600 ]; then echo "$((s / 60))m"
+  elif [ $s -lt 86400 ]; then echo "$((s / 3600))h $((s % 3600 / 60))m"
+  else echo "$((s / 86400))d $((s % 86400 / 3600))h"
+  fi
+}
+
 count_running() {
   n=0
   for d in "$NS"/issues/*/; do
@@ -243,7 +253,7 @@ cmd_status() {
     n=${name##*_}
     repo=$(echo "${name%_*}" | sed 's/_/\//')
     if [ -f "$d/ignored" ]; then what="ignored (labelled by someone else)"
-    elif running "$d"; then what="running (pid $(cat "$d/pid"))"
+    elif running "$d"; then what="running $(age "$d/pid") (pid $(cat "$d/pid"))"
     elif [ -f "$d/pr" ]; then what="PR $(cat "$d/pr")"
     elif [ -s "$d/session" ]; then what="waiting for a reply"
     else what="queued"
