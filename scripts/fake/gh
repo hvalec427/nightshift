@@ -26,12 +26,14 @@ unexpected() {
 }
 not_found() { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
 
-# The options every command here takes: --jq/-q, --json, --repo, and the rest
-# as name/value pairs, positionals in POS.
-jqf="" repo="" POS=() OPTS=()
+# The options every command here takes: --jq/-q, --json, --repo, -i, -H, and
+# the rest as name/value pairs, positionals in POS.
+jqf="" repo="" inc="" hdr="" POS=() OPTS=()
 while [ $# -gt 0 ]; do
   case "$1" in
   -q | --jq) jqf=$2; shift ;;
+  -i | --include) inc=1 ;;
+  -H | --header) hdr=$2; shift ;;
   -R | --repo) repo=$2; shift ;;
   --json | -X | --method | --state | --limit | --head | --base | --title | --body | --body-file | \
     --add-label | --remove-label | --color | --description | -F | -f) OPTS+=("$1" "$2"); shift ;;
@@ -58,6 +60,22 @@ out() {
   fi
 }
 
+# JSON on stdin as an answer that has an ETag (a hash of it): with -i, the
+# headers before it; asked If-None-Match that ETag, a 304 with no body, which
+# gh fails on, as GitHub's does.
+etagged() {
+  local body tag
+  body=$(cat)
+  tag="W/\"$(printf '%s' "$body" | cksum | cut -d' ' -f1)\""
+  if [ "$hdr" = "If-None-Match: $tag" ]; then
+    [ -n "$inc" ] && printf 'HTTP/2.0 304 Not Modified\nEtag: %s\r\n\r\n' "$tag"
+    exit 1
+  fi
+  [ -n "$hdr" ] && case "$hdr" in "If-None-Match: "*) ;; *) unexpected ;; esac
+  [ -n "$inc" ] && printf 'HTTP/2.0 200 OK\nEtag: %s\r\n\r\n' "$tag"
+  printf '%s\n' "$body" | out
+}
+
 D=""
 in_repo() { D=$(gh_dir "$1"); [ -d "$D" ] || not_found; }
 
@@ -76,7 +94,7 @@ api() {
     l=$(echo "$rest" | sed -n 's/.*labels=\([^&]*\).*/\1/p') s=$(echo "$rest" | sed -n 's/.*state=\([^&]*\).*/\1/p')
     for f in "$D"/issues/*.json; do
       case "${f##*/}" in *.*.json) ;; *) cat "$f" ;; esac
-    done | jq -s --arg l "$l" --arg s "${s:-open}" 'map(select(.state == $s and any(.labels[]; .name == $l))) | sort_by(.number) | reverse' | out ;;
+    done | jq -s --arg l "$l" --arg s "${s:-open}" 'map(select(.state == $s and any(.labels[]; .name == $l))) | sort_by(.number) | reverse' | etagged ;;
   "GET /issues/"*)
     n=$(echo "$rest" | cut -d/ -f3 | cut -d'?' -f1) f="$D/issues/$n"
     [ -f "$f.json" ] || not_found

@@ -45,6 +45,8 @@ PLIST="$HOME/Library/LaunchAgents/$SERVICE.plist"
 DOMAIN="gui/$(id -u)"
 MARKER="<!-- nightshift -->"
 LABEL=agent
+# Who gh is logged in as, once `watch` has asked.
+LOGIN=""
 
 # A line in watch.log, at the `runs` level (log_at: at another; see LEVELS).
 log() { log_at 0 "$*"; }
@@ -71,7 +73,7 @@ repos() { sed -n 's/^repo  *\([^ ]*\)  *\(.*\)$/\1 \2/p' "$CONFIG" 2>/dev/null; 
 
 allowed_users() {
   u=$(setting allowed_users "")
-  [ -n "$u" ] || u=$(gh api user -q .login)
+  [ -n "$u" ] || u=${LOGIN:-$(gh api user -q .login)}
   printf '%s' "$u"
 }
 
@@ -678,14 +680,34 @@ $MARKER <!-- nightshift:progress -->" >/dev/null 2>&1 || log "$1#$2: couldn't co
   log "$1#$2: pull request $3"
 }
 
+# The repo's open labelled issues, as GitHub's JSON. Asked with the ETag of
+# the last answer, GitHub says 304 when nothing changed (which costs no rate
+# limit), and the last answer, kept in poll/<owner>_<repo>.json, stands.
+list_issues() {
+  f="$NS/poll/$(echo "$1" | tr '/' '_')"
+  set -- "repos/$1/issues?labels=$LABEL&state=open&per_page=100"
+  [ -s "$f.json" ] && [ -s "$f.etag" ] && set -- -H "If-None-Match: $(cat "$f.etag")" "$@"
+  mkdir -p "$NS/poll"
+  # gh fails on a 304; the status line says which it was.
+  res=$(gh api -i "$@" 2>"$f.err" | tr -d '\r')
+  case "$(printf '%s\n' "$res" | head -1)" in
+  *" 304 "*) cat "$f.json"; return ;;
+  *" 200 "*) ;;
+  *) cat "$f.err" >&2; return 1 ;;
+  esac
+  printf '%s\n' "$res" | sed '1,/^$/d' >"$f.json.tmp" && mv "$f.json.tmp" "$f.json"
+  printf '%s\n' "$res" | sed -n '1,/^$/s/^[Ee][Tt][Aa][Gg]: *//p' >"$f.etag"
+  cat "$f.json"
+}
+
 poll_repo() {
   repo=$1 clone=$2
   allowed=$(allowed_json)
   ensure_labels "$repo"
   # Each labelled issue, and the label that holds it (`invalid` or `wontfix`;
   # `-`, none). A held one isn't worked: it's off, as if unlabelled.
-  all=$(gh api "repos/$repo/issues?labels=$LABEL&state=open&per_page=100" \
-    --jq '.[] | select(.pull_request | not) | "\(.number) \(.updated_at) \([.labels[].name | select(. == "invalid" or . == "wontfix")] | first // "-")"' 2>>"$NS/watch.log") || { log "$repo: couldn't list issues"; return; }
+  issues=$(list_issues "$repo" 2>>"$NS/watch.log") || { log "$repo: couldn't list issues"; return; }
+  all=$(printf '%s\n' "$issues" | jq -r '.[] | select(.pull_request | not) | "\(.number) \(.updated_at) \([.labels[].name | select(. == "invalid" or . == "wontfix")] | first // "-")"')
   open=$(printf '%s\n' "$all" | awk 'NF && $3 == "-" { print $1, $2 }')
   held=$(printf '%s\n' "$all" | awk 'NF && $3 != "-" { print $1, $3 }')
 
@@ -719,7 +741,13 @@ poll_repo() {
     fi
   done
 
-  check_prs "$repo" "$open"
+  # The pull requests, which cost rate limit every time: every 30 s at most
+  # (NIGHTSHIFT_PR_INTERVAL is for tests).
+  pf="$NS/poll/$(echo "$repo" | tr '/' '_').prs" now=$(date +%s)
+  if [ $((now - $(cat "$pf" 2>/dev/null || echo 0))) -ge "${NIGHTSHIFT_PR_INTERVAL:-30}" ]; then
+    check_prs "$repo" "$open"
+    echo "$now" >"$pf"
+  fi
   check_done "$repo" "$clone"
 
   printf '%s\n' "$open" | {
@@ -807,10 +835,12 @@ cmd_watch() {
   echo $$ >"$NS/watch.pid"
   trap stop_watch TERM INT
   log "watching: $(repos | cut -d' ' -f1 | tr '\n' ' ')"
+  # For allowed_users' default, asked once (each poll asks if this fails).
+  LOGIN=$(gh api user -q .login 2>/dev/null)
   while :; do
     poll
     trim_log
-    sleep "$(setting interval 30)" &
+    sleep "$(setting interval 5)" &
     spid=$!
     wait $spid # a signal interrupts `wait`, not `sleep`
   done

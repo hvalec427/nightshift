@@ -67,6 +67,8 @@ world() {
   # A LaunchAgent of its own, never the machine's.
   export NIGHTSHIFT_LABEL="com.nightshift.test.$$.${W##*.}"
   unset NIGHTSHIFT_REPO NIGHTSHIFT_ISSUE NIGHTSHIFT_WAIT NIGHTSHIFT_LIB CLAUDE_CODE_OAUTH_TOKEN
+  # The pull requests checked on every poll, not every 30 s.
+  export NIGHTSHIFT_PR_INTERVAL=0
   # git and jq from wherever they are; nothing else of this machine's own
   # (no real gh, claude or signalbox).
   for t in git jq; do ln -s "$(command -v "$t")" "$W/bin/$t"; done
