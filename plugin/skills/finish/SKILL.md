@@ -25,9 +25,8 @@ own check; stop and say so at the first one that fails, leaving everything in pl
 4. **Push.** `git push -u origin HEAD`. Done when it succeeds.
 5. **Pull request.** `gh pr create` against the repo's default branch
    (`gh repo view --json defaultBranchRef -q .defaultBranchRef.name`), following the user's
-   PR conventions. The title says the change; the body is a few lines: what changed (not
-   a summary of the diff), how it was verified (screens seen, checks run), and anything
-   left open. Place each media file where it belongs in the body by its path
+   PR conventions. The title says the change; the body follows [The body](#the-body). Place
+   each media file where it belongs in the body by its path
    (`![Price list](<path>/price-list.jpg)`) and pass each with `--attach <path>`: gh uploads
    them and swaps in their URLs, so they show inline and videos play. Under nightshift the
    body ends with a closing line per issue, one on each line: `Closes #<issue>` for the
@@ -49,3 +48,55 @@ own check; stop and say so at the first one that fails, leaving everything in pl
      worktree list` no longer lists it.
 7. **Hand back.** The PR's URL, and (interactive) that the worktree is gone, the branch
    stays until the PR is merged, and this session is finished.
+
+## The body
+
+Adapted from Matt Pocock's `pr` skill (see `THIRD_PARTY.md` in the plugin). It starts at
+the first heading, with no preamble, and keeps prose brief. It uses the project's own
+words for things. It is for a reviewer who has the diff open, so it shows the change's
+shape, how you know it works, and how risky it is to land.
+
+```markdown
+## Summary
+
+<the smallest visual that shows the change>
+
+## Evidence
+
+- **Before:** <screenshot, output or failing test run>
+  **After:** <screenshot, output or passing test run>
+
+## Merge Danger
+
+**Door:** <one-way or two-way>
+
+**Blast radius:** <narrow or wide>
+
+<optional: what could break if the change is wrong>
+```
+
+- **Summary.** The smallest view that makes the key point: pseudocode for logic, a call
+  tree for control flow, a file tree for a broad refactor, or a diff sketch when the
+  surrounding shape already exists. One visual, sometimes two, with the short text it
+  supports beside it. Keep only the calls, files and boundaries a reviewer needs.
+- **Evidence.** A before and an after. A screenshot or recording when the change is visual
+  (the media from step 2 go here). Otherwise the exact test that failed and now passes, as
+  pseudocode, or the output that changed. "Tests are green" alone is a claim, not a before
+  and after. What couldn't be verified goes here too, said plainly.
+- **Merge Danger.** State the call, so the reviewer can disagree with it; you graded your
+  own change, so doubt "two-way, narrow" most.
+  - **Door.** Two-way when it's cheap to reverse. One-way when it destroys something or
+    can't be walked back: a migration, a removed public interface, data written in a new
+    format.
+  - **Blast radius,** in one word. Wide when the change reaches past its feature: config,
+    the repo's persisted state or data layout, an installer, a CLI's commands or flags, or
+    what a run can reach. Narrow otherwise.
+
+Under nightshift the body also carries, from the build:
+- the open review findings, a line each, under **Left open:** at the end of Merge Danger;
+- the overlap lines, kept as written with their markers (`<!-- nightshift:after #N -->`,
+  `<!-- nightshift:overlaps #N -->`), after Merge Danger;
+- the closing `Closes` lines of step 5, last.
+
+Outside nightshift the body has no `Closes` line unless the user names an issue to close,
+and no overlap lines or review findings. Only the three sections remain.

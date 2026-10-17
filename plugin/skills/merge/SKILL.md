@@ -31,14 +31,21 @@ needs a human; otherwise tell the user exactly what does, and let them say **mer
      again, three times at most (30 minutes). "no checks reported" counts as passing.
      Failing, or still pending after 30 minutes: a look item, naming the checks.
 2. **Triggers.** Read the issue and its thread, the approved plan, the review's report
-   (the build's `done` comment, the PR body's open findings), the commits and the diff
-   (`git log -p origin/<default branch>..<head>`). Any of these is a look item:
+   (the build's `done` comment, the PR body's open findings), the PR body's Merge Danger
+   (its door and blast radius), the commits and the diff
+   (`git log -p origin/<default branch>..<head>`). The author graded its own Merge Danger:
+   judge the blast radius from the diff yourself, and take the wider call. Any of these is
+   a look item:
    - a decision made in the build that the approved plan didn't cover;
    - a review finding left unfixed, or a check that couldn't be run;
    - a breaking change, a migration, or a new dependency;
    - a security-relevant change: auth, secrets, permissions, allowed tools, what a run
      can reach;
    - a change to CI, releases or installing;
+   - a wide blast radius: wide when the change reaches past its feature, into config, the
+     repo's persisted state or data layout (nightshift's `~/.nightshift` layout), the
+     installer, the commands or flags of a CLI, or what a run can reach. A one-way door
+     alone is not a look item; only wide is;
    - the issue or the user asked to see it before it merges.
 3. **Nothing to look at:**
    - Add a line to the PR body: "Merged by nightshift: nothing needed a human look." and

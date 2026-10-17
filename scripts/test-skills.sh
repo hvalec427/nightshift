@@ -157,6 +157,32 @@ finish=$(flat "$SKILLS/finish/SKILL.md")
 expect_line "the PR body closes the issue" "$finish" "Closes #<issue>"
 expect_line "the PR body closes each sub-issue" "$finish" "Closes #<sub>"
 expect_line "the closing lines end the PR body" "$finish" "ends with[^.]*Closes #"
+# The PR body follows the pr skill: Summary, Evidence, Merge Danger, then what nightshift adds.
+for h in Summary Evidence "Merge Danger"; do
+  expect_line "the finish skill's PR body has a $h section" "$(cat "$SKILLS/finish/SKILL.md")" "^## $h\$"
+done
+expect_ok "the PR body's sections run Summary, Evidence, Merge Danger" \
+  test "$(line_of "$SKILLS/finish/SKILL.md" '^## Summary$')" -lt "$(line_of "$SKILLS/finish/SKILL.md" '^## Evidence$')" \
+    -a "$(line_of "$SKILLS/finish/SKILL.md" '^## Evidence$')" -lt "$(line_of "$SKILLS/finish/SKILL.md" '^## Merge Danger$')"
+expect_line "the summary is the smallest visual" "$finish" "smallest visual"
+expect_line "the evidence is a before and after" "$finish" "Before:.*After:"
+expect_line "the merge danger names the door" "$finish" "one-way or two-way"
+expect_line "the merge danger names the blast radius in one word, narrow or wide" "$finish" "Blast radius:[^.]*narrow.*wide"
+expect_line "the PR body keeps the open review findings" "$finish" "open review findings"
+expect_line "the PR body keeps the overlap lines and their markers" "$finish" "overlap lines[^.]*<!-- nightshift:after #N -->[^.]*<!-- nightshift:overlaps #N -->"
+expect_line "the closing lines and overlap lines are for nightshift only" "$finish" "Outside nightshift[^.]*no \`Closes\`"
+expect_line "the PR skill is credited in the notices" "$(cat "$ROOT/plugin/THIRD_PARTY.md")" "\`pr\` in \`finish\`"
+
+# The merge skill takes a wide blast radius, defined, as a look item; a one-way door alone isn't one.
+merge_flat=$(flat "$SKILLS/merge/SKILL.md")
+expect_line "a wide blast radius is a look item" "$merge_flat" "a wide blast radius"
+expect_line "wide means the change reaches past its feature" "$merge_flat" "wide when the change reaches past its feature"
+for r in "config" "persisted state or data layout" "installer" "commands or flags" "what a run can reach"; do
+  expect_line "the wide definition names $r" "$merge_flat" "wide when[^;]*$r"
+done
+expect_line "the wide definition works for any worked repo, with nightshift's examples" "$merge_flat" "the repo.s persisted state[^.]*\`~/.nightshift\`"
+expect_line "the merge skill reads Merge Danger and judges the diff itself" "$merge_flat" "Merge Danger[^.]*the diff"
+expect_line "a one-way door alone isn't a look item" "$merge_flat" "one-way door alone"
 expect_line "the plan says tickets become sub-issues on go" "$(flat "$SKILLS/plan/SKILL.md")" "on \*\*go\*\*[^.]*sub-issue"
 expect_line "the plan no longer says tickets are only in the comment" "$(flat "$SKILLS/plan/SKILL.md")" "All tickets are in this comment" no
 
