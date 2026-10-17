@@ -256,7 +256,8 @@ interval=5
 ```
 
 - `repo <owner/repo> <clone path> [key=value …]`: a watched repo and its clone
-  (spaces in the path are fine), then its options, in any order:
+  (spaces in the path are fine, but its last word can't look like `key=value`:
+  it would read as an option), then its options, in any order:
   - `instructions`: a file of the project's own rules for runs (below);
     `nightshift doctor` says when it's missing.
   - `auto_merge=false` makes its pull requests wait for you to merge; without

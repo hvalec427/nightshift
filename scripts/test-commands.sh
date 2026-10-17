@@ -50,6 +50,28 @@ try() {
   expect_line "add with an unknown option: no line" "$(cat "$NS/config")" "o/w" no
   try ns add o/w "$W/plain" rn-agent
   expect "add with a word that isn't key=value: the usage" "$ST $OUT" "1 nightshift: usage: nightshift add <owner/repo> <clone path> [instructions=<path>] [auto_merge=false] [plugins=<name>,…] (rn-agent isn't key=value)"
+  git init -q "$W/my dir=1"
+  before=$(cat "$NS/config")
+  try ns add o/s "$W/my dir=1"
+  expect "add a clone path ending in key=value: fails" "$ST $OUT" "1 nightshift: $W/my dir=1: a clone path can't end in a word like key=value"
+  expect "add a clone path ending in key=value: nothing written" "$(cat "$NS/config")" "$before"
+  git init -q "$W/my clone"
+  gh_repo o/s "$W/my clone"
+  try ns add o/s "$W/my clone"
+  expect "add a clone path with a space: on the repo line" "$ST $(tail -1 "$NS/config")" "0 repo o/s $W/my clone"
+  before=$(cat "$NS/config")
+  try ns add o/d "$W/third" auto_merge=false auto_merge=false
+  expect "add auto_merge= twice: fails" "$ST $OUT" "1 nightshift: auto_merge= given twice"
+  expect "add auto_merge= twice: nothing written" "$(cat "$NS/config")" "$before"
+  echo "Ours." >"$W/ours.md"
+  try ns add o/d "$W/third" "instructions=$W/ours.md" "instructions=$W/ours.md"
+  expect "add instructions= twice: fails" "$ST $OUT" "1 nightshift: instructions= given twice"
+  expect "add instructions= twice: nothing written" "$(cat "$NS/config")" "$before"
+  try ns add o/d "$W/third" plugins=rn-agent plugins=web
+  expect "add plugins= twice: fails" "$ST $OUT" "1 nightshift: plugins= given twice"
+  expect "add plugins= twice: nothing written" "$(cat "$NS/config")" "$before"
+  try ns add o/d "$W/third" colour=red colour=red
+  expect "add an unknown option twice: the usage" "$ST $OUT" "1 nightshift: usage: nightshift add <owner/repo> <clone path> [instructions=<path>] [auto_merge=false] [plugins=<name>,…] (colour isn't an option)"
   expect_no_unexpected)
 
 (world
@@ -339,6 +361,13 @@ without() {
   expect_line "doctor: no agent label" "$OUT" "^  missing o/r: its \`agent\` label: gh label create agent --repo o/r --color 5319E7$"
   expect_line "doctor: a clone that's gone" "$OUT" "^  missing o/gone: its clone ($W/gone): clone it there"
   expect_line "doctor: counts both" "$OUT" "^2 to fix")
+
+(healthy
+  plugin rn-agent@hvalec427
+  rmdir "$W/rn-agent"
+  sed -i.bak 's|^repo o/r .*|& plugins=rn-agent|' "$NS/config"
+  try ns doctor
+  expect_line "doctor: a plugin whose folder is gone" "$OUT" "^  missing o/r: plugin rn-agent's folder $W/rn-agent: reinstall it: claude plugin install rn-agent$")
 
 (healthy
   expect_line "doctor: no instructions=, no line for it" "$(ns doctor)" "o/r: .*instructions" no)
