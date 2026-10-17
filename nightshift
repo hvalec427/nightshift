@@ -388,6 +388,11 @@ ATTRIBUTION_OFF='"attribution":{"commit":"","pr":""}'
 # clone's personal notes shouldn't change runs. A settings JSON member.
 md_excludes() { printf '"claudeMdExcludes":["%s/CLAUDE.md","%s/.claude/CLAUDE.md","%s/CLAUDE.local.md"]' "$1" "$1" "$1"; }
 
+# Every run is denied pkill and killall: they match processes by name, and a
+# run's command line holds its prompt, so they kill other runs and test
+# suites. `kill <pid>` stays allowed. A settings JSON member.
+KILL_DENY='"permissions":{"deny":["Bash(pkill *)","Bash(killall *)","Bash(pkill)","Bash(killall)"]}'
+
 # Plugin $1's directory (`name`: from any marketplace; `name@marketplace`:
 # that one), if it's installed and enabled. Else 1 if it isn't installed, 2
 # (and its id) if it isn't enabled, 3 (and its install path) if it's enabled
@@ -418,7 +423,7 @@ run_claude() {
   set -- -p "$1" --output-format stream-json --verbose --permission-mode auto --allowedTools $ALLOWED_TOOLS $resume
   # Without the plugin's copy (install.sh not run since), not isolated: the
   # run needs the issue skill.
-  settings=$(md_excludes "$clone")
+  settings="$(md_excludes "$clone"),$KILL_DENY"
   if [ ! -d "$NS/plugin" ]; then
     printf "0\t=== no %s (run install.sh again): this run isn't isolated\n" "$NS/plugin" >>"$dir/log"
   else
