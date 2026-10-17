@@ -139,7 +139,7 @@ agents() { state "$1" agents | jq -S -c '.run = "R" | if .kind == "session" then
     comment questions"
   poll
   expect "a run: its session, then each subagent" "$(agents 7)" \
-'{"kind":"session","models":["opus-5-5"],"run":"R","secs":"S","session":"session-1","skills":["nightshift:issue","nightshift:questions"],"tokens":1000,"tools":5}
+'{"kind":"session","models":["opus-5-5"],"run":"R","secs":"S","session":"session-1","skills":["nightshift:issue","nightshift:questions"],"tokens":1000,"tools":5,"usd":1}
 {"description":"Build T1","kind":"agent","model":"haiku-4-5","run":"R","secs":12,"session":"session-1","skills":["nightshift:build"],"tokens":5000,"tools":7,"type":"nightshift:ticket"}
 {"description":"Find the cost code","kind":"agent","model":"sonnet-4-5","run":"R","secs":2,"session":"session-1","skills":[],"tokens":900,"tools":3,"type":"Explore"}'
   expect_line "its session ran for the run's seconds" "$(state 7 agents)" '^{"kind":"session",.*"secs":[0-9]*,'
@@ -150,7 +150,7 @@ agents() { state "$1" agents | jq -S -c '.run = "R" | if .kind == "session" then
   runs_do "costs 0.5 $OPUS 10 10 10 10; skill nightshift:plan; comment plan"
   poll
   expect "a resumed run: its own share of the tokens, on the same session" "$(agents 7 | tail -1)" \
-'{"kind":"session","models":[],"run":"R","secs":"S","session":"session-1","skills":["nightshift:plan"],"tokens":40,"tools":2}'
+'{"kind":"session","models":[],"run":"R","secs":"S","session":"session-1","skills":["nightshift:plan"],"tokens":40,"tools":2,"usd":0.5}'
   expect "its lines are added to the run before's" "$(state 7 agents | wc -l | tr -d ' ')" 4
   expect "a later run starts later or at the same second" "$(state 7 agents | jq -s '.[3].run >= .[0].run')" true
   rm "$(idir 7)/session"
@@ -158,7 +158,7 @@ agents() { state "$1" agents | jq -S -c '.run = "R" | if .kind == "session" then
   runs_do "costs 2 $OPUS 1 2 3 4; skill nightshift:build; comment progress"
   poll
   expect "a fresh session: all its tokens, its own id" "$(agents 7 | tail -1)" \
-'{"kind":"session","models":[],"run":"R","secs":"S","session":"session-3","skills":["nightshift:build"],"tokens":10,"tools":2}'
+'{"kind":"session","models":[],"run":"R","secs":"S","session":"session-3","skills":["nightshift:build"],"tokens":10,"tools":2,"usd":2}'
   gh_state o/r 7 closed
   poll
   expect "done: the agents stay" "$(state 7 agents | wc -l | tr -d ' ')" 5
@@ -172,7 +172,7 @@ agents() { state "$1" agents | jq -S -c '.run = "R" | if .kind == "session" then
     turn $HAIKU 5 100 0 toolu_1; fail_result"
   poll
   expect "a failed run: its session and its unfinished subagent" "$(agents 7)" \
-'{"kind":"session","models":[],"run":"R","secs":"S","session":"session-1","skills":["nightshift:issue"],"tokens":4,"tools":2}
+'{"kind":"session","models":[],"run":"R","secs":"S","session":"session-1","skills":["nightshift:issue"],"tokens":4,"tools":2,"usd":0.5}
 {"description":"Build T1","kind":"agent","model":"haiku-4-5","run":"R","secs":null,"session":"session-1","skills":["nightshift:build"],"tokens":null,"tools":1,"type":"nightshift:ticket"}'
   gh_comment o/r 7 alice "again" >/dev/null
   runs_do "turn $OPUS 5 1000 0; skill nightshift:plan; hang"
@@ -182,7 +182,7 @@ agents() { state "$1" agents | jq -S -c '.run = "R" | if .kind == "session" then
   ns stop o/r#7 >/dev/null
   wait "$bg"
   expect "a stopped run (no result): its session, no tokens" "$(agents 7 | tail -1)" \
-'{"kind":"session","models":["opus-5-5"],"run":"R","secs":"S","session":"session-1","skills":["nightshift:plan"],"tokens":0,"tools":1}')
+'{"kind":"session","models":["opus-5-5"],"run":"R","secs":"S","session":"session-1","skills":["nightshift:plan"],"tokens":0,"tools":1,"usd":0}')
 
 (world
   gh_issue o/r 7 alice agent
@@ -300,14 +300,15 @@ finish() { gh_state o/r "$1" closed; poll; }
     comment progress"
   poll
   finish 7
-  expect "the done comment: its sessions merged and named by stage, each with its subagents" "$(table 7)" \
-'| Agent | Model | Effort | Skills | Tokens | Time | Tools |
-|---|---|---|---|---|---|---|
-| planning session (2 runs) | opus-5-5 | per skill | issue (low), questions (high), plan (high) | 12k | S | 7 |
-| ↳ Explore · Find the cost code | haiku-4-5 | default | – | 30k | 1m | 12 |
-| build session (1 run) | opus-5-5, sonnet-4-5 | per skill | issue (low), build (high) | 4k | S | 5 |
-| ↳ ticket · Build T1 | sonnet-4-5 | high | tdd | 60k | 7m | 16 |
-| ↳ spec-review · Review the spec | opus-5-5 | default | – | 40k | 2m | 9 |'
+  expect "the done comment: a row a run, each with its subagents and its cost" "$(table 7)" \
+'| Agent | Model | Effort | Skills | Tokens | Cost | Time | Tools |
+|---|---|---|---|---|---|---|---|
+| questions run | opus-5-5 | per skill | issue (low), questions (high) | 10k | $1.00 | S | 4 |
+| ↳ Explore · Find the cost code | haiku-4-5 | default | – | 30k | – | 1m | 12 |
+| plan run | opus-5-5 | per skill | issue (low), plan (high) | 2k | $1.00 | S | 3 |
+| build run | opus-5-5, sonnet-4-5 | per skill | issue (low), build (high) | 4k | $2.00 | S | 5 |
+| ↳ ticket · Build T1 | sonnet-4-5 | high | tdd | 60k | – | 7m | 16 |
+| ↳ spec-review · Review the spec | opus-5-5 | default | – | 40k | – | 2m | 9 |'
   expect "all runs recorded: no partial note" "$(gh_comments o/r 7 | grep -c 'starts from the first recorded run' || true)" 0
   expect_line "the table follows the headline in the one comment" "$(gh_comments o/r 7)" '^| Agent | Model '
   expect "one cost comment" "$(gh_comments o/r 7 | grep -c "^$COMMENT$")" 1
@@ -327,8 +328,8 @@ finish() { gh_state o/r "$1" closed; poll; }
   poll
   finish 7
   expect "a repo plugin's agent and skill: their efforts, its prefix kept" "$(table 7 | tail -2)" \
-'| session (1 run) | – | per skill | issue (low), other:lint (low), other:nothing | 4 | S | 4 |
-| ↳ other:helper · Help \| out | haiku-4-5 | max | tdd | – | – | 1 |'
+'| run | – | per skill | issue (low), other:lint (low), other:nothing | 4 | $1.00 | S | 4 |
+| ↳ other:helper · Help \| out | haiku-4-5 | max | tdd | – | – | – | 1 |'
   expect_no_unexpected)
 
 # No agents file: no table. Runs before the first record: a note.
@@ -353,8 +354,33 @@ finish() { gh_state o/r "$1" closed; poll; }
   poll
   finish 7
   expect "records from the second run on: only that run's agents" "$(table 7 | tail -1)" \
-'| planning session (1 run) | – | per skill | issue (low), plan (high) | 4 | S | 3 |'
+'| plan run | – | per skill | issue (low), plan (high) | 4 | $1.00 | S | 3 |'
   expect_line "and a note under the table" "$(gh_comments o/r 7)" '^_The table starts from the first recorded run: earlier runs have no agent records\._$')
+
+# A session resumed after another ran: its later run comes after that one's,
+# with its own subagents, not merged into the session's first row. A record
+# without dollars has none; a run without a stage skill is a plain run.
+(world
+  own_plugin
+  gh_issue o/r 7 alice agent
+  runs_do "costs 1 $OPUS 1 1 1 1; skill nightshift:issue; comment questions"
+  poll
+  printf '%s\n' \
+    '{"kind":"session","run":2000000300,"session":"s1","models":["opus-5-5"],"skills":["nightshift:plan"],"tools":2,"secs":50,"tokens":300,"usd":0.5}' \
+    '{"kind":"agent","run":2000000300,"session":"s1","type":"Explore","description":"Late look","model":"haiku-4-5","skills":[],"tokens":10,"secs":5,"tools":1}' \
+    '{"kind":"session","run":2000000100,"session":"s1","models":["opus-5-5"],"skills":["nightshift:issue","nightshift:questions"],"tools":4,"secs":60,"tokens":100,"usd":1.234}' \
+    '{"kind":"session","run":2000000200,"session":"s2","models":["opus-5-5"],"skills":["nightshift:build"],"tools":3,"secs":70,"tokens":200}' \
+    '{"kind":"agent","run":2000000200,"session":"s2","type":"Explore","description":"Early look","model":"haiku-4-5","skills":[],"tokens":20,"secs":5,"tools":2}' \
+    '{"kind":"session","run":2000000400,"session":"s3","models":[],"skills":[],"tools":1,"secs":10,"tokens":0,"usd":0}' \
+    >"$(idir 7)/agents"
+  finish 7
+  expect "runs in the order they ran, a session's later run after the other's, cost from usd" "$(table 7 | sed 1,2d)" \
+'| questions run | opus-5-5 | per skill | issue (low), questions (high) | 100 | $1.23 | 1m | 4 |
+| build run | opus-5-5 | per skill | build (high) | 200 | – | 1m | 3 |
+| ↳ Explore · Early look | haiku-4-5 | default | – | 20 | – | 5s | 2 |
+| plan run | opus-5-5 | per skill | plan (high) | 300 | $0.50 | S | 2 |
+| ↳ Explore · Late look | haiku-4-5 | default | – | 10 | – | 5s | 1 |
+| run | – | per skill | – | 0 | $0.00 | S | 1 |')
 
 (world
   own_plugin
