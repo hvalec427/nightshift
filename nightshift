@@ -368,6 +368,7 @@ tracks_local_md() { [ -n "$(git -C "$1" ls-files CLAUDE.local.md 2>/dev/null)" ]
 # alone, which log dir $2's log says.
 write_instructions() {
   git_exclude "$1" /CLAUDE.local.md
+  git_exclude "$1" /.nightshift/tickets/
   if tracks_local_md "$1"; then
     printf "0\t=== CLAUDE.local.md is tracked in the repo: nightshift's instructions aren't in it\n" >>"$2/log"
     return

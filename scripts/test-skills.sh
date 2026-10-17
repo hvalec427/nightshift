@@ -164,7 +164,7 @@ for t in "A good test" "Tautological" "Horizontal" "Red before green" "^## Test 
 done
 expect_line "the build skill points to the tdd skill" "$build" "nightshift:tdd"
 brief=$(flat "$SKILLS/build/SKILL.md")
-expect_line "the brief points at the plan comment through gh" "$brief" "issue number[^.]*gh"
+expect_line "the brief gives the issue number and repo for what the file leaves open" "$brief" "issue number[^.]*repo[^.]*leaves open"
 expect_line "the brief gives the worktree's absolute path" "$brief" "worktree's absolute path"
 expect_line "the brief gives the commits so far" "$brief" "commits so far"
 expect_line "the brief says to pass the issue number, not paste the ticket" "$brief" "not pasted"
@@ -182,7 +182,14 @@ expect_line "a reused tasks comment keeps its ticks" "$tasks" "keeping the ticks
 expect_line "the tasks comment is edited by its comment id" "$tasks" "gh api -X PATCH repos/{owner}/{repo}/issues/comments/<id> -F body=@<file>"
 expect_line "the build posts the tasks comment before the first ticket" "$brief" "Before the first ticket"
 expect_line "the build ticks a ticket's box after its commit" "$brief" "commit[^.]*tick its box"
-expect_line "the brief points at the ticket's ID and the plan comment" "$brief" "the ticket's ID[^.]*plan comment"
+expect_line "the brief points at the ticket's ID and its file" "$brief" "the ticket's ID[^.]*\`.nightshift/tickets/T<n>.md\`"
+expect_line "the build writes a file per ticket before the first ticket" "$brief" "Before the first ticket[^.]*\`.nightshift/tickets/T<n>.md\`"
+expect_line "the files come from the latest plan and the replies that changed it" "$brief" "write each ticket of the latest \`plan\` comment.*reply of the user's after the plan that changed it"
+expect_line "a resumed build rewrites the files" "$brief" "resumed build rewrites them"
+expect_line "the plan comment stays the source, the files a working copy" "$brief" "plan comment stays the source[^.]*working copy"
+expect_line "the files are never committed" "$brief" "never committed"
+expect_line "the brief no longer sends the subagent to the plan comment" "$brief" "reads the latest \`plan\` comment" no
+expect_line "the ticket agent reads the ticket's file" "$(flat "$AGENTS/ticket.md")" "\`.nightshift/tickets/T<n>.md\`"
 for w in "sub-issue" "sub_issue" "--parent" "Closes #<sub>"; do
   expect "no skill or agent mentions $w" "$(grep -rli -e "$w" "$ROOT/plugin" | sed "s|^$ROOT/||")" ""
 done

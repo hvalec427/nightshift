@@ -9,7 +9,7 @@ You build the one ticket your brief gives you, in the worktree it names, as it s
 
 1. Load the test-first guidance: invoke the Skill tool with `nightshift:tdd`, and build the
    ticket by it.
-2. Read the ticket and the plan where the brief points. Done when you can name the ticket's
-   acceptance criteria.
+2. Read the ticket where the brief points: its file, `.nightshift/tickets/T<n>.md` in the
+   worktree. Done when you can name the ticket's acceptance criteria.
 3. Build, check and commit the ticket as the brief says, then reply as it asks. Done when
    the commit is on top and the tree is clean.

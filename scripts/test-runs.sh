@@ -349,6 +349,9 @@ resumed_label() {
   expect "no instructions in the system prompt" "$(run_args | grep -cx -- --append-system-prompt)" 0
   expect "the run's CLAUDE.local.md: nightshift's instructions" "$(cat "$CLONE/.claude/worktrees/issue-7/CLAUDE.local.md")" "$(cat "$ROOT/plugin/instructions.md")"
   expect "CLAUDE.local.md stays out of the worktree's git status" "$(git -C "$CLONE/.claude/worktrees/issue-7" status --porcelain)" ""
+  mkdir -p "$CLONE/.claude/worktrees/issue-7/.nightshift/tickets"
+  echo "T1" >"$CLONE/.claude/worktrees/issue-7/.nightshift/tickets/T1.md"
+  expect "a ticket file in .nightshift/tickets stays out of the worktree's git status" "$(git -C "$CLONE/.claude/worktrees/issue-7" status --porcelain)" ""
   expect_line "the allowed tools: nightshift label" "$(run_args)" "^Bash(nightshift$"
   expect "the allowed tools: no signalbox or boop" "$(run_args | grep -c -e signalbox -e boop)" 0)
 
