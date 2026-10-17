@@ -169,6 +169,26 @@ release_ns() {
 # One poll, waiting for the runs it starts.
 poll() { "$ROOT/nightshift" once; }
 
+# $2 as the file $1 in o/r's origin, committed to its branch $3 (default master,
+# made from master if it's new), through a clone of its own: the watched clone
+# doesn't have it until it fetches.
+origin_file() {
+  local c="$W/pusher" b=${3:-master}
+  [ -d "$c" ] || {
+    git clone -q "$ORIGIN" "$c" 2>/dev/null
+    git -C "$c" config commit.gpgsign false
+  }
+  git -C "$c" fetch -q origin
+  git -C "$c" checkout -q -B "$b" "origin/master"
+  mkdir -p "$c/$(dirname "$1")"
+  printf '%s\n' "$2" >"$c/$1"
+  git -C "$c" add "$1" && git -C "$c" commit -q -m "chore: $1"
+  git -C "$c" push -q -f origin "$b"
+}
+
+# A repo's settings, as committed to o/r's default branch: .nightshift/config.
+origin_config() { origin_file .nightshift/config "$1"; }
+
 # A setting in the config.
 set_config() { echo "$1=$2" >>"$NS/config"; }
 

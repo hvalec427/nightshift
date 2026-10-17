@@ -59,31 +59,125 @@ NIGHTSHIFT_REPO=o/r"
   expect_line "the prompt: no type label" "$(run_prompt)" "^It has no type label\.$"
   expect_no_unexpected)
 
+# A repo's settings come from .nightshift/config on origin's default branch.
+NO_MERGE="^This repo doesn't auto-merge (auto_merge=false in \.nightshift/config): leave merging to the user\.$"
+MERGES="^This repo auto-merges: once its pull request is open or updated, use the merge skill\.$"
+
+(world
+  origin_config "auto_merge=false"
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  expect "auto_merge=false in .nightshift/config: the run still works in the clone's worktree" "$(cat "$CLAUDE_FAKE/runs/1/cwd")" "$CLONE/.claude/worktrees/issue-7"
+  expect_line "the prompt: auto_merge=false doesn't auto-merge" "$(run_prompt)" "$NO_MERGE"
+  expect_line "the prompt: no auto-merge isn't also auto-merge" "$(run_prompt)" "$MERGES" no)
+
+(world
+  origin_config "auto_merge=no"
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  expect_line "the prompt: only auto_merge=false turns it off" "$(run_prompt)" "$MERGES")
+
+(world
+  origin_config "# the default: auto_merge=false turns it off
+plugins=
+auto_merge=false
+auto_merge=true"
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  expect_line "a comment isn't a setting, and the last value of a key wins" "$(run_prompt)" "$MERGES")
+
+(world
+  origin_config "auto_merge=true
+auto_merge=false"
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  expect_line "the last auto_merge wins: false" "$(run_prompt)" "$NO_MERGE")
+
+(world
+  origin_file other.md "unrelated"
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  expect_line "no .nightshift/config on the default branch: auto-merges" "$(run_prompt)" "$MERGES")
+
 (world
   printf 'repo %s %s auto_merge=false\n' "$REPO" "$CLONE" >"$NS/config"
   gh_issue o/r 7 alice agent
   runs_do 'comment questions'
   poll
-  expect "auto_merge=false: the run still works in the clone's worktree" "$(cat "$CLAUDE_FAKE/runs/1/cwd")" "$CLONE/.claude/worktrees/issue-7"
-  expect_line "the prompt: auto_merge=false doesn't auto-merge" "$(run_prompt)" \
-    "^This repo doesn't auto-merge (auto_merge=false): leave merging to the user\.$")
+  expect_line "auto_merge=false on a repo line: ignored" "$(run_prompt)" "$MERGES"
+  expect "auto_merge=false on a repo line: the clone path without it" "$(cat "$CLAUDE_FAKE/runs/1/cwd")" "$CLONE/.claude/worktrees/issue-7")
 
 (world
-  printf 'repo %s %s auto_merge=no\n' "$REPO" "$CLONE" >"$NS/config"
+  origin_config "auto_merge=false"
+  printf 'repo %s %s auto_merge=true\n' "$REPO" "$CLONE" >"$NS/config"
   gh_issue o/r 7 alice agent
   runs_do 'comment questions'
   poll
-  expect_line "the prompt: only auto_merge=false turns it off" "$(run_prompt)" \
-    "^This repo auto-merges: once its pull request is open or updated, use the merge skill\.$")
+  expect_line "a repo line's auto_merge=true doesn't beat the file" "$(run_prompt)" "$NO_MERGE")
+
+# A branch can't change its own settings: only the default branch counts.
+(world
+  origin_file .nightshift/config "auto_merge=false" nightshift/issue-7
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  expect_line "a change only on the issue's branch on origin: not read" "$(run_prompt)" "$MERGES")
+
+(world
+  gh_issue o/r 7 alice agent
+  runs_do 'mkdir -p .nightshift; echo auto_merge=false >.nightshift/config; git add .nightshift; git commit -q -m "chore: config"; comment questions'
+  poll
+  expect_line "the first run: auto-merges" "$(run_prompt)" "$MERGES"
+  gh_comment o/r 7 alice "more" >/dev/null
+  poll
+  expect_line "a change in the branch's own worktree: not read" "$(run_prompt)" "$MERGES")
+
+# Fetched before each run, not only when the worktree is made.
+(world
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  expect_line "before the file: auto-merges" "$(run_prompt)" "$MERGES"
+  origin_config "auto_merge=false"
+  gh_comment o/r 7 alice "more" >/dev/null
+  poll
+  expect_line "committed to origin since: the next run reads it" "$(run_prompt)" "$NO_MERGE"
+  origin_config "auto_merge=true"
+  gh_comment o/r 7 alice "again" >/dev/null
+  poll
+  expect_line "changed back: the next run too" "$(run_prompt)" "$MERGES")
+
+# The default branch from origin/HEAD when it's set, else from GitHub.
+(world
+  origin_config "auto_merge=false"
+  git -C "$CLONE" fetch -q origin
+  git -C "$CLONE" remote set-head origin master
+  sed -i.bak 's/"master"/"gone"/' "$(gh_dir o/r)/repo.json"
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  expect_line "origin/HEAD set: the default branch from it" "$(run_prompt)" "$NO_MERGE")
+
+(world
+  origin_config "auto_merge=false"
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  expect_line "origin/HEAD missing: the default branch from GitHub" "$(run_prompt)" "$NO_MERGE")
 
 (world
   echo "Use tabs." >"$W/ours.md"
   printf 'repo %s %s auto_merge=false instructions=%s\n' "$REPO" "$CLONE" "$W/ours.md" >"$NS/config"
+  origin_config "auto_merge=false"
   gh_issue o/r 7 alice agent
   runs_do 'comment questions'
   poll
-  expect_line "the prompt: auto_merge=false beside another option" "$(run_prompt)" \
-    "^This repo doesn't auto-merge (auto_merge=false): leave merging to the user\.$")
+  expect_line "the file's auto_merge=false, beside an old line's other option" "$(run_prompt)" "$NO_MERGE")
 
 # The skill a run is in: its status label, its skill file and its log.
 # (The watcher sets the label as the stream goes by, so wait for it.)
@@ -360,27 +454,45 @@ Run make check.")
 (world
   cp -R "$ROOT/plugin" "$NS/plugin"
   plugin rn-agent@hvalec427
+  origin_config "plugins=rn-agent"
+  gh_issue o/r 7 alice agent
+  poll
+  expect "plugins=rn-agent in .nightshift/config: its plugin too" "$(plugin_dirs)" "$NS/plugin $W/rn-agent ")
+
+(world
+  cp -R "$ROOT/plugin" "$NS/plugin"
+  plugin rn-agent@hvalec427
   printf 'repo %s %s plugins=rn-agent\n' "$REPO" "$CLONE" >"$NS/config"
   gh_issue o/r 7 alice agent
   poll
-  expect "plugins=rn-agent: its plugin too" "$(plugin_dirs)" "$NS/plugin $W/rn-agent "
-  expect "plugins=: the clone path without the option" "$(cat "$CLAUDE_FAKE/runs/1/cwd")" "$CLONE/.claude/worktrees/issue-7")
+  expect "plugins= on a repo line: ignored" "$(plugin_dirs)" "$NS/plugin "
+  expect "plugins= on a repo line: the clone path without the option" "$(cat "$CLAUDE_FAKE/runs/1/cwd")" "$CLONE/.claude/worktrees/issue-7")
+
+(world
+  cp -R "$ROOT/plugin" "$NS/plugin"
+  plugin rn-agent@hvalec427
+  origin_file .nightshift/config "plugins=rn-agent" nightshift/issue-7
+  gh_issue o/r 7 alice agent
+  poll
+  expect "plugins= only on the issue's branch: not loaded" "$(plugin_dirs)" "$NS/plugin ")
 
 (world
   cp -R "$ROOT/plugin" "$NS/plugin"
   plugin rn-agent@hvalec427
   plugin web@other
-  printf 'repo %s %s  instructions=x.md   plugins=rn-agent,web@other \n' "$REPO" "$CLONE" >"$NS/config"
+  origin_config "# the plugins
+plugins=rn-agent,web@other"
+  printf 'repo %s %s  instructions=x.md   plugins=nope \n' "$REPO" "$CLONE" >"$NS/config"
   gh_issue o/r 7 alice agent
   poll
-  expect "two plugins, after another option: both load" "$(plugin_dirs)" "$NS/plugin $W/rn-agent $W/web "
+  expect "two plugins in the file, other options on an old line: the file's both load" "$(plugin_dirs)" "$NS/plugin $W/rn-agent $W/web "
   expect "options spaced out: the clone path without them" "$(cat "$CLAUDE_FAKE/runs/1/cwd")" "$CLONE/.claude/worktrees/issue-7")
 
 (world
   cp -R "$ROOT/plugin" "$NS/plugin"
   plugin rn-agent@hvalec427
   plugin old@m false
-  printf 'repo %s %s plugins=nope,old,rn-agent@other\n' "$REPO" "$CLONE" >"$NS/config"
+  origin_config "plugins=nope,old,rn-agent@other"
   gh_issue o/r 7 alice agent
   poll
   expect "missing, disabled or another marketplace's: skipped" "$(plugin_dirs)" "$NS/plugin "
@@ -393,7 +505,7 @@ Run make check.")
   cp -R "$ROOT/plugin" "$NS/plugin"
   plugin rn-agent@hvalec427
   rmdir "$W/rn-agent"
-  printf 'repo %s %s plugins=rn-agent\n' "$REPO" "$CLONE" >"$NS/config"
+  origin_config "plugins=rn-agent"
   gh_issue o/r 7 alice agent
   poll
   expect "a plugin whose folder is gone: skipped" "$(plugin_dirs)" "$NS/plugin "
@@ -403,7 +515,8 @@ Run make check.")
   cp -R "$ROOT/plugin" "$NS/plugin"
   plugin rn-agent@hvalec427
   mv "$CLONE" "$W/my clone"
-  printf 'repo %s %s plugins=rn-agent\n' "$REPO" "$W/my clone" >"$NS/config"
+  printf 'repo %s %s\n' "$REPO" "$W/my clone" >"$NS/config"
+  origin_config "plugins=rn-agent"
   gh_issue o/r 7 alice agent
   poll
   expect "a clone path with a space: the run works in its worktree" "$(cat "$CLAUDE_FAKE/runs/1/cwd")" "$W/my clone/.claude/worktrees/issue-7"

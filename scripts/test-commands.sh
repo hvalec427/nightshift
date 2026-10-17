@@ -21,7 +21,7 @@ try() {
   gh_repo o/x "$W/other"
   try ns add o/x "$W/other"
   expect "add: says so, and that its PRs merge on their own" "$OUT" \
-    "watching o/x (clone: $W/other); PRs merge on their own (auto_merge=false turns it off); add the \`agent\` label to an issue to start"
+    "watching o/x (clone: $W/other); PRs merge on their own (auto_merge=false in .nightshift/config turns it off); add the \`agent\` label to an issue to start"
   expect "add: the repo line" "$(cat "$NS/config")" "repo o/x $W/other"
   expect_line "add: the agent label is created" "$(cat "$(gh_dir o/x)/labels")" "^agent$"
   expect_line "add: the status labels too" "$(cat "$(gh_dir o/x)/labels")" "^nightshift: needs you$"
@@ -38,8 +38,8 @@ try() {
   git init -q "$W/third"
   gh_repo o/z "$W/third"
   try ns add o/z "$W/third" auto_merge=false
-  expect "add auto_merge=false: says its PRs wait" "$OUT" \
-    "watching o/z (clone: $W/third); PRs wait for you; add the \`agent\` label to an issue to start"
+  expect "add auto_merge=false: it's read from .nightshift/config now, so the message doesn't change" "$OUT" \
+    "watching o/z (clone: $W/third); PRs merge on their own (auto_merge=false in .nightshift/config turns it off); add the \`agent\` label to an issue to start"
   expect_line "add auto_merge=false: on the repo line" "$(cat "$NS/config")" "^repo o/z $W/third auto_merge=false$"
   gh_repo o/q "$W/third"
   try ns add o/q "$W/third" plugins=rn-agent,web@other
@@ -101,7 +101,7 @@ try() {
 
 (world
   expect "status, nothing yet" "$(ns status)" "service: not installed
-pull requests merge on their own (auto_merge=false on a repo line turns it off)
+pull requests merge on their own (auto_merge=false in a repo's .nightshift/config turns it off)
 no issues yet"
   sh -c 'exit 0' &
   dead=$!
@@ -111,14 +111,44 @@ no issues yet"
   try ns status --everything
   expect "status, a bad option: the usage" "$ST $OUT" "2 usage: nightshift status [--all]")
 
+# A second watched repo, o/x, cloned in $W/other, with .nightshift/config $1
+# on its default branch (none if empty).
+second_repo() {
+  git init -q --bare -b master "$W/x.git"
+  git clone -q "$W/x.git" "$W/other" 2>/dev/null
+  git -C "$W/other" config commit.gpgsign false
+  mkdir -p "$W/other/.nightshift"
+  echo hi >"$W/other/README"
+  [ -z "$1" ] || printf '%s\n' "$1" >"$W/other/.nightshift/config"
+  git -C "$W/other" add -A && git -C "$W/other" commit -q -m "chore: start"
+  git -C "$W/other" push -q origin master
+  gh_repo o/x "$W/x.git"
+  printf 'repo o/x %s\n' "$W/other" >>"$NS/config"
+}
+
 (world
-  printf 'repo o/x %s auto_merge=false\n' "$W/other" >>"$NS/config"
+  second_repo "auto_merge=false"
   expect "status: the repos auto-merge is off for" "$(ns status | sed -n 2p)" \
-    "pull requests merge on their own (off for: o/x; auto_merge=false on a repo line turns it off)"
-  printf 'repo %s %s auto_merge=false\n' "$REPO" "$CLONE" >"$NS/config"
-  printf 'repo o/x %s auto_merge=false\n' "$W/other" >>"$NS/config"
+    "pull requests merge on their own (off for: o/x; auto_merge=false in a repo's .nightshift/config turns it off)"
+  origin_config "auto_merge=false"
+  git -C "$CLONE" fetch -q origin
   expect "status: off for every repo, they wait" "$(ns status | sed -n 2p)" \
-    "pull requests wait for you (auto_merge=false on every repo line)"
+    "pull requests wait for you (auto_merge=false in every repo's .nightshift/config)")
+
+(world
+  printf 'repo %s %s auto_merge=false\n' "$REPO" "$CLONE" >"$NS/config"
+  expect "status: auto_merge=false on a repo line is ignored" "$(ns status | sed -n 2p)" \
+    "pull requests merge on their own (auto_merge=false in a repo's .nightshift/config turns it off)")
+
+(world
+  origin_config "auto_merge=false"
+  expect "status: uses the last fetch, not origin's newest" "$(ns status | sed -n 2p)" \
+    "pull requests merge on their own (auto_merge=false in a repo's .nightshift/config turns it off)"
+  git -C "$CLONE" fetch -q origin
+  expect "status: after the fetch" "$(ns status | sed -n 2p)" \
+    "pull requests wait for you (auto_merge=false in every repo's .nightshift/config)")
+
+(world
   : >"$NS/config"
   expect "status: no repos, no merge line" "$(ns status)" "service: not installed
 no issues yet")
@@ -280,9 +310,25 @@ without() {
   expect_line "doctor: all good" "$OUT" "^all good$")
 
 (healthy
-  printf 'repo %s %s auto_merge=false\n' "$REPO" "$CLONE" >"$NS/config"
-  expect_line "doctor: auto_merge=false, its PRs wait" "$(ns doctor)" \
-    "^  ok      o/r: clone $CLONE, \`agent\` label, PRs wait for you (auto_merge=false)$")
+  origin_config "auto_merge=false"
+  git -C "$CLONE" fetch -q origin
+  expect_line "doctor: auto_merge=false in .nightshift/config, its PRs wait" "$(ns doctor)" \
+    "^  ok      o/r: clone $CLONE, \`agent\` label, PRs wait for you (auto_merge=false in .nightshift/config)$")
+
+(healthy
+  printf 'repo %s %s auto_merge=false plugins=rn-agent\n' "$REPO" "$CLONE" >"$NS/config"
+  try ns doctor
+  expect "doctor: options on a repo line: ignored, only a note" "$ST" 0
+  expect_line "doctor: auto_merge=false on the repo line, its PRs still merge" "$OUT" \
+    "^  ok      o/r: clone $CLONE, \`agent\` label, PRs merge on their own$"
+  expect_line "doctor: a note for the ignored auto_merge=" "$OUT" \
+    "^  note    o/r: auto_merge=false on its repo line is ignored now: put it in .nightshift/config on o/r's default branch$"
+  expect_line "doctor: a note for the ignored plugins=" "$OUT" \
+    "^  note    o/r: plugins=rn-agent on its repo line is ignored now: put it in .nightshift/config on o/r's default branch$"
+  expect_line "doctor: its plugin isn't checked" "$OUT" "plugin rn-agent" no)
+
+(healthy
+  expect_line "doctor: no options on the repo line, no note" "$(ns doctor)" "^  note    o/r:" no)
 
 (healthy
   set_config model sonnet
@@ -365,7 +411,8 @@ without() {
 (healthy
   plugin rn-agent@hvalec427
   rmdir "$W/rn-agent"
-  sed -i.bak 's|^repo o/r .*|& plugins=rn-agent|' "$NS/config"
+  origin_config "plugins=rn-agent"
+  git -C "$CLONE" fetch -q origin
   try ns doctor
   expect_line "doctor: a plugin whose folder is gone" "$OUT" "^  missing o/r: plugin rn-agent's folder $W/rn-agent: reinstall it: claude plugin install rn-agent$")
 
@@ -396,14 +443,16 @@ without() {
 
 (healthy
   plugin rn-agent@hvalec427
-  sed -i.bak 's|^repo o/r .*|& plugins=rn-agent|' "$NS/config"
+  origin_config "plugins=rn-agent"
+  git -C "$CLONE" fetch -q origin
   try ns doctor
   expect "doctor: the repo's plugins installed: passes" "$ST" 0)
 
 (healthy
   plugin rn-agent@hvalec427
   plugin web@other false
-  sed -i.bak 's|^repo o/r .*|& plugins=rn-agent,web,nope|' "$NS/config"
+  origin_config "plugins=rn-agent,web,nope"
+  git -C "$CLONE" fetch -q origin
   try ns doctor
   expect "doctor: a missing or disabled plugin: fails" "$ST" 1
   expect_line "doctor: an installed plugin" "$OUT" "^  ok      o/r: plugin rn-agent$"

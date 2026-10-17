@@ -90,11 +90,35 @@ repos() {
     -e 's/^repo  *\([^ ]*\)  *\(.*\)$/\1 \2/p' "$CONFIG" 2>/dev/null
 }
 
-# Repo $1's option $2 (its line's `$2=value`, in any order), or empty.
-repo_option() {
+# Repo $1's option $2 on its line in the config (`$2=value`, in any order), or
+# empty. Only `instructions` is still read from there; doctor notes the others.
+repo_line_option() {
   awk -v r="$1" -v k="$2=" '$1 == "repo" && $2 == r {
     for (i = NF; i > 3 && $i ~ /^[a-z_]+=/; i--) if (index($i, k) == 1) { printf "%s", substr($i, length(k) + 1); exit }
   }' "$CONFIG" 2>/dev/null
+}
+
+# Repo $1's clone path, from its line in the config.
+repo_clone() { repos | awk -v r="$1" '$1 == r { sub(/^[^ ]+  */, ""); print; exit }'; }
+
+# Repo $1's default branch in clone $2: origin/HEAD's, else GitHub's.
+default_branch() {
+  db=$(git -C "$2" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null) && db=${db#origin/}
+  [ -n "$db" ] || db=$(gh repo view "$1" --json defaultBranchRef -q .defaultBranchRef.name 2>/dev/null)
+  printf '%s' "$db"
+}
+
+# Repo $1's setting $2 from `.nightshift/config` on its default branch on
+# origin, as of the last fetch (a run fetches first): a `key=value` file with
+# `#` comments, the last value of a key winning. Empty when there's no such
+# file or key. A branch's own copy isn't read, so it can't change its settings.
+repo_option() {
+  ro_clone=$(repo_clone "$1")
+  [ -n "$ro_clone" ] || return 0
+  ro_base=$(default_branch "$1" "$ro_clone")
+  [ -n "$ro_base" ] || return 0
+  git -C "$ro_clone" show "origin/$ro_base:.nightshift/config" 2>/dev/null |
+    sed -n "s/^$2=//p" | tail -1 | sed 's/[[:space:]]*$//'
 }
 
 # Whether nightshift merges repo $1's pull requests: unless `auto_merge=false`.
@@ -172,8 +196,8 @@ merge_line() {
     auto_merges "$r" || { offs=$((offs + 1)); off="${off:+$off, }$r"; }
   done
   if [ $total -eq 0 ]; then return
-  elif [ $offs -eq $total ]; then echo "pull requests wait for you (auto_merge=false on every repo line)"
-  else echo "pull requests merge on their own (${off:+off for: $off; }auto_merge=false on a repo line turns it off)"
+  elif [ $offs -eq $total ]; then echo "pull requests wait for you (auto_merge=false in every repo's .nightshift/config)"
+  else echo "pull requests merge on their own (${off:+off for: $off; }auto_merge=false in a repo's .nightshift/config turns it off)"
   fi
 }
 
@@ -320,8 +344,7 @@ worktree() {
   wt="$clone/.claude/worktrees/issue-$n"
   branch="nightshift/issue-$n"
   if [ ! -d "$wt" ]; then
-    git -C "$clone" fetch -q origin >/dev/null 2>&1 || true
-    base=$(gh repo view "$repo" --json defaultBranchRef -q .defaultBranchRef.name)
+    base=$(default_branch "$repo" "$clone")
     mkdir -p "$clone/.claude/worktrees"
     # Keep the worktrees out of the clone's own git status.
     git_exclude "$clone" .claude/worktrees/
@@ -341,7 +364,7 @@ tracks_local_md() { [ -n "$(git -C "$1" ls-files CLAUDE.local.md 2>/dev/null)" ]
 
 # Repo $1's instructions= file, `~/` expanded, or empty. Only ever read.
 repo_instructions() {
-  f=$(repo_option "$1" instructions)
+  f=$(repo_line_option "$1" instructions)
   case "$f" in \~/*) f="$HOME/${f#\~/}" ;; esac
   printf '%s' "$f"
 }
@@ -377,7 +400,7 @@ ALLOWED_TOOLS='Bash(gh issue *) Bash(gh pr *) Bash(gh repo view *) Bash(gh api *
 # Runs are isolated from the machine's own Claude setup:
 # no user-level skills, settings, plugins or hooks, only the repo's own and
 # nightshift's plugin (its copy in $NS/plugin, which install.sh keeps). Every
-# run also gets the plugins its repo line names (plugins=). Attribution in
+# run also gets the plugins its .nightshift/config names (plugins=). Attribution in
 # commits and pull requests is off; the plugin's instructions.md, in the
 # worktree's CLAUDE.local.md, says what else to do (see write_instructions).
 # A settings JSON member, joined into the run's --settings.
@@ -430,7 +453,7 @@ run_claude() {
     settings="$ATTRIBUTION_OFF,$settings"
     set -- "$@" --setting-sources project,local --plugin-dir "$NS/plugin"
   fi
-  # The plugins the repo line names; one that isn't there: without it.
+  # The plugins .nightshift/config names; one that isn't there: without it.
   for p in $(repo_option "$repo" plugins | tr ',' ' '); do
     if pd=$(plugin_dir "$p"); then set -- "$@" --plugin-dir "$pd"
     else
@@ -500,6 +523,8 @@ run_agent() {
   # What started the run, for its `reply` (see AGENTS): its news, or a fresh
   # build session's approval.
   said=$news
+  # The repo's settings are on origin's default branch: fetch them.
+  git -C "$clone" fetch -q origin >/dev/null 2>&1 || true
   wt=$(worktree "$repo" "$n" "$clone") || {
     comment_failure "$repo" "$n" "couldn't create the worktree: see $dir/log"
     set_status "$repo" "$n" "needs you"
@@ -734,7 +759,7 @@ build_intro() {
 # What a run is told of repo $1's merging: whether to merge its pull requests.
 merge_note() {
   if auto_merges "$1"; then echo "This repo auto-merges: once its pull request is open or updated, use the merge skill."
-  else echo "This repo doesn't auto-merge (auto_merge=false): leave merging to the user."
+  else echo "This repo doesn't auto-merge (auto_merge=false in .nightshift/config): leave merging to the user."
   fi
 }
 
@@ -1792,7 +1817,7 @@ version_line() {
   return 0
 }
 
-# doctor's lines for the plugins repo $1's line names (plugins=).
+# doctor's lines for the plugins repo $1's .nightshift/config names (plugins=).
 repo_plugins() {
   for p in $(repo_option "$1" plugins | tr ',' ' '); do
     if [ -z "$cv" ] || ! command -v jq >/dev/null; then fail "?" "$1: plugin $p" "needs claude and jq to check"
@@ -1861,7 +1886,7 @@ cmd_doctor() {
     elif [ -z "$ghv" ]; then fail "?" "$repo: its \`$LABEL\` label" "needs gh to check"
     elif gh api "repos/$repo/labels/$LABEL" >/dev/null 2>&1; then
       if auto_merges "$repo"; then pass "$repo: clone $clone, \`$LABEL\` label, PRs merge on their own"
-      else pass "$repo: clone $clone, \`$LABEL\` label, PRs wait for you (auto_merge=false)"
+      else pass "$repo: clone $clone, \`$LABEL\` label, PRs wait for you (auto_merge=false in .nightshift/config)"
       fi
     else fail missing "$repo: its \`$LABEL\` label" "gh label create $LABEL --repo $repo --color 5319E7"
     fi
@@ -1873,6 +1898,11 @@ cmd_doctor() {
     tracks_local_md "$clone" &&
       fail tracked "$repo: CLAUDE.local.md, so runs don't get nightshift's instructions" "untrack it: git -C $clone rm --cached CLAUDE.local.md"
     repo_plugins "$repo"
+    # Options older versions read from the repo's line, ignored now.
+    for o in auto_merge plugins; do
+      v=$(repo_line_option "$repo" "$o")
+      [ -z "$v" ] || printf '  %-7s %s\n' note "$repo: $o=$v on its repo line is ignored now: put it in .nightshift/config on $repo's default branch"
+    done
     # A hint, not a problem: nightshift deletes its own merged branches.
     [ -n "$ghv" ] && [ "$(gh api "repos/$repo" -q .delete_branch_on_merge 2>/dev/null)" = false ] &&
       printf '  %-7s %s\n' hint "$repo: GitHub keeps merged branches (\"Automatically delete head branches\" is off); nightshift deletes its own, and for the rest: gh repo edit $repo --delete-branch-on-merge"
@@ -1926,8 +1956,8 @@ cmd_add() {
   echo "repo $repo $clone$opts" >>"$CONFIG"
   gh label create "$LABEL" --repo "$repo" --color 5319E7 --description "nightshift works this issue" >/dev/null 2>&1 || true
   ensure_labels "$repo" || true
-  if auto_merges "$repo"; then merging="PRs merge on their own (auto_merge=false turns it off)"
-  else merging="PRs wait for you"
+  if auto_merges "$repo"; then merging="PRs merge on their own (auto_merge=false in .nightshift/config turns it off)"
+  else merging="PRs wait for you (auto_merge=false in .nightshift/config)"
   fi
   echo "watching $repo (clone: $clone); $merging; add the \`$LABEL\` label to an issue to start"
 }
