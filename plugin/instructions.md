@@ -44,3 +44,6 @@ stays undone. Run checks (tests, builds, linters) in the foreground and wait for
 even when they're slow. When one outlasts the tool's timeout and moves to the background,
 wait on it in the same turn (a loop that polls its output until it ends). Never end a run
 to wait for something.
+Stop a background task by its PID or with TaskStop, never by a name pattern like
+`pkill -f` or `killall`: a run's command line holds its prompt, so a pattern matches other
+runs too.
