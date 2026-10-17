@@ -48,3 +48,8 @@ to wait for something.
 Stop a background task by its PID or with TaskStop, never by a name pattern like
 `pkill -f` or `killall`: a run's command line holds its prompt, so a pattern matches other
 runs too.
+
+Keep a check's logs and scratch files inside the worktree's ignored files or under
+`$TMPDIR` (make them with a template, `mktemp "${TMPDIR:-/tmp}/x.XXXXXX"`: plain `mktemp`
+ignores `TMPDIR` on macOS), remove them when you're done, and never leave loose files in
+`/tmp`.
