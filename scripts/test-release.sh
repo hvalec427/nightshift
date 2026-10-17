@@ -109,6 +109,17 @@ EOF
 EOF
 )")
 
+(repo
+  { echo "refactor: tidy"; echo; echo "BREAKING CHANGE: the old flag is gone"
+    awk 'BEGIN { for (i = 0; i < 50000; i++) print "a line of a long body" }'; } >msg
+  git commit -q --allow-empty -F msg
+  expect "a large body's BREAKING CHANGE: breaking" "$(notes)" "$(cat <<'EOF'
+### Breaking changes
+
+- tidy
+EOF
+)")
+
 # --- commit-lint.sh ------------------------------------------------------------
 
 expect "lint: plain" "$(lint "fix: keep the session of a stopped run")" pass
@@ -122,5 +133,11 @@ expect "lint: uppercase description" "$(lint "fix: Add x")" fail
 expect "lint: full stop" "$(lint "fix: add x.")" fail
 expect "lint: over 72" "$(lint "fix: $(printf 'a%.0s' $(seq 1 68))")" fail
 expect "lint: 72 exactly" "$(lint "fix: $(printf 'a%.0s' $(seq 1 67))")" pass
+
+(cd "$(mktemp -d)"
+  { echo "fix: keep the session"; echo
+    awk 'BEGIN { for (i = 0; i < 50000; i++) print "a line of a long body" }'; } >msg
+  expect "lint: a large message file" \
+    "$(bash "$SCRIPTS/commit-lint.sh" --file msg 2>/dev/null && echo pass || echo fail)" pass)
 
 report

@@ -12,7 +12,7 @@ RE="^($TYPES)(\([a-z0-9._/-]+\))?!?: [^A-Z ].*[^. ]$|^($TYPES)(\([a-z0-9._/-]+\)
 
 case "${1:-}" in
 --title) HEADER="${2:-}" ;;
---file) HEADER=$(grep -v '^#' "$2" | head -1) ;;
+--file) HEADER=$(grep -v -m1 '^#' "$2") ;;
 *) sed -n '2,7s/^# \{0,1\}//p' "$0" >&2; exit 2 ;;
 esac
 
