@@ -175,4 +175,27 @@ SUITE_NOTHING="^nightshift runs no whole test suite in this repo (full_suite=not
   poll
   expect_line "the file's auto_merge=false, beside an old line's other option" "$(run_prompt)" "$NO_MERGE")
 
+# The skills branch on exact lines of the run prompt: the double-quoted strings in them that
+# start "This repo" or "nightshift runs no". Rewording a line in the CLI, or a quote in a
+# skill, would silently stop the skill acting (no merge, the wrong checks), so each quoted
+# string must begin a line of the prompt of some run, under each setting that changes one.
+PROMPTS=$(temp)
+trap 'rm -f "$FAILS" "$PROMPTS"' EXIT
+for setting in "" "auto_merge=false" "full_suite=local" "full_suite=nothing"; do
+  (world
+    [ -z "$setting" ] || origin_config "$setting"
+    gh_issue o/r 7 alice agent
+    runs_do 'comment questions'
+    poll
+    run_prompt >>"$PROMPTS")
+done
+QUOTED=$(grep -hoE '"(This repo|nightshift runs no)[^"]*"' "$ROOT"/plugin/skills/*/*.md | sed 's/^"//; s/"$//' | sort -u)
+expect_ok "the skills quote prompt lines" test -n "$QUOTED"
+while IFS= read -r quoted; do
+  [ -n "$quoted" ] || continue
+  begins=no
+  awk -v q="$quoted" 'index($0, q) == 1 { found = 1 } END { exit !found }' "$PROMPTS" && begins=yes
+  expect "a run's prompt has a line beginning \"$quoted\", as a skill quotes it" "$begins" yes
+done <<<"$QUOTED"
+
 report
