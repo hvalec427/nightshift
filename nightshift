@@ -221,6 +221,7 @@ stopped|BFBFBF|nightshift was stopped partway'
 SKILL_STATUSES='questions|thinking
 plan|planning
 build|building
+tdd|building
 review|building
 finish|building
 update|updating

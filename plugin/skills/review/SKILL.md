@@ -51,8 +51,9 @@ Give it the plan. Its brief:
 - each ticket's acceptance criteria: met, partial, or missing;
 - what the diff does that the plan didn't ask for;
 - what looks implemented but wrong: the plan says one thing, the code does another;
-- the tests: a test the plan or a ticket asked for that isn't there, and a path the change
-  adds (a branch, an error case, a flag) that no test runs.
+- the tests: a test the plan or a ticket asked for that isn't there, a path the change
+  adds (a branch, an error case, a flag) that no test runs, and a test at a seam the plan's
+  testing decisions didn't name.
 
 ### Standards
 
@@ -62,8 +63,8 @@ flag, it isn't one. A smell is always a judgement call ("possible Feature Envy")
 hard miss. Skip what tooling already enforces. Its brief: where the diff breaks a
 documented standard (citing the file and the rule), a `CLAUDE.md` change in the diff,
 checked against those rules (nothing to say when there's none), the baseline smells it
-spots, and leftovers: debug output, commented-out code, TODOs, stray files, a scratch
-script.
+spots (the ticket loop doesn't refactor, so this is where refactoring is found), and
+leftovers: debug output, commented-out code, TODOs, stray files, a scratch script.
 
 - **Mysterious Name:** a name that doesn't say what it does or holds → rename it.
 - **Duplicated Code:** the same logic in more than one hunk or file → one shared shape.
@@ -96,10 +97,10 @@ Go through every finding from both, and put each in one of three:
 
 ## 5. One fix pass
 
-Fix everything under **Fix**, run the checks the tickets ran, and commit the fixes on
-their own (`fix: address review findings`, or the type that fits, in the repo's and the
-user's commit style), not folded into a ticket's commit. That's one review and one fix
-pass: no second review, whatever the fixes touch. A fix that breaks the checks and can't
+Fix everything under **Fix** (refactorings the smells call for included), run the checks
+the tickets ran, and commit the fixes on their own (`fix: address review findings`, or the
+type that fits, in the repo's and the user's commit style), not folded into a ticket's
+commit. That's one review and one fix pass: no second review, whatever the fixes touch. A fix that breaks the checks and can't
 be put right quickly is undone and moves to **Open**.
 
 ## 6. Hand back

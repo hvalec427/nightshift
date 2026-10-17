@@ -24,6 +24,22 @@ for s in $STAGES; do
   expect_line "the issue skill routes to nightshift:$s" "$(cat "$ISSUE")" "nightshift:$s\`"
 done
 
+# The tdd skill: loaded by the ticket agent, not routed to as a stage.
+tdd="$SKILLS/tdd/SKILL.md"
+expect_ok "the tdd skill exists" test -f "$tdd"
+expect "the tdd skill is named tdd" "$(field "$tdd" name 2>/dev/null)" tdd
+expect "the tdd skill isn't user-invocable" "$(field "$tdd" user-invocable 2>/dev/null)" false
+expect_ok "the tdd skill has a description" test -n "$(field "$tdd" description 2>/dev/null)"
+tddtext=$(flat "$tdd" 2>/dev/null)
+expect_line "the tdd skill has the loop: red before green" "$tddtext" "Red before green"
+expect_line "the tdd skill has what a good test is" "$tddtext" "public interface"
+expect_line "the tdd skill has the mocking rules" "$tddtext" "system boundaries"
+expect_line "the tdd skill tests only at the plan's seams" "$tddtext" "plan.s testing decisions"
+expect_line "a seam the plan didn't name is a blocked comment" "$tddtext" "\`blocked\` comment"
+expect_line "the tdd skill covers a repo without tests at that seam" "$tddtext" "repo without tests at that seam"
+expect_line "refactoring is the review's, not the loop's" "$tddtext" "Refactoring.*review"
+expect_line "the review skill covers refactoring" "$(flat "$SKILLS/review/SKILL.md")" "refactor"
+
 # The merge skill: started by the build, update and issue skills, not routed to as a stage.
 merge="$SKILLS/merge/SKILL.md"
 expect "the merge skill is named merge" "$(field "$merge" name 2>/dev/null)" merge
@@ -75,7 +91,7 @@ model_effort() {
 }
 model_effort "the issue skill" "$ISSUE" sonnet low
 for s in questions plan; do model_effort "the $s skill" "$SKILLS/$s/SKILL.md" opus high; done
-for s in build update review merge; do model_effort "the $s skill" "$SKILLS/$s/SKILL.md" sonnet high; done
+for s in build update review merge tdd; do model_effort "the $s skill" "$SKILLS/$s/SKILL.md" sonnet high; done
 for s in answer finish; do model_effort "the $s skill" "$SKILLS/$s/SKILL.md" sonnet medium; done
 bad="" nomodel=""
 for f in "$SKILLS"/*/SKILL.md; do
@@ -113,6 +129,18 @@ expect_line "a stuck subagent replies BLOCKED:" "$build" "\`BLOCKED:\`"
 expect_line "the subagent doesn't comment on the issue" "$build" "comments on the issue, changes labels"
 expect_line "the run checks each ticket's commit and a clean tree" "$build" "the tree clean"
 expect_line "a one-ticket plan is built without a subagent" "$build" "plan with one ticket"
+
+# Test-first is the tdd skill's alone; the build's brief points at the plan and the worktree.
+expect_line "the ticket agent loads nightshift:tdd with the Skill tool" "$(flat "$AGENTS/ticket.md")" "Skill tool[^.]*\`nightshift:tdd\`"
+for t in "A good test" "Tautological" "Horizontal" "Red before green" "^## Test first" "^## Mocks" "^## The loop"; do
+  expect_line "the build skill doesn't carry the test-first text ($t)" "$build" "$t" no
+done
+expect_line "the build skill points to the tdd skill" "$build" "nightshift:tdd"
+brief=$(flat "$SKILLS/build/SKILL.md")
+expect_line "the brief points at the plan comment through gh" "$brief" "issue number[^.]*gh"
+expect_line "the brief gives the worktree's absolute path" "$brief" "worktree's absolute path"
+expect_line "the brief gives the commits so far" "$brief" "commits so far"
+expect_line "the brief says to pass the issue number, not paste the ticket" "$brief" "not pasted"
 
 # The plugin's SessionStart hook, as Claude Code runs it: your own sessions get
 # nightshift's defaults, a run (which has them in its system prompt) nothing.

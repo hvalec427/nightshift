@@ -153,8 +153,8 @@ waiting on you:
 
 The watcher sets them as runs start and end, and as a run invokes one of
 nightshift's skills: `nightshift:questions` sets `thinking`, `plan` `planning`,
-`build`, `review` and `finish` `building`, `update` `updating`, `merge` `merging` and `answer` `answering`
-(`nightshift label <status>` sets one by hand). They come off once it's done, or when you remove the `agent` label with nothing
+`build`, `tdd`, `review` and `finish` `building`, `update` `updating`, `merge` `merging` and
+`answer` `answering` (`nightshift label <status>` sets one by hand). They come off once it's done, or when you remove the `agent` label with nothing
 running (and come back with it). `nightshift status` says the same, with the
 skill a run is in (or its last one ended in).
 

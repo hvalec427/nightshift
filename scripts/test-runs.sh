@@ -133,6 +133,9 @@ resumed_label() {
   expect "resumed again: the skill is kept" "$(state 7 skill)" "nightshift:build"
   expect_no_unexpected)
 (world
+  expect "a resumed tdd run: building from the start" "$(resumed_label 'skill nightshift:tdd')" "nightshift: building"
+  expect_no_unexpected)
+(world
   expect "a resumed plan run: planning from the start" "$(resumed_label 'skill nightshift:plan')" "nightshift: planning"
   expect_no_unexpected)
 (world

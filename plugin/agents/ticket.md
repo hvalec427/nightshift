@@ -6,3 +6,6 @@ effort: high
 ---
 
 You build the one ticket your brief gives you, in the worktree it names, as it says.
+
+First load the test-first guidance: invoke the Skill tool with `nightshift:tdd`, and build
+the ticket by it.
