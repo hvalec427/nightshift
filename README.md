@@ -417,6 +417,10 @@ a throwaway `HOME`. `scripts/test-skills.sh` and
 since the fake `claude` can't see a run invoke a skill; `test-skills.sh` also runs
 the plugin's `SessionStart` hook.
 
+A suite run cleans up after itself: each test world is deleted when it ends, and
+`test.sh` runs in its own temp directory under `$TMPDIR` and removes it on exit.
+`KEEP_WORLD=1 bash scripts/test.sh runs` keeps them and prints where they are.
+
 A test is a few lines in a subshell, with the helpers in `scripts/test-lib.sh`:
 
 ```sh

@@ -6,7 +6,7 @@
 set -euo pipefail
 . "$(dirname "$0")/test-lib.sh"
 
-NIGHTSHIFT_HOME=$(mktemp -d)
+NIGHTSHIFT_HOME=$(temp -d)
 export NIGHTSHIFT_HOME
 set +u
 # shellcheck source=../nightshift
@@ -35,7 +35,7 @@ expect "documentation wins over enhancement" "$(type_of enhancement documentatio
 # What a run is told, with GitHub (gh) giving the issue the labels in LABELS.
 LABELS=""
 gh() { printf '%s\n' "$LABELS"; }
-DIR=$(mktemp -d)
+DIR=$(temp -d)
 note() { LABELS=$1; type_note o/r 1 "$DIR"; }
 
 expect "a first run, labelled: its type" "$(note "agent

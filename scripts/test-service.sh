@@ -49,7 +49,7 @@ healthy() {
 # A pool of its own (in a temp dir, gone at the end) for claim_label; call it
 # in a subshell.
 labels() {
-  NIGHTSHIFT_TEST_LABELS=$(mktemp -d)
+  NIGHTSHIFT_TEST_LABELS=$(temp -d)
   export NIGHTSHIFT_TEST_LABELS
   trap 'rm -rf "$NIGHTSHIFT_TEST_LABELS"' EXIT
 }

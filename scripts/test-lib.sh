@@ -5,8 +5,14 @@
 # Claude (scripts/fake) and a clone of o/r watched.
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+
+# A temp file, or with -d a dir, under TMPDIR, which a plain call to the tool
+# ignores on macOS: the only way a test makes one, so a suite's go in its dir.
+temp() { mktemp "$@" "${TMPDIR:-/tmp}/tmp.XXXXXX"; }
 # Tests run in subshells, so failures are counted in a file.
-FAILS=$(mktemp)
+FAILS=$(temp)
+# Gone when the test file exits, passed or failed. A subshell has its own traps.
+trap 'rm -f "$FAILS"' EXIT
 FAKES="$ROOT/scripts/fake"
 # shellcheck source=fake/github.sh
 . "$FAKES/github.sh"
@@ -58,7 +64,7 @@ report() {
 # the system's own tools, GitHub logged in as alice, and o/r on GitHub (its
 # remote in $ORIGIN, with a commit on master) watched with its clone in $CLONE.
 world() {
-  W=$(mktemp -d)
+  W=$(temp -d)
   W=$(cd "$W" && pwd -P)
   mkdir -p "$W/home" "$W/ns/issues" "$W/gh" "$W/claude" "$W/curl" "$W/bin"
   export HOME="$W/home" NIGHTSHIFT_HOME="$W/ns" GH_FAKE="$W/gh" CLAUDE_FAKE="$W/claude" CURL_FAKE="$W/curl"
@@ -89,13 +95,15 @@ world() {
   trap end_world EXIT
 }
 
-# Whatever a test left running in its world (on a failure): stopped.
+# Whatever a test left running in its world (on a failure): stopped, and the
+# world removed, unless KEEP_WORLD=1, which keeps it and says where it is.
 end_world() {
   local p
   for p in "$NS/watch.pid" "$NS"/issues/*/pid; do
     [ -f "$p" ] && { kill -9 "$(cat "$p")" 2>/dev/null || true; }
   done
   pkill -9 -f "$W/" 2>/dev/null || true
+  if [ -n "${KEEP_WORLD:-}" ]; then echo "kept $W" >&2; else rm -rf "${W:?}"; fi
   return 0
 }
 
