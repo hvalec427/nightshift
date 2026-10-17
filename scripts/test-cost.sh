@@ -125,6 +125,71 @@ SONNET=claude-sonnet-4-5-20250929
   expect_line "its log: the main model, then its subagents'" "$(cat "$(idir 7)/log")" \
     "^0	=== [0-9:]* run done in [0-9]*s · opus-5-5, sonnet-4-5, haiku-4-5 · context 50k$")
 
+# The agents a run had: its session's line, then a line for each subagent, in
+# the order they ran. Their keys sorted, the session's seconds as S and the
+# run marker (when the run started) as R.
+agents() { state "$1" agents | jq -S -c '.run = "R" | if .kind == "session" then .secs = "S" else . end'; }
+
+(world
+  gh_issue o/r 7 alice agent
+  runs_do "costs 1 $OPUS 100 200 300 400; turn $OPUS 5 1000 0; skill nightshift:issue; skill nightshift:questions
+    agent toolu_1 nightshift:ticket 'Build T1'; skill nightshift:build toolu_1; turn $HAIKU 5 100 0 toolu_1
+    agent_result toolu_1 $HAIKU 5000 12400 7
+    agent toolu_2 Explore 'Find the cost code' Task; agent_result toolu_2 $SONNET 900 2000 3
+    comment questions"
+  poll
+  expect "a run: its session, then each subagent" "$(agents 7)" \
+'{"kind":"session","models":["opus-5-5"],"run":"R","secs":"S","session":"session-1","skills":["nightshift:issue","nightshift:questions"],"tokens":1000,"tools":5}
+{"description":"Build T1","kind":"agent","model":"haiku-4-5","run":"R","secs":12,"session":"session-1","skills":["nightshift:build"],"tokens":5000,"tools":7,"type":"nightshift:ticket"}
+{"description":"Find the cost code","kind":"agent","model":"sonnet-4-5","run":"R","secs":2,"session":"session-1","skills":[],"tokens":900,"tools":3,"type":"Explore"}'
+  expect_line "its session ran for the run's seconds" "$(state 7 agents)" '^{"kind":"session",.*"secs":[0-9]*,'
+  expect "a line's run marker: the run's start, the same for all its lines" \
+    "$(state 7 agents | jq -r '.run' | sort -u | wc -l | tr -d ' ')" 1
+  expect_ok "the run marker is a time" jq -e 'select(.run > 1700000000)' "$(idir 7)/agents"
+  gh_comment o/r 7 alice "1 yes" >/dev/null
+  runs_do "costs 0.5 $OPUS 10 10 10 10; skill nightshift:plan; comment plan"
+  poll
+  expect "a resumed run: its own share of the tokens, on the same session" "$(agents 7 | tail -1)" \
+'{"kind":"session","models":[],"run":"R","secs":"S","session":"session-1","skills":["nightshift:plan"],"tokens":40,"tools":2}'
+  expect "its lines are added to the run before's" "$(state 7 agents | wc -l | tr -d ' ')" 4
+  expect "a later run starts later or at the same second" "$(state 7 agents | jq -s '.[3].run >= .[0].run')" true
+  rm "$(idir 7)/session"
+  gh_comment o/r 7 alice "go" >/dev/null
+  runs_do "costs 2 $OPUS 1 2 3 4; skill nightshift:build; comment progress"
+  poll
+  expect "a fresh session: all its tokens, its own id" "$(agents 7 | tail -1)" \
+'{"kind":"session","models":[],"run":"R","secs":"S","session":"session-3","skills":["nightshift:build"],"tokens":10,"tools":2}'
+  gh_state o/r 7 closed
+  poll
+  expect "done: the agents stay" "$(state 7 agents | wc -l | tr -d ' ')" 5
+  expect_no_unexpected)
+
+# A run that failed or was stopped records what its stream holds, a subagent
+# that never finished included.
+(world
+  gh_issue o/r 7 alice agent
+  runs_do "costs 0.5 $OPUS 1 1 1 1; skill nightshift:issue; agent toolu_1 nightshift:ticket 'Build T1'; skill nightshift:build toolu_1
+    turn $HAIKU 5 100 0 toolu_1; fail_result"
+  poll
+  expect "a failed run: its session and its unfinished subagent" "$(agents 7)" \
+'{"kind":"session","models":[],"run":"R","secs":"S","session":"session-1","skills":["nightshift:issue"],"tokens":4,"tools":2}
+{"description":"Build T1","kind":"agent","model":"haiku-4-5","run":"R","secs":null,"session":"session-1","skills":["nightshift:build"],"tokens":null,"tools":1,"type":"nightshift:ticket"}'
+  gh_comment o/r 7 alice "again" >/dev/null
+  runs_do "turn $OPUS 5 1000 0; skill nightshift:plan; hang"
+  "$ROOT/nightshift" once &
+  bg=$!
+  wait_for "$CLAUDE_FAKE/runs/2/waiting"
+  ns stop o/r#7 >/dev/null
+  wait "$bg"
+  expect "a stopped run (no result): its session, no tokens" "$(agents 7 | tail -1)" \
+'{"kind":"session","models":["opus-5-5"],"run":"R","secs":"S","session":"session-1","skills":["nightshift:plan"],"tokens":0,"tools":1}')
+
+(world
+  gh_issue o/r 7 alice agent
+  touch "$CLAUDE_FAKE/silent"
+  poll
+  expect "a run with no events: nothing recorded" "$(wc -c <"$(idir 7)/agents" | tr -d ' ')" 0)
+
 # Shown by status.
 (world
   gh_issue o/r 7 alice agent
@@ -198,5 +263,188 @@ COMMENT="🤖 \*\*nightshift\*\* · cost"
   gh_state o/r 7 closed
   poll
   expect "nothing counted: no cost comment" "$(gh_comments o/r 7 | grep -c "^$COMMENT$" || true)" 0)
+
+# The agents table in the cost comment. Nightshift's own plugin as installed
+# has agents and skills, some with an effort in their frontmatter.
+own_plugin() {
+  local d
+  mkdir -p "$NS/plugin/agents"
+  for d in issue:low questions:high plan:high build:high; do
+    mkdir -p "$NS/plugin/skills/${d%:*}"
+    printf -- '---\nname: %s\nmodel: sonnet\neffort: %s\n---\n' "${d%:*}" "${d#*:}" >"$NS/plugin/skills/${d%:*}/SKILL.md"
+  done
+  printf -- '---\nname: ticket\nmodel: sonnet\neffort: high\n---\n' >"$NS/plugin/agents/ticket.md"
+  printf -- '---\nname: spec-review\nmodel: opus\n---\n' >"$NS/plugin/agents/spec-review.md"
+}
+# The table's rows in the cost comment of issue $1, the time of a session
+# (whatever the run took) as S.
+table() { gh_comments o/r "$1" | grep '^|' | sed '/↳/!s/| [0-9][0-9]*s |/| S |/'; }
+# Closed, so its cost is posted.
+finish() { gh_state o/r "$1" closed; poll; }
+
+(world
+  own_plugin
+  gh_issue o/r 7 alice agent
+  runs_do "costs 1 $OPUS 1000 2000 3000 4000; turn $OPUS 5 100 0; skill nightshift:issue; skill nightshift:questions
+    agent toolu_1 Explore 'Find the cost code'; turn $HAIKU 5 10 0 toolu_1; agent_result toolu_1 $HAIKU 30000 61000 12
+    comment questions"
+  poll
+  gh_comment o/r 7 alice "1 yes" >/dev/null
+  runs_do "costs 1 $OPUS 500 500 500 500; turn $OPUS 5 1 0; skill nightshift:issue; skill nightshift:plan; comment plan"
+  poll
+  rm "$(idir 7)/session"
+  gh_comment o/r 7 alice "go" >/dev/null
+  runs_do "costs 2 $SONNET 1000 1000 1000 1000; turn $OPUS 5 1 0; turn $SONNET 5 1 0; skill nightshift:issue; skill nightshift:build
+    agent toolu_1 nightshift:ticket 'Build T1'; skill tdd toolu_1; agent_result toolu_1 $SONNET 60000 420000 16
+    agent toolu_2 nightshift:spec-review 'Review the spec'; agent_result toolu_2 $OPUS 40000 120000 9
+    comment progress"
+  poll
+  finish 7
+  expect "the done comment: its sessions merged and named by stage, each with its subagents" "$(table 7)" \
+'| Agent | Model | Effort | Skills | Tokens | Time | Tools |
+|---|---|---|---|---|---|---|
+| planning session (2 runs) | opus-5-5 | per skill | issue (low), questions (high), plan (high) | 12k | S | 7 |
+| ↳ Explore · Find the cost code | haiku-4-5 | default | – | 30k | 1m | 12 |
+| build session (1 run) | opus-5-5, sonnet-4-5 | per skill | issue (low), build (high) | 4k | S | 5 |
+| ↳ ticket · Build T1 | sonnet-4-5 | high | tdd | 60k | 7m | 16 |
+| ↳ spec-review · Review the spec | opus-5-5 | default | – | 40k | 2m | 9 |'
+  expect "all runs recorded: no partial note" "$(gh_comments o/r 7 | grep -c 'starts from the first recorded run' || true)" 0
+  expect_line "the table follows the headline in the one comment" "$(gh_comments o/r 7)" '^| Agent | Model '
+  expect "one cost comment" "$(gh_comments o/r 7 | grep -c "^$COMMENT$")" 1
+  expect_no_unexpected)
+
+# Efforts come from a repo plugin's agents and skills too; a subagent that
+# hadn't finished has no numbers; an unnamed stage is a plain session.
+(world
+  own_plugin
+  plugin other@m
+  mkdir -p "$W/other/agents" "$W/other/skills/lint"
+  printf -- '---\neffort: max\n---\n' >"$W/other/agents/helper.md"
+  printf -- '---\neffort: low\n---\n' >"$W/other/skills/lint/SKILL.md"
+  gh_issue o/r 7 alice agent
+  runs_do "costs 1 $OPUS 1 1 1 1; skill nightshift:issue; skill other:lint; skill other:nothing
+    agent toolu_1 other:helper 'Help | out'; skill tdd toolu_1; turn $HAIKU 5 100 0 toolu_1; fail_result"
+  poll
+  finish 7
+  expect "a repo plugin's agent and skill: their efforts, its prefix kept" "$(table 7 | tail -2)" \
+'| session (1 run) | – | per skill | issue (low), other:lint (low), other:nothing | 4 | S | 4 |
+| ↳ other:helper · Help \| out | haiku-4-5 | max | tdd | – | – | 1 |'
+  expect_no_unexpected)
+
+# No agents file: no table. Runs before the first record: a note.
+(world
+  own_plugin
+  gh_issue o/r 7 alice agent
+  runs_do "costs 1 $OPUS 1 1 1 1; skill nightshift:issue; comment questions"
+  poll
+  rm "$(idir 7)/agents"
+  finish 7
+  expect "no agents: no table" "$(gh_comments o/r 7 | grep -c '^|' || true)" 0
+  expect_line "no agents: the headline is there" "$(gh_comments o/r 7)" 'at API prices.* over 1 run$')
+
+(world
+  own_plugin
+  gh_issue o/r 7 alice agent
+  runs_do "costs 1 $OPUS 1 1 1 1; skill nightshift:issue; skill nightshift:questions; comment questions"
+  poll
+  rm "$(idir 7)/agents"
+  gh_comment o/r 7 alice "1 yes" >/dev/null
+  runs_do "costs 1 $OPUS 1 1 1 1; skill nightshift:issue; skill nightshift:plan; comment plan"
+  poll
+  finish 7
+  expect "records from the second run on: only that run's agents" "$(table 7 | tail -1)" \
+'| planning session (1 run) | – | per skill | issue (low), plan (high) | 4 | S | 3 |'
+  expect_line "and a note under the table" "$(gh_comments o/r 7)" '^_The table starts from the first recorded run: earlier runs have no agent records\._$')
+
+(world
+  own_plugin
+  gh_issue o/r 7 alice agent
+  touch "$CLAUDE_FAKE/silent"
+  poll
+  rm "$CLAUDE_FAKE/silent"
+  gh_comment o/r 7 alice "again" >/dev/null
+  runs_do "costs 1 $OPUS 1 1 1 1; skill nightshift:issue; comment questions"
+  poll
+  finish 7
+  expect "a first run with no events: no partial note" "$(gh_comments o/r 7 | grep -c 'starts from the first recorded run' || true)" 0)
+
+# The cost comment's second line: the dollars of each model, and the pull
+# request's size, each left out when unknown.
+# The line after the headline, if there is one (the headline is the first line
+# with the dollars; the table or the marker follows a blank line).
+second() { gh_comments o/r "$1" | grep -A1 'at API prices' | sed -n 2p; }
+# The pull request of issue $1 merged, with its size given as additions $2,
+# deletions $3 and changed files $4.
+merge_pr() {
+  local n
+  n=$(state "$1" pr | sed 's|.*/||')
+  gh_pr_set o/r "$n" additions "$2"
+  gh_pr_set o/r "$n" deletions "$3"
+  gh_pr_set o/r "$n" changedFiles "$4"
+  gh_pr_set o/r "$n" state '"MERGED"'
+  poll
+}
+
+(world
+  gh_issue o/r 7 alice agent
+  runs_do "costs 1.2 $OPUS 1 1 1 1; costs 0.2 $HAIKU 1 1 1 1; comment questions"
+  poll
+  gh_comment o/r 7 alice "1 yes" >/dev/null
+  runs_do "costs 0.5 $OPUS 1 1 1 1; costs 0.3 $SONNET 1 1 1 1; comment plan"
+  poll
+  gh_comment o/r 7 alice "go" >/dev/null
+  runs_do "costs 2.5 $OPUS 1 1 1 1; commit feature.txt; open_pr; comment done"
+  poll
+  merge_pr 7 412 37 9
+  expect "dollars per model, summed over the runs (a resumed session's share each), most first, and the pull request's size" \
+    "$(second 7)" "opus-5-5 \$4.20 · sonnet-4-5 \$0.30 · haiku-4-5 \$0.20 · PR +412 −37 in 9 files"
+  expect_line "the headline is above it" "$(gh_comments o/r 7)" '^\*\*\$4\.70\*\* at API prices'
+  expect "the models stay in the done issue's state" "$(state 7 models | wc -l | tr -d ' ')" 3
+  expect_no_unexpected)
+
+(world
+  gh_issue o/r 7 alice agent
+  runs_do "costs 1 $OPUS 1 1 1 1; commit feature.txt; open_pr; comment done"
+  poll
+  merge_pr 7 3 0 1
+  expect "one file, one model" "$(second 7)" "opus-5-5 \$1.00 · PR +3 −0 in 1 file")
+
+(world
+  gh_issue o/r 7 alice agent
+  runs_do "costs 1 $OPUS 1 1 1 1; commit feature.txt; open_pr; comment done"
+  poll
+  gh_pr_set o/r "$(state 7 pr | sed 's|.*/||')" state '"MERGED"'
+  poll
+  expect "no size known (the pull request has none): the models alone" "$(second 7)" "opus-5-5 \$1.00"
+  expect_no_unexpected)
+
+(world
+  gh_issue o/r 7 alice agent
+  runs_do "costs 1 $OPUS 1 1 1 1; commit feature.txt; open_pr; comment done"
+  poll
+  echo "pr view *" >"$GH_FAKE/fail"
+  merge_pr 7 5 6 7
+  expect "gh fails on the pull request: the models alone" "$(second 7)" "opus-5-5 \$1.00")
+
+(world
+  gh_issue o/r 7 alice agent
+  runs_do "comment questions"
+  poll
+  gh_state o/r 7 closed
+  poll
+  expect "no models, no pull request: no second line, the table or marker follows a blank line" \
+    "$(second 7)" ""
+  expect "and the comment is posted" "$(gh_comments o/r 7 | grep -c "^$COMMENT$")" 1)
+
+(world
+  gh_issue o/r 7 alice agent
+  runs_do "comment questions"
+  poll
+  echo "1 1 1 1 1 1 -" >"$(idir 7)/cost"
+  runs_do "commit feature.txt; open_pr; comment done"
+  gh_comment o/r 7 alice "go" >/dev/null
+  poll
+  merge_pr 7 8 9 2
+  expect "a pull request but no models: its size alone" "$(second 7)" "PR +8 −9 in 2 files")
 
 report

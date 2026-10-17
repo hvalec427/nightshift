@@ -57,8 +57,27 @@ ${2:-Some $1.}
   tool_use "gh issue comment $NIGHTSHIFT_ISSUE --body \"$body\""
   gh issue comment "$NIGHTSHIFT_ISSUE" --repo "$NIGHTSHIFT_REPO" --body "$body" >/dev/null
 }
-# The skill $1 invoked (`nightshift:plan`, …), as the Skill tool does.
-skill() { jq -cn --arg s "$1" '{type: "assistant", message: {content: [{type: "tool_use", name: "Skill", input: {skill: $s}}]}}'; }
+# The skill $1 invoked (`nightshift:plan`, …), as the Skill tool does; a
+# subagent's if there's a 2nd (its Agent tool call's id).
+skill() {
+  jq -cn --arg s "$1" --arg p "${2:-}" \
+    '{type: "assistant", parent_tool_use_id: (if $p == "" then null else $p end),
+      message: {content: [{type: "tool_use", name: "Skill", input: {skill: $s}}]}}'
+}
+# A subagent of type $2 (`nightshift:ticket`, …) started for $3, its Agent tool
+# call's id $1; named $4 (the Task tool's name in older claudes) if given.
+agent() {
+  jq -cn --arg i "$1" --arg t "$2" --arg d "$3" --arg n "${4:-Agent}" \
+    '{type: "assistant", parent_tool_use_id: null,
+      message: {content: [{type: "tool_use", id: $i, name: $n, input: {subagent_type: $t, description: $d, prompt: "…"}}]}}'
+}
+# The result of Agent call $1: its model $2, tokens $3, milliseconds $4 and tool calls $5.
+agent_result() {
+  jq -cn --arg i "$1" --arg m "$2" --argjson t "$3" --argjson d "$4" --argjson u "$5" \
+    '{type: "user", parent_tool_use_id: null,
+      message: {content: [{type: "tool_result", tool_use_id: $i, content: "done"}]},
+      tool_use_result: {status: "completed", resolvedModel: $m, totalTokens: $t, totalDurationMs: $d, totalToolUseCount: $u}}'
+}
 # The status label $1, through nightshift.
 label() { tool_use "nightshift label $1"; nightshift label "$1"; }
 # A commit of file $1 (with content $2) on the issue's branch.
@@ -120,6 +139,8 @@ hold() {
   while [ ! -e "$RUN/go" ] && kill -0 "$PPID" 2>/dev/null; do sleep 0.1; done
 }
 
+# $CLAUDE_FAKE/silent: it fails before printing an event.
+[ -e "$CLAUDE_FAKE/silent" ] && exit 1
 event "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"$session\"}"
 code=0
 # shellcheck disable=SC1091
