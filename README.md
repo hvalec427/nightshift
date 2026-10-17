@@ -26,9 +26,10 @@ release; a running service is restarted on the new version. It ends with
 `nightshift doctor` (below), and only starts the service once nothing required
 is missing.
 
-To stop updating by hand, add `--auto-update` (`… | sh -s -- --service
---auto-update`): it sets `auto_update=true` in the config (below), and from then
-on the watch installs each new release itself.
+A release install updates itself: the watch installs each new release when
+nothing is running. To update by hand instead, set `auto_update=false` in the
+config (below). `--auto-update` (`… | sh -s -- --service --auto-update`) still
+works: it sets `auto_update=true` there, which is the default.
 
 To test what's on `master` instead, add `--master` (`… | sh -s -- --master`);
 run from a clone (`./install.sh`), it installs the clone's files.
@@ -280,8 +281,9 @@ interval=5
   costs no rate limit: the issues list is asked with the ETag of its last
   answer, and GitHub's `304 Not Modified` doesn't count. The pull requests are
   checked every 30 s at most.
-- `auto_update`: `true` has the watch install each new release itself (default
-  `false`; `install.sh --auto-update` sets it). It checks for one once an hour.
+- `auto_update`: the watch installs each new release itself (default `true`;
+  `false` turns it off, `install.sh --auto-update` sets `true`). It checks for
+  one once an hour.
   A new release never holds a run back: issues keep starting. After a poll that
   leaves no run in flight, it runs the release's `install.sh` and restarts on
   the new version (a busy machine updates late). A failed update is logged

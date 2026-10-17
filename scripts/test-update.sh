@@ -134,13 +134,26 @@ checks() { cat "$CURL_FAKE/calls" 2>/dev/null | grep -c 'releases/latest' || tru
 (world
   release_ns 0.5.1
   set_config interval 1
+  set_config auto_update false
   latest 0.6.0
   release_install 0.6.0
   export NIGHTSHIFT_UPDATE_INTERVAL=0
   watch_bg
   wait_log "polled o/r"
   sleep 1
-  expect "auto_update off (the default): never checks" "$(checks)" 0
+  expect "auto_update=false: never checks" "$(checks)" 0
+  stop_bg)
+
+(world
+  release_ns 0.5.1
+  set_config interval 1
+  latest 0.6.0
+  release_install 0.6.0
+  watch_bg
+  wait_log "watching (nightshift 0.6.0)"
+  log=$(cat "$NS/watch.log")
+  expect_line "an empty config (the default): checks and updates" "$log" "updated to v0.6.0: restarting$"
+  expect "install.sh ran once" "$(cat "$W/installed")" 1
   stop_bg)
 
 (world
@@ -168,17 +181,26 @@ checks() { cat "$CURL_FAKE/calls" 2>/dev/null | grep -c 'releases/latest' || tru
 
 (world
   release_ns 0.5.1
-  set_config auto_update true
-  out=$("$NS/bin/nightshift" doctor 2>&1 || true)
-  expect_line "doctor, on: says so" "$out" "^  ok      auto-update: each new release installs itself, between runs$"
   : >"$NS/config"
   out=$("$NS/bin/nightshift" doctor 2>&1 || true)
-  expect_line "doctor, off: how to turn it on" "$out" "^  hint    auto-update is off: curl .*install.sh | sh -s -- --auto-update, "
+  expect_line "doctor, by default: on" "$out" "^  ok      auto-update: each new release installs itself, between runs$"
+  set_config auto_update true
+  out=$("$NS/bin/nightshift" doctor 2>&1 || true)
+  expect_line "doctor, auto_update=true: on" "$out" "^  ok      auto-update: each new release installs itself, between runs$"
+  : >"$NS/config"
+  set_config auto_update false
+  out=$("$NS/bin/nightshift" doctor 2>&1 || true)
+  expect_line "doctor, auto_update=false: how to turn it on" "$out" "^  hint    auto-update is off: remove auto_update=false from .*config, or set it to true, to have new releases install themselves$"
+  expect_line "doctor, off: no ok line" "$out" "auto-update: each new release" no
+  : >"$NS/config"
   set_config auto_update true
   out=$(ns doctor 2>&1 || true)
-  expect_line "doctor, on in a dev install: it won't update" "$out" "^  hint    auto_update is on, but only a release install updates itself: "
+  expect_line "doctor, auto_update=true in a dev install: it won't update" "$out" "^  hint    auto_update is on, but only a release install updates itself: "
   : >"$NS/config"
   out=$(ns doctor 2>&1 || true)
-  expect_line "doctor, off in a dev install: nothing" "$out" "auto.update" no)
+  expect_line "doctor, default in a dev install: nothing" "$out" "auto.update" no
+  set_config auto_update false
+  out=$(ns doctor 2>&1 || true)
+  expect_line "doctor, auto_update=false in a dev install: nothing" "$out" "auto.update" no)
 
 report

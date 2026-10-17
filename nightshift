@@ -1356,11 +1356,11 @@ poll() {
 # start as usual meanwhile.
 PENDING=""
 
-# With auto_update=true, a release install's watch asks for the latest release
+# Unless auto_update=false, a release install's watch asks for the latest release
 # once an hour (NIGHTSHIFT_UPDATE_INTERVAL is for tests). A newer one is
 # pending until apply_update installs it.
 check_update() {
-  [ "$(setting auto_update false)" = true ] || return 0
+  [ "$(setting auto_update true)" = false ] && return 0
   case "$VERSION" in [0-9]*) ;; *) return 0 ;; esac
   [ -z "$PENDING" ] || return 0
   f="$NS/poll/update" now=$(date +%s)
@@ -1713,15 +1713,16 @@ latest_release() {
 # never a problem).
 version_line() {
   echo "nightshift $VERSION"
-  auto=$(setting auto_update false)
+  auto=$(setting auto_update true)
   case "$VERSION" in
   [0-9]*) ;;
   *)
-    [ "$auto" = true ] && printf '  %-7s %s\n' hint "auto_update is on, but only a release install updates itself: $INSTALL"
+    # Only a config that says so: on is the default, so it'd show on every dev install.
+    [ "$(sed -n 's/^auto_update=//p' "$CONFIG" 2>/dev/null | tail -1)" = true ] && printf '  %-7s %s\n' hint "auto_update is on, but only a release install updates itself: $INSTALL"
     return 0 ;;
   esac
-  if [ "$auto" = true ]; then pass "auto-update: each new release installs itself, between runs"
-  else printf '  %-7s %s\n' hint "auto-update is off: $INSTALL -s -- --auto-update, to have new releases install themselves"
+  if [ "$auto" = false ]; then printf '  %-7s %s\n' hint "auto-update is off: remove auto_update=false from $CONFIG, or set it to true, to have new releases install themselves"
+  else pass "auto-update: each new release installs itself, between runs"
   fi
   latest=$(latest_release)
   if [ -n "$latest" ] && ! version_ge "$VERSION" "$latest"; then
