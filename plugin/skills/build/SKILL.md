@@ -36,7 +36,10 @@ Build the tickets in order, one at a time, in this worktree:
   **Review:** <n> found: <n> fixed, <n> dismissed, <n> left open.
   ```
 
-  The watcher removes the worktree after this run.
+- Then, when the run prompt says "This repo auto-merges", invoke the `nightshift:merge`
+  skill with the Skill tool: it merges the pull request, with a one-line `done` comment,
+  or posts a `look` comment saying what needs the user. The watcher removes the worktree
+  after this run.
 
 ## Ticket subagents
 

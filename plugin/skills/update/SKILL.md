@@ -25,3 +25,7 @@ requests can merge in any order:
   the conflict fixes, and the checks you ran. A conflict that's a real decision between
   the two changes gets a `blocked` comment instead (after `git rebase --abort`, so the
   branch stays as it was).
+- After the `progress` comment (not a `blocked` one), when the run prompt says "This repo
+  auto-merges", invoke the `nightshift:merge` skill with the Skill tool: it checks the
+  pull request again and merges it, or says what needs a look. That's how one that goes
+  after another merges once the other has.

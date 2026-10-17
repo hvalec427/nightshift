@@ -8,7 +8,7 @@
 #   nightshift stop                      stop the service (until `nightshift start`)
 #   nightshift stop <owner/repo>#<n>     stop an issue's running agent
 #   nightshift logs [<owner/repo>#<n>] [-f] [-v…]  what every issue (or one) does, at a level
-#   nightshift add <owner/repo> <clone> [instructions=<path>]  watch a repo, using this clone of it (and these instructions for its runs)
+#   nightshift add <owner/repo> <clone> [instructions=<path>] [auto_merge=false]  watch a repo, using this clone of it (and these instructions for its runs; auto_merge=false: its PRs wait for you)
 #   nightshift label <status>            (in a run) set its issue's status label
 #   nightshift build                     (in a run) build the approved plan, in a fresh session if it's the planning one
 #   nightshift doctor                    check the tools and setup it needs on this machine
@@ -89,6 +89,9 @@ repo_option() {
   }' "$CONFIG" 2>/dev/null
 }
 
+# Whether nightshift merges repo $1's pull requests: unless `auto_merge=false`.
+auto_merges() { [ "$(repo_option "$1" auto_merge)" != false ]; }
+
 allowed_users() {
   u=$(setting allowed_users "")
   [ -n "$u" ] || u=${LOGIN:-$(gh api user -q .login)}
@@ -152,6 +155,20 @@ service_line() {
   echo "service: $s"
 }
 
+# Whether the watched repos' pull requests merge on their own, naming those
+# with auto_merge=false; nothing with no repos.
+merge_line() {
+  total=0 offs=0 off=""
+  for r in $(repos | cut -d' ' -f1); do
+    total=$((total + 1))
+    auto_merges "$r" || { offs=$((offs + 1)); off="${off:+$off, }$r"; }
+  done
+  if [ $total -eq 0 ]; then return
+  elif [ $offs -eq $total ]; then echo "pull requests wait for you (auto_merge=false on every repo line)"
+  else echo "pull requests merge on their own (${off:+off for: $off; }auto_merge=false on a repo line turns it off)"
+  fi
+}
+
 # The LaunchAgent: this `nightshift watch` whenever you're logged in, with the
 # PATH of the shell that ran `start`.
 write_plist() {
@@ -189,6 +206,7 @@ thinking|1D76DB|nightshift is reading the issue and the code
 planning|1D76DB|nightshift is writing the plan
 building|1D76DB|nightshift is building it
 updating|1D76DB|nightshift is updating its pull request after a merge
+merging|1D76DB|nightshift is checking its pull request and merging it
 answering|1D76DB|nightshift is answering the question
 needs you|D93F0B|nightshift is waiting on your reply
 PR open|0E8A16|its pull request is open
@@ -202,6 +220,7 @@ build|building
 review|building
 finish|building
 update|updating
+merge|merging
 answer|answering'
 
 # Create the status labels in a repo (or update their colours), once per
@@ -244,7 +263,7 @@ idle_status() {
     END { print end, stage }' "$1/log" 2>/dev/null)
   case "$ended" in
   stopped*) echo stopped ;;
-  failed* | *" questions" | *" answer" | *" plan" | *" blocked") echo "needs you" ;;
+  failed* | *" questions" | *" answer" | *" plan" | *" blocked" | *" look") echo "needs you" ;;
   *) if [ -f "$1/pr" ]; then echo "PR open"
     elif [ -s "$1/session" ]; then echo "needs you"
     else echo queued
@@ -486,6 +505,7 @@ $intro}"
   prompt="You are nightshift, working GitHub issue #$n in $repo, unattended: nobody is at a terminal, and you talk to the user only through the issue. Use the issue skill.
 This checkout is the issue's own worktree, on branch nightshift/issue-$n.
 $(type_note "$repo" "$n" "$dir")
+$(merge_note "$repo")
 
 $intro"
   # The run says when it plans or builds (`nightshift label`); until then:
@@ -577,6 +597,13 @@ build_intro() {
   printf '%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s' \
     "The plan is approved: build it with the nightshift:build skill. This is a fresh session: the plan holds what was settled before it, so read the thread only for what came after it." \
     "The issue:" "$issue" "The approved plan:" "$plan" "The approval:" "$(cat "$3/build")"
+}
+
+# What a run is told of repo $1's merging: whether to merge its pull requests.
+merge_note() {
+  if auto_merges "$1"; then echo "This repo auto-merges: once its pull request is open or updated, use the merge skill."
+  else echo "This repo doesn't auto-merge (auto_merge=false): leave merging to the user."
+  fi
 }
 
 # What a run is told of its issue's type: its type label, or that it has none,
@@ -1149,6 +1176,7 @@ cmd_start() {
 cmd_status() {
   case "$1" in "" | --all) ;; *) usage_error "usage: nightshift status [--all]" ;; esac
   service_line
+  merge_line
   found=0 hidden=0
   for d in "$NS"/issues/*/; do
     [ -d "$d" ] || continue
@@ -1485,7 +1513,10 @@ cmd_doctor() {
     fi
     is_rn "$clone" && rn="${rn:+$rn, }$repo"
     if [ -z "$ghv" ]; then fail "?" "$repo: its \`$LABEL\` label" "needs gh to check"
-    elif gh api "repos/$repo/labels/$LABEL" >/dev/null 2>&1; then pass "$repo: clone $clone, \`$LABEL\` label"
+    elif gh api "repos/$repo/labels/$LABEL" >/dev/null 2>&1; then
+      if auto_merges "$repo"; then pass "$repo: clone $clone, \`$LABEL\` label, PRs merge on their own"
+      else pass "$repo: clone $clone, \`$LABEL\` label, PRs wait for you (auto_merge=false)"
+      fi
     else fail missing "$repo: its \`$LABEL\` label" "gh label create $LABEL --repo $repo --color 5319E7"
     fi
     own=$(repo_instructions "$repo")
@@ -1520,10 +1551,10 @@ EOF
   fi
 }
 
-# `add <owner/repo> <clone path> [instructions=<path>]`: the repo line, with
+# `add <owner/repo> <clone path> [instructions=<path>] [auto_merge=false]`: the repo line, with
 # the clone's and the instructions file's absolute paths (`~/` is home).
 cmd_add() {
-  use="usage: nightshift add <owner/repo> <clone path> [instructions=<path>]"
+  use="usage: nightshift add <owner/repo> <clone path> [instructions=<path>] [auto_merge=false]"
   [ $# -ge 2 ] || die "$use"
   repo=$1 clone=$(cd "$2" 2>/dev/null && pwd -P) || die "$2 doesn't exist"
   shift 2
@@ -1538,6 +1569,7 @@ cmd_add() {
       case "$f" in *" "*) die "$f: the instructions file's path can't have spaces" ;; esac
       opts="$opts instructions=$f"
       ;;
+    auto_merge=false) opts="$opts $o" ;;
     *) die "$use" ;;
     esac
   done
@@ -1548,7 +1580,10 @@ cmd_add() {
   echo "repo $repo $clone$opts" >>"$CONFIG"
   gh label create "$LABEL" --repo "$repo" --color 5319E7 --description "nightshift works this issue" >/dev/null 2>&1 || true
   ensure_labels "$repo" || true
-  echo "watching $repo (clone: $clone); add the \`$LABEL\` label to an issue to start"
+  if auto_merges "$repo"; then merging="PRs merge on their own (auto_merge=false turns it off)"
+  else merging="PRs wait for you"
+  fi
+  echo "watching $repo (clone: $clone); $merging; add the \`$LABEL\` label to an issue to start"
 }
 
 # `label <status>`: a run setting its issue's status label.

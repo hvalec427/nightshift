@@ -22,6 +22,8 @@ LABELS_NOW='gh api "repos/$NIGHTSHIFT_REPO/issues/$NIGHTSHIFT_ISSUE" --jq ".labe
   expect_line "the prompt: the issue" "$(run_prompt)" "^You are nightshift, working GitHub issue #7 in o/r, unattended"
   expect_line "the prompt: its type" "$(run_prompt)" '^Its type label: `bug`\.$'
   expect_line "the prompt: a first run" "$(run_prompt)" "^This is your first run for this issue\.$"
+  expect_line "the prompt: a plain repo line auto-merges" "$(run_prompt)" \
+    "^This repo auto-merges: once its pull request is open or updated, use the merge skill\.$"
   expect "no --resume on a first run" "$(run_opt --resume)" ""
   expect "the permission mode: auto" "$(run_opt --permission-mode)" auto
   expect "no model set: no --model" "$(run_opt --model)" ""
@@ -42,10 +44,10 @@ NIGHTSHIFT_REPO=o/r"
   expect_line "its log: how it ended" "$log" "^0	=== [0-9:]* run done in [0-9]*s$"
   expect_line "watch.log: the run, with the issue" "$(cat "$NS/watch.log")" "o/r#7: run done in"
   expect "the status labels are created" "$(LC_ALL=C sort "$(gh_dir o/r)/labels" | tr '\n' ,)" \
-    "nightshift: PR open,nightshift: answering,nightshift: building,nightshift: needs you,nightshift: planning,nightshift: proposed,nightshift: queued,nightshift: stopped,nightshift: thinking,nightshift: updating,"
+    "nightshift: PR open,nightshift: answering,nightshift: building,nightshift: merging,nightshift: needs you,nightshift: planning,nightshift: proposed,nightshift: queued,nightshift: stopped,nightshift: thinking,nightshift: updating,"
   poll
   expect "nothing new: no run" "$(runs)" 1
-  expect "the status labels are created once" "$(gh_calls '^label create' | wc -l | tr -d ' ')" 10
+  expect "the status labels are created once" "$(gh_calls '^label create' | wc -l | tr -d ' ')" 11
   expect_no_unexpected)
 
 (world
@@ -56,6 +58,32 @@ NIGHTSHIFT_REPO=o/r"
   expect "after a plan: needs you" "$(status_label 7)" "needs you"
   expect_line "the prompt: no type label" "$(run_prompt)" "^It has no type label\.$"
   expect_no_unexpected)
+
+(world
+  printf 'repo %s %s auto_merge=false\n' "$REPO" "$CLONE" >"$NS/config"
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  expect "auto_merge=false: the run still works in the clone's worktree" "$(cat "$CLAUDE_FAKE/runs/1/cwd")" "$CLONE/.claude/worktrees/issue-7"
+  expect_line "the prompt: auto_merge=false doesn't auto-merge" "$(run_prompt)" \
+    "^This repo doesn't auto-merge (auto_merge=false): leave merging to the user\.$")
+
+(world
+  printf 'repo %s %s auto_merge=no\n' "$REPO" "$CLONE" >"$NS/config"
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  expect_line "the prompt: only auto_merge=false turns it off" "$(run_prompt)" \
+    "^This repo auto-merges: once its pull request is open or updated, use the merge skill\.$")
+
+(world
+  echo "Use tabs." >"$W/ours.md"
+  printf 'repo %s %s auto_merge=false instructions=%s\n' "$REPO" "$CLONE" "$W/ours.md" >"$NS/config"
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  expect_line "the prompt: auto_merge=false beside another option" "$(run_prompt)" \
+    "^This repo doesn't auto-merge (auto_merge=false): leave merging to the user\.$")
 
 # The skill a run is in: its status label, its skill file and its log.
 # (The watcher sets the label as the stream goes by, so wait for it.)
@@ -91,6 +119,15 @@ AT_LABEL='i=0; until gh api "repos/$NIGHTSHIFT_REPO/issues/$NIGHTSHIFT_ISSUE" --
     skill nightshift:answer; at answering answer'
   poll
   expect "the answer skill: answering" "$(grep '^nightshift: ' "$CLAUDE_FAKE/runs/1/answer")" "nightshift: answering")
+
+(world
+  gh_issue o/r 7 alice agent
+  runs_do 'at() { '"$AT_LABEL"'; '"$LABELS_NOW"'$2"; }
+    skill nightshift:merge; at merging merge
+    comment look'
+  poll
+  expect "the merge skill: merging" "$(grep '^nightshift: ' "$CLAUDE_FAKE/runs/1/merge")" "nightshift: merging"
+  expect "a run ending on a look comment: needs you" "$(status_label 7)" "needs you")
 
 (world
   gh_issue o/r 7 alice agent

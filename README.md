@@ -44,6 +44,8 @@ Then:
    `nightshift add <owner/repo> <path to the clone>`, with
    `instructions=<file>` for the project's own rules (see below). That also
    creates its `agent` label and the status labels.
+   nightshift merges the repo's pull requests itself; to merge them yourself,
+   add `auto_merge=false` (see [Config](#config)).
 
 ## What it needs
 
@@ -83,7 +85,9 @@ For React Native repos (required once a watched repo's `package.json` has
 | Open an issue, add the `agent` label (and a [type](#issue-types) label) | Reads it and the code; asks its questions in one comment (each with its recommended answer), or goes straight to the plan |
 | Reply | More questions, or a plan: the spec and its tickets, in the to-spec and to-tickets format of [Matt Pocock's skills](https://github.com/mattpocock/skills) |
 | Reply **go** (or what to change) | Builds the tickets in order, each in a subagent of its own (so one ticket's work doesn't crowd the next; a one-ticket plan is built directly), a progress comment per ticket; has two fresh subagents review the change against the plan and the repo's standards, and fixes what they found in one pass; then opens the pull request and links it, with what the review found |
-| Comment on the issue after that | Makes the change on the same branch and pushes it |
+| Nothing (unless the repo has `auto_merge=false`) | Once the pull request is open or updated and its checks pass, squash-merges it when nothing in it needs you; otherwise lists what does in a look comment (a decision the plan didn't cover, a finding left open, a breaking or security-relevant change, …) |
+| Reply **merge** to a look comment | Checks it again (checks, conflicts, the pull requests it goes after) and merges it |
+| Comment on the issue after that | Makes the change on the same branch and pushes it (and checks it for merging again) |
 | Merge another pull request | Rebases and updates the ones it affects (below) |
 | Remove the label, add `invalid` or `wontfix`, or close the issue | Stops it; `nightshift status` says so and why |
 | Add the label back, remove `invalid`/`wontfix`, or reopen it | Picks up the stopped run where it left off |
@@ -102,9 +106,9 @@ in `~/.nightshift`. A merged branch is deleted, here and on GitHub, unless it ha
 commits the pull request didn't (a failed delete on GitHub is logged, not fatal). A comment on a done issue (open and labelled) picks it up again.
 
 Each run starts in the plugin's `issue` skill, which reads the thread and hands the
-stage to a skill of its own: `questions`, `plan`, `build` (then `review` and
-`finish`), `update`, or `answer` for question and duplicate issues. Invoking a
-skill loads all of its guidance, so no stage runs without it. The status label follows the skill, `nightshift logs`
+stage to a skill of its own: `questions`, `plan`, `build` (then `review`,
+`finish` and `merge`), `update` (then `merge`), or `answer` for question and
+duplicate issues. Invoking a skill loads all of its guidance, so no stage runs without it. The status label follows the skill, `nightshift logs`
 shows each one a run invokes, and each comment names the skill that wrote it
 (`🤖 nightshift · plan · nightshift:plan`).
 
@@ -145,14 +149,15 @@ waiting on you:
 | `nightshift: planning` | a run is writing or revising the plan |
 | `nightshift: building` | a run is building the tickets, or changing the open pull request |
 | `nightshift: updating` | a run is updating the pull request after a merge |
+| `nightshift: merging` | a run is checking the pull request and merging it |
 | `nightshift: answering` | a run is answering a `question` or `duplicate` issue |
-| `nightshift: needs you` | waiting on your reply: questions, an answer, a plan, blocked, or a failed run |
+| `nightshift: needs you` | waiting on your reply: questions, an answer, a plan, blocked, a pull request to look at before it merges, or a failed run |
 | `nightshift: PR open` | the pull request is open, nothing running |
 | `nightshift: stopped` | a run was stopped partway |
 
 The watcher sets them as runs start and end, and as a run invokes one of
 nightshift's skills: `nightshift:questions` sets `thinking`, `plan` `planning`,
-`build`, `review` and `finish` `building`, `update` `updating` and `answer` `answering`
+`build`, `review` and `finish` `building`, `update` `updating`, `merge` `merging` and `answer` `answering`
 (`nightshift label <status>` sets one by hand). They come off once it's done, or when you remove the `agent` label with nothing
 running (and come back with it). `nightshift status` says the same, with the
 skill a run is in (or its last one ended in).
@@ -218,7 +223,8 @@ conflicts, and updates the change to fit what merged, not just to apply. It runs
 checks again, force-pushes (`--force-with-lease`), and says what changed beyond the
 conflict fixes. A conflict that needs your decision gets a question on the issue
 instead. Meanwhile `status` shows `conflicts, rebasing` or `updating after #10`. So
-the pull requests can be merged in any order.
+the pull requests can be merged in any order. With auto-merge on, a pull request
+that goes after another waits for it, then merges after that update run.
 
 ## Config
 
@@ -227,6 +233,7 @@ the pull requests can be merged in any order.
 ```
 repo hvalec427/nightshift /Users/me/dev/nightshift
 repo me/app /Users/me/dev/app instructions=/Users/me/notes/app.md
+repo hvalec427/other /Users/me/dev/other auto_merge=false
 allowed_users=hvalec427
 max_parallel=2
 interval=5
@@ -237,6 +244,10 @@ effort=high
 - `repo <owner/repo> <clone> [key=value …]`: a watched repo, its clone, then
   its options in any order. `instructions=` names a file of the project's own
   rules for runs (below); `nightshift doctor` says when it's missing.
+  `auto_merge=false` makes its pull requests wait for you to merge; without
+  it, nightshift merges them on its own. It's on by default, so repos added
+  before it start merging on their own after an upgrade. `status` and `doctor`
+  say which repos have it off.
 - `allowed_users`: whose labels and comments count (default: your gh account).
 - `max_parallel`: issues worked at once (each may run a simulator).
 - `interval`: seconds between polls (default 5). A poll that finds nothing new

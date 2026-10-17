@@ -216,3 +216,8 @@ wait_idle() {
   d=$(idir "$1")
   while [ -f "$d/pid" ] && kill -0 "$(cat "$d/pid")" 2>/dev/null && [ $i -lt 100 ]; do sleep 0.1; i=$((i + 1)); done
 }
+
+# The number of the first line in $1 matching the grep pattern $2, or 0.
+line_of() { l=$(grep -n -m1 -- "$2" "$1" | cut -d: -f1); echo "${l:-0}"; }
+# The file $1 as one line, so a phrase matches however the prose wraps.
+flat() { tr -s ' \n' ' ' <"$1"; }
