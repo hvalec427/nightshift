@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 # Run the tests: every scripts/test-*.sh, or the ones named (`release`, or
-# `scripts/test-release.sh`). The files run in parallel, the biggest first,
+# `scripts/test-release.sh`). The files run in parallel, in a random order,
 # NIGHTSHIFT_TEST_JOBS (default 8) at a time (NIGHTSHIFT_TEST_SHARD=i/n, a
-# share of them); each one's results print once it
-# ends, then a summary; fails if any test does. The files run in one temp dir
-# of the run's own, as TMPDIR (see `temp` in test-lib.sh), removed at the end,
-# even on INT; KEEP_WORLD=1 keeps it, and the worlds in it, and prints where it is.
+# share of them, picked before the shuffle so the shards always add up to the
+# whole); each one's results print once it ends, then a summary; fails if any
+# test does. The order comes from a seed, NIGHTSHIFT_TEST_SEED or a random one,
+# printed first as `seed <n>`; a failure prints the command that repeats the
+# order (a seed gives the same order on any machine). The files run in one temp
+# dir of the run's own, as TMPDIR (see `temp` in test-lib.sh), removed at the
+# end, even on INT; KEEP_WORLD=1 keeps it, and the worlds in it, and prints
+# where it is.
 #   bash scripts/test.sh [<name>…]
 set -u
 
@@ -26,8 +30,8 @@ trap 'stop; if [ -n "${KEEP_WORLD:-}" ]; then echo "kept $SUITE" >&2; else rm -r
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-# The files to run, the biggest (by lines, roughly the slowest) first, so the
-# long ones don't start last.
+# The files to run, the biggest (by lines, roughly the slowest) first, so a
+# shard gets a fair share of them.
 sized() {
   local f
   for f in "$@"; do
@@ -42,6 +46,13 @@ files=$(sized "$@" | sort -rn | awk '{print $2}')
 if [ -n "${NIGHTSHIFT_TEST_SHARD:-}" ]; then
   files=$(printf '%s\n' $files | awk -v s="$NIGHTSHIFT_TEST_SHARD" 'BEGIN { split(s, a, "/") } (NR - 1) % a[2] == a[1] - 1')
 fi
+# The files left, shuffled by the seed: sorted by the cksum of "<seed> <name>"
+# (no $RANDOM or rand(): those differ between shells and awks).
+seed=${NIGHTSHIFT_TEST_SEED:-$(($(od -An -N4 -tu4 /dev/urandom)))}
+echo "seed $seed"
+files=$(for f in $files; do
+  printf '%s %s\n' "$(printf '%s %s' "$seed" "$(basename "$f")" | cksum | awk '{print $1}')" "$f"
+done | sort -n | awk '{print $2}')
 
 # File $1's results: printed, and its name added to the failed ones if it failed.
 failed=""
@@ -82,6 +93,7 @@ done
 pids=""
 if [ -n "$failed" ]; then
   echo "FAILED:$failed"
+  echo "${NIGHTSHIFT_TEST_SHARD:+NIGHTSHIFT_TEST_SHARD=$NIGHTSHIFT_TEST_SHARD }NIGHTSHIFT_TEST_SEED=$seed bash scripts/test.sh"
   exit 1
 fi
 echo "All tests pass."

@@ -78,7 +78,7 @@ expect "no test file calls a plain $plain" "$found" ""
   printf '%s\n(world; temp -d >/dev/null; : >"$ct/started"; sleep 30)\n' "$head" >"$fx/test-int.sh"
   # What a fresh caller's TMPDIR holds after test.sh ran on the files $1…
   # A fresh caller's environment, with $ct/caller as its TMPDIR.
-  caller=(env -u NIGHTSHIFT_TEST_LABELS -u NIGHTSHIFT_TEST_SHARD -u KEEP_WORLD ROOT="$ROOT" ct="$ct" TMPDIR="$ct/caller")
+  caller=(env -u NIGHTSHIFT_TEST_LABELS -u NIGHTSHIFT_TEST_SHARD -u NIGHTSHIFT_TEST_SEED -u KEEP_WORLD ROOT="$ROOT" ct="$ct" TMPDIR="$ct/caller")
   run_suite() {
     "${caller[@]}" bash "$ROOT/scripts/test.sh" "$@" >/dev/null 2>&1
   }
@@ -108,10 +108,30 @@ expect "no test file calls a plain $plain" "$found" ""
   run_suite "$fx/test-pass.sh" "$fx/test-fail.sh" || rc=$?
   expect "test.sh: a failure among parallel files exits 1" "$rc" "1"
   # NIGHTSHIFT_TEST_SHARD=i/n: the shards between them run each file once.
-  ran() { "${caller[@]}" NIGHTSHIFT_TEST_SHARD="$1" bash "$ROOT/scripts/test.sh" "$fx/test-pass.sh" "$fx/test-quick.sh" "$fx/test-fail.sh" 2>/dev/null |
-    sed -n 's/^=== \(test-[a-z0-9]*\)\.sh .*/\1/p'; }
+  # The names of the files a run's output says it ran, in the order it says them.
+  names() { sed -n 's/^=== \(test-[a-z0-9]*\)\.sh .*/\1/p'; }
+  ran() { "${caller[@]}" NIGHTSHIFT_TEST_SHARD="$1" bash "$ROOT/scripts/test.sh" "$fx/test-pass.sh" "$fx/test-quick.sh" "$fx/test-fail.sh" 2>/dev/null | names; }
   expect "test.sh: shards run each file once" "$( (ran 1/2; ran 2/2) | sort | paste -sd' ' -)" "test-fail test-pass test-quick"
   expect "test.sh: a shard runs a share" "$(ran 2/2 | wc -l | tr -d ' ')" "1"
+  # NIGHTSHIFT_TEST_SEED=<n>: the order the files run in, whatever the seed's
+  # source; the same seed, the same order. One job at a time, so the results
+  # print in the order they started.
+  mkdir "$ct/many"
+  for n in a b c d e f g h i j; do printf 'true\n' >"$ct/many/test-$n.sh"; done
+  order() { "${caller[@]}" NIGHTSHIFT_TEST_JOBS=1 NIGHTSHIFT_TEST_SEED="$1" bash "$ROOT/scripts/test.sh" "$ct"/many/*.sh 2>/dev/null | names | paste -sd' ' -; }
+  expect "test.sh: the same seed runs the files in the same order" "$(order 7)" "$(order 7)"
+  expect "test.sh: another seed runs them in another order" "$([ "$(order 7)" != "$(order 8)" ] && echo differ)" "differ"
+  # sed, not head: test.sh must not write to a closed pipe (where SIGPIPE is
+  # ignored, as on CI, bash 3.2 then never ends).
+  expect "test.sh: a seed prints before the results" "$("${caller[@]}" NIGHTSHIFT_TEST_SEED=7 bash "$ROOT/scripts/test.sh" "$fx/test-pass.sh" 2>/dev/null | sed -n 1p)" "seed 7"
+  expect "test.sh: with no seed given, one is printed" "$("${caller[@]}" bash "$ROOT/scripts/test.sh" "$fx/test-pass.sh" 2>/dev/null | sed -n '1s/^seed [0-9][0-9]*$/seed/p')" "seed"
+  shards() { for s in 1/3 2/3 3/3; do "${caller[@]}" NIGHTSHIFT_TEST_SHARD="$s" NIGHTSHIFT_TEST_SEED="$1" bash "$ROOT/scripts/test.sh" "$ct"/many/*.sh 2>/dev/null | names; done | sort | paste -sd' ' -; }
+  expect "test.sh: shards cover every file once, under seed 7" "$(shards 7)" "test-a test-b test-c test-d test-e test-f test-g test-h test-i test-j"
+  expect "test.sh: shards cover every file once, under seed 99" "$(shards 99)" "test-a test-b test-c test-d test-e test-f test-g test-h test-i test-j"
+  shard() { "${caller[@]}" NIGHTSHIFT_TEST_SHARD=1/3 NIGHTSHIFT_TEST_SEED="$1" bash "$ROOT/scripts/test.sh" "$ct"/many/*.sh 2>/dev/null | names | sort | paste -sd' ' -; }
+  expect "test.sh: a shard runs the same files whatever the seed" "$(shard 7)" "$(shard 99)"
+  expect "test.sh: a failure in a shard repeats that shard" "$("${caller[@]}" NIGHTSHIFT_TEST_SHARD=1/1 NIGHTSHIFT_TEST_SEED=42 bash "$ROOT/scripts/test.sh" "$fx/test-fail.sh" 2>/dev/null | sed -n '/^FAILED/{n;p;}')" "NIGHTSHIFT_TEST_SHARD=1/1 NIGHTSHIFT_TEST_SEED=42 bash scripts/test.sh"
+  expect "test.sh: a failure prints how to repeat the run" "$("${caller[@]}" NIGHTSHIFT_TEST_SEED=42 bash "$ROOT/scripts/test.sh" "$fx/test-fail.sh" 2>/dev/null | sed -n '/^FAILED/{n;p;}')" "NIGHTSHIFT_TEST_SEED=42 bash scripts/test.sh"
   err=$("${caller[@]}" KEEP_WORLD=1 bash "$ROOT/scripts/test.sh" "$fx/test-pass.sh" 2>&1 >/dev/null)
   kept=$(sed -n "s|^kept \($ct/caller/nightshift-tests\.[A-Za-z0-9]*\)\$|\1|p" <<<"$err")
   expect "KEEP_WORLD=1: test.sh keeps its dir and says where" "$([ -n "$kept" ] && [ -d "$kept" ] && echo kept)" "kept")

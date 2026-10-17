@@ -229,6 +229,16 @@ run_prompt() { run_opt -p "${1:-}"; }
 idir() { printf '%s/issues/o_r_%s' "$NS" "$1"; }
 state() { cat "$(idir "$1")/$2" 2>/dev/null; }
 
+# Issue $1's `cost`, its seconds (field 5) as S.
+cost() { state "$1" cost | awk '{ $5 = "S"; print }'; }
+
+# The cost tests' models, as a run's costs name them, and the first line of
+# the cost comment (as a grep pattern).
+# shellcheck disable=SC2034 # used by the files that source this
+OPUS=claude-opus-5-5 HAIKU=claude-haiku-4-5-20251001 SONNET=claude-sonnet-4-5-20250929
+# shellcheck disable=SC2034
+COMMENT="🤖 \*\*nightshift\*\* · cost"
+
 # Issue $1's status label on GitHub (without `nightshift: `), or nothing.
 status_label() { gh_labels "$REPO" "$1" | sed -n 's/^nightshift: //p'; }
 

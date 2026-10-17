@@ -419,10 +419,17 @@ bash scripts/test.sh            # all of them
 bash scripts/test.sh runs prs   # scripts/test-runs.sh and scripts/test-prs.sh
 ```
 
-The files run in parallel, the biggest first, 8 at a time (`NIGHTSHIFT_TEST_JOBS`
-changes it); each one's results print when it ends, with how long it took.
-`NIGHTSHIFT_TEST_SHARD=1/2` runs every other one of them, as CI's two test
-jobs do.
+The files run in parallel, in a random order, 8 at a time (`NIGHTSHIFT_TEST_JOBS`
+changes it); each one's results print when it ends, with how long it took. The
+order comes from a seed, printed first as `seed <n>` and again after a failure,
+with the command that repeats it: `NIGHTSHIFT_TEST_SEED=<n> bash scripts/test.sh`.
+`NIGHTSHIFT_TEST_SHARD=1/3` runs every third file of the list by size, as CI's
+three test jobs do; they share one seed, and a failed job's repeat command names its
+shard too, so it runs the same files in the same order anywhere.
+
+A test file passes alone, in any order and in any split across machines. Tests that
+rely on each other (a shared setup, an order) live in the same file; nothing relies
+on another file.
 
 Each `scripts/test-*.sh` drives nightshift the way it's used, in a throwaway
 `HOME` and `NIGHTSHIFT_HOME`, against a fake GitHub and a fake Claude

@@ -22,3 +22,5 @@ nightshift's runs read this file and keep it up to date.
 - **has CI**: a workflow in `.github/workflows/` triggers on `pull_request`, or the repo's latest
   merged pull request lists checks (`gh pr checks`), so external CI counts. It matters only when
   `full_suite` is unset.
+- **seed / shard**: `NIGHTSHIFT_TEST_SEED` fixes the random order `scripts/test.sh` runs the test
+  files in; `NIGHTSHIFT_TEST_SHARD=i/n` runs every n-th file, one of CI's three test jobs.
