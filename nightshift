@@ -1352,9 +1352,9 @@ poll() {
 
 # --- updating itself --------------------------------------------------------------
 
-# The release a watch updates to once a poll leaves no run in flight. Runs
-# start as usual meanwhile.
-PENDING=""
+# The release a watch updates to once a poll leaves no run in flight, and
+# whether apply_update has logged it. Runs start as usual meanwhile.
+PENDING="" ANNOUNCED=""
 
 # Unless auto_update=false, a release install's watch asks for the latest release
 # once an hour (NIGHTSHIFT_UPDATE_INTERVAL is for tests). A newer one is
@@ -1368,10 +1368,7 @@ check_update() {
   mkdir -p "$NS/poll" && echo "$now" >"$f"
   latest=$(latest_release)
   [ -n "$latest" ] && ! version_ge "$VERSION" "$latest" || return 0
-  PENDING=$latest
-  if [ "$(count_running)" -gt 0 ]; then log "v$PENDING is out: updating once nothing runs"
-  else log "v$PENDING is out: updating to it"
-  fi
+  PENDING=$latest ANNOUNCED=""
 }
 
 # After a poll, with a release pending and no run in flight (the poll has just
@@ -1379,7 +1376,15 @@ check_update() {
 # update mode (the service left as it is), and the watch execs the new script.
 # A failed update stays on this version until the next check.
 apply_update() {
-  [ -n "$PENDING" ] && [ "$(count_running)" -eq 0 ] || return 0
+  [ -n "$PENDING" ] || return 0
+  running=$(count_running)
+  if [ -z "$ANNOUNCED" ]; then
+    ANNOUNCED=1
+    if [ "$running" -gt 0 ]; then log "v$PENDING is out: updating once nothing runs"
+    else log "v$PENDING is out: updating to it"
+    fi
+  fi
+  [ "$running" -eq 0 ] || return 0
   : >"$NS/update.log"
   # Downloaded first: a failed download piped to sh would look like success.
   if script=$(curl -fsSL --max-time 30 "https://raw.githubusercontent.com/$REPO/v$PENDING/install.sh" 2>>"$NS/update.log") &&
@@ -1718,11 +1723,11 @@ version_line() {
   [0-9]*) ;;
   *)
     # Only a config that says so: on is the default, so it'd show on every dev install.
-    [ "$(sed -n 's/^auto_update=//p' "$CONFIG" 2>/dev/null | tail -1)" = true ] && printf '  %-7s %s\n' hint "auto_update is on, but only a release install updates itself: $INSTALL"
+    [ "$(setting auto_update '')" = true ] && printf '  %-7s %s\n' hint "auto_update is on, but only a release install updates itself: $INSTALL"
     return 0 ;;
   esac
   if [ "$auto" = false ]; then printf '  %-7s %s\n' hint "auto-update is off: remove auto_update=false from $CONFIG, or set it to true, to have new releases install themselves"
-  else pass "auto-update: each new release installs itself, between runs"
+  else pass "auto-update: each new release installs itself once nothing runs"
   fi
   latest=$(latest_release)
   if [ -n "$latest" ] && ! version_ge "$VERSION" "$latest"; then

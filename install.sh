@@ -119,7 +119,7 @@ fi
 if [ $auto -eq 1 ]; then
   { grep -v '^auto_update=' "$NS/config" 2>/dev/null || true; echo auto_update=true; } >"$NS/config.new"
   mv "$NS/config.new" "$NS/config"
-  echo "auto_update=true in $NS/config: the service installs each new release itself, between runs"
+  echo "auto_update=true in $NS/config: the service installs each new release itself once nothing runs"
 fi
 
 # What's missing on this machine, and how to get it. `nightshift start` writes
