@@ -40,10 +40,11 @@ needs a human; otherwise tell the user exactly what does, and let them say **mer
      A round: the run id is in the failing check's `link` (`gh pr checks <pr> --json
      name,state,link`); read `gh run view <run> --log-failed`, find the cause and fix it,
      run the checks for what the fix touched, commit, `git push`, take the new
-     `headRefOid` as the head and watch the checks again as above. Still failing after
-     two rounds: a look item. A failure you can't reproduce or fix (flaky, runner,
-     network, quota): a look item at once. Either look item names the check, the cause and
-     what you tried.
+     `headRefOid` as the head and run the Conflicts and Checks gates again on it, with
+     30 minutes of their own. Still failing after two rounds: a look item. A failure you
+     can't reproduce or fix (flaky, runner, network, quota), or a check with no `gh run`
+     log behind it (external CI) whose cause its link doesn't show: a look item at once.
+     Either look item names the check, the cause and what you tried.
 
    Done when each gate has passed or become a look item.
 2. **Triggers.** Read the issue and its thread, the approved plan, the review's report
@@ -73,10 +74,10 @@ needs a human; otherwise tell the user exactly what does, and let them say **mer
      report you were handed, then merged, and why nothing needed a look; if you pushed
      fixes, it lists each fix (the check, the cause, the commit).
    - **Something to look at:** a `look` comment: the report you were handed, then the head
-     you checked
-     (`` At `<head>`: ``), then one line per item, exactly what the user needs to know,
-     and a line per fix you pushed (the check, the cause, the commit), ending "Reply **merge** to merge it, or tell me what to change." End the run there:
-     the issue waits on the user.
+     you checked (`` At `<head>`: ``), then one line per item, exactly what the user needs
+     to know, and a line per fix you pushed (the check, the cause, the commit), ending
+     "Reply **merge** to merge it, or tell me what to change." End the run there: the issue
+     waits on the user.
 
    Done when the pull request is merged and the `done` comment (report included) is up, or
    the `look` comment is.

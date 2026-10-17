@@ -91,10 +91,11 @@ Done when every finding sits in one list.
 ## 5. One fix pass
 
 Fix everything under **Fix** (refactorings the smells call for included), run the checks
-for what the fixes touched, as a ticket does (the build skill then runs the whole suite once
-after this, only under the local line, or the default line in a repo with no CI, and never
-under the nothing line), and commit the fixes on their own (`fix: address review findings`, or the
-type that fits, in the repo's and the user's commit style), apart from any ticket's commit.
+for what the fixes touched, as a ticket does (the build skill then runs the whole suite
+once after this, only under the local line, or the default line in a repo with no CI, and
+never under the nothing line), and commit the fixes on their own (`fix: address review
+findings`, or the type that fits, in the repo's and the user's commit style), apart from
+any ticket's commit.
 That's one review and one fix pass, whatever the fixes touch. A fix that breaks the checks
 and can't be put right quickly is undone and moves to **Open**.
 

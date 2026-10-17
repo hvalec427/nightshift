@@ -113,7 +113,8 @@ expect_line "the build defines has CI by a pull_request workflow" "$build_flat" 
   "has CI[^.]*\.github/workflows/[^.]*pull_request"
 expect_line "has CI counts external checks on the latest merged pull request" "$build_flat" \
   "has CI.*latest merged pull request.*gh pr checks"
-expect_line "has CI matters only under the default line" "$build_flat" "only[^.]*default line"
+expect_line "has CI matters only under the default line" "$build_flat" \
+  "It matters only under the default line"
 expect_line "the ticket bullet says where the whole suite runs instead" "$build_flat" \
   "Not the whole test suite: that runs once, after the review, where"
 expect_line "the review's aside follows the same rule as the build's" "$review_flat" \
@@ -282,7 +283,10 @@ expect_line "the plan says nothing of a tasks checklist" "$(flat "$SKILLS/plan/S
 # A failing check is fixed before the user is asked: read the log, fix, push, at most two rounds.
 expect_line "a failing check is read with gh run view --log-failed" "$merge_flat" "gh run view[^.]*--log-failed"
 expect_line "the run id comes from gh pr checks --json" "$merge_flat" "run id[^.]*gh pr checks[^.]*--json"
-expect_line "the fix is checked, committed and pushed, then the checks are watched again" "$merge_flat" "commit[^.]*git push[^.]*watch the checks again"
+expect_line "the fix is checked, committed and pushed, then the gates run again" "$merge_flat" \
+  "commit[^.]*git push[^.]*Conflicts and Checks gates again"
+expect_line "a check with no gh run log can be a look item at once" "$merge_flat" "no \`gh run\` log behind it"
+expect_line "no checks reported still passes" "$merge_flat" '"no checks reported" counts as passing'
 expect_line "the merge skill fixes a failing check at most twice" "$merge_flat" "at most two fix rounds"
 expect_line "a check still failing after the fixes is a look item" "$merge_flat" "[Ss]till failing[^.]*look item"
 expect_line "a failure it can't fix (flaky, runner, network, quota) is a look item" "$merge_flat" "can.t reproduce or fix (flaky[^.]*look item"
