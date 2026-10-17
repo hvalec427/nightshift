@@ -230,7 +230,9 @@ resumed_label() {
   expect_line "no plugin copy: says the run isn't isolated" "$(cat "$(idir 7)/log")" "run install.sh again): this run isn't isolated"
   expect "no plugin copy: no --setting-sources" "$(run_opt --setting-sources)" ""
   expect "no plugin copy: still the clone's CLAUDE.md and CLAUDE.local.md excluded" "$(run_opt --settings)" \
-    "{\"claudeMdExcludes\":[\"$CLONE/CLAUDE.md\",\"$CLONE/.claude/CLAUDE.md\",\"$CLONE/CLAUDE.local.md\"]}"
+    "{\"claudeMdExcludes\":[\"$CLONE/CLAUDE.md\",\"$CLONE/.claude/CLAUDE.md\",\"$CLONE/CLAUDE.local.md\"],\"permissions\":{\"deny\":[\"Bash(pkill *)\",\"Bash(killall *)\",\"Bash(pkill)\",\"Bash(killall)\"]}}"
+  expect "no plugin copy: pkill and killall denied" "$(run_opt --settings | jq -c '.permissions.deny')" \
+    '["Bash(pkill *)","Bash(killall *)","Bash(pkill)","Bash(killall)"]'
   expect_ok "no plugin copy: no CLAUDE.local.md" test ! -e "$CLONE/.claude/worktrees/issue-7/CLAUDE.local.md")
 
 (world
@@ -246,7 +248,9 @@ resumed_label() {
   poll
   expect "isolated: only the project's settings" "$(run_opt --setting-sources)" "project,local"
   expect "isolated: attribution off, the clone's CLAUDE.md and CLAUDE.local.md excluded" "$(run_opt --settings)" \
-    "{\"attribution\":{\"commit\":\"\",\"pr\":\"\"},\"claudeMdExcludes\":[\"$CLONE/CLAUDE.md\",\"$CLONE/.claude/CLAUDE.md\",\"$CLONE/CLAUDE.local.md\"]}"
+    "{\"attribution\":{\"commit\":\"\",\"pr\":\"\"},\"claudeMdExcludes\":[\"$CLONE/CLAUDE.md\",\"$CLONE/.claude/CLAUDE.md\",\"$CLONE/CLAUDE.local.md\"],\"permissions\":{\"deny\":[\"Bash(pkill *)\",\"Bash(killall *)\",\"Bash(pkill)\",\"Bash(killall)\"]}}"
+  expect "isolated: pkill and killall denied" "$(run_opt --settings | jq -c '.permissions.deny')" \
+    '["Bash(pkill *)","Bash(killall *)","Bash(pkill)","Bash(killall)"]'
   expect "isolated: nightshift's plugin" "$(run_opt --plugin-dir)" "$NS/plugin"
   expect "no instructions in the system prompt" "$(run_args | grep -cx -- --append-system-prompt)" 0
   expect "the run's CLAUDE.local.md: nightshift's instructions" "$(cat "$CLONE/.claude/worktrees/issue-7/CLAUDE.local.md")" "$(cat "$ROOT/plugin/instructions.md")"
