@@ -19,7 +19,9 @@ a plan, the build, a pull request, talking to the user only through the issue.
 - `bash scripts/test.sh` runs every test, `bash scripts/test.sh review runs` just
   `scripts/test-review.sh` and `scripts/test-runs.sh`. Run it with `bash`: it isn't executable.
   The files run in parallel and the whole suite takes about 3 minutes. While working, run
-  the files for what you changed; the whole suite once, before the pull request.
+  the files for what you changed. Where the whole suite runs is the `full_suite` option in
+  `.nightshift/config`: unset (this repo), CI runs it, so don't run it locally; `local`, run it
+  once before the pull request; `nothing`, nightshift runs no whole suite.
 - `shellcheck -S warning nightshift install.sh scripts/*.sh scripts/fake/*` — CI's exact file
   list (`.github/workflows/check.yml`).
 - `bash scripts/commit-lint.sh --title "<subject>"` checks a commit or pull request title.

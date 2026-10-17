@@ -29,7 +29,8 @@ Build the tickets in order, one at a time, in this worktree. The sequence:
      checked the way the repo is checked: the project's build, typecheck and lint, the
      tests for what the ticket touched (its own and the existing ones that cover the code
      it changed), and the running app the way the project's instructions say. Not the
-     whole test suite: that runs once, after the review. Run them in the foreground and
+     whole test suite: that runs once, after the review, where the run prompt's whole-suite line says
+     (step 3). Run them in the foreground and
      wait for them, however long they take: a run ends when you stop.
    - Commit each ticket on its own, in the repo's and the user's commit style.
    - Post no comment per ticket: the issue stays quiet until the closing comment (step 5).
@@ -40,9 +41,19 @@ Build the tickets in order, one at a time, in this worktree. The sequence:
    Done when every ticket has its commit.
 3. **Review.** Invoke the `nightshift:review` skill with the Skill tool: one review, one fix
    pass. Done when it hands back its three lists (fixed, dismissed, open).
-   Then the **full checks**, once: the whole test suite with the build, typecheck and lint,
-   in the foreground. A failure is fixed and only what failed is run again, then the whole
-   suite once more. Done when they pass on the last commit.
+   Then the **full checks**, once, only under the local line, or the default line in a repo
+   with no CI, and never under the nothing line: the whole test suite with the build,
+   typecheck and lint, in the foreground. The lines are in the run prompt: the local line
+   starts "This repo runs its whole test suite locally", the default line "This repo leaves
+   its whole test suite to CI", the nothing line "nightshift runs no whole test suite". Under
+   the default line in a repo that has CI, CI runs the whole suite on the pull request, and
+   the checks above are what you run. A failure is fixed and only what failed is run again,
+   then the whole suite once more. Done when they pass on the last commit, or the line says
+   they don't run.
+
+   A repo **has CI** when a workflow in `.github/workflows/` triggers on `pull_request`, or
+   the repo's latest merged pull request lists checks (`gh pr checks <number>`), so external
+   CI counts too. It matters only under the default line.
 4. **Finish.** Check the **overlap** (in the issue skill) again, since other work may have
    started or merged since the plan, then invoke the `nightshift:finish` skill to open the
    pull request, handing it the overlap lines for the body. The review's findings left

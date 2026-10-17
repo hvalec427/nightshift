@@ -93,6 +93,45 @@ for s in build update; do
     "$(cat "$SKILLS/$s/SKILL.md")" "a run ends when you stop"
 done
 
+# Where the whole test suite runs follows the run prompt's whole-suite line (the CLI's suite_note):
+# the build, the review and the update run it only under the local line, or the default line in a
+# repo without CI, and never under the nothing line.
+build_flat=$(flat "$SKILLS/build/SKILL.md")
+review_flat=$(flat "$SKILLS/review/SKILL.md")
+update_flat=$(flat "$SKILLS/update/SKILL.md")
+expect_line "the build runs the whole suite under the local line" "$build_flat" \
+  "full checks[^.]*only[^.]*local line"
+expect_line "the build runs it under the default line only without CI" "$build_flat" \
+  "local line, or the default line[^.]*no CI"
+expect_line "the build quotes the default line" "$build_flat" '"This repo leaves its whole test suite to CI'
+expect_line "the build quotes the local line" "$build_flat" '"This repo runs its whole test suite locally'
+expect_line "the build never runs the whole suite under the nothing line" "$build_flat" \
+  "[Nn]ever[^.]*nothing line"
+expect_line "the build quotes the nothing line" "$build_flat" '"nightshift runs no whole test suite'
+expect_line "the build defines has CI by a pull_request workflow" "$build_flat" \
+  "has CI[^.]*\.github/workflows/[^.]*pull_request"
+expect_line "has CI counts external checks on the latest merged pull request" "$build_flat" \
+  "has CI.*latest merged pull request.*gh pr checks"
+expect_line "has CI matters only under the default line" "$build_flat" "only[^.]*default line"
+expect_line "the ticket bullet says where the whole suite runs instead" "$build_flat" \
+  "Not the whole test suite: that runs once, after the review, where"
+expect_line "the review's aside follows the same rule as the build's" "$review_flat" \
+  "whole suite[^.]*local line, or the default line[^.]*no CI"
+expect_line "the review's aside says never under the nothing line" "$review_flat" "[Nn]ever[^.]*nothing line"
+expect_line "the review no longer says the whole suite always runs after it" "$review_flat" \
+  "the whole suite runs once after this, in the build skill" no
+expect_line "the update runs the whole suite under the local line" "$update_flat" \
+  "whole test suite[^.]*local line, or the default line[^.]*no CI"
+expect_line "the update never runs it under the nothing line" "$update_flat" "[Nn]ever[^.]*nothing line"
+expect_line "the update points at the build's definition of has CI" "$update_flat" "has CI[^.]*build skill"
+expect_line "the update checks what the rebase and adaptation touched" "$update_flat" \
+  "checks for what the rebase and the adaptation touched"
+expect_line "the update no longer always runs the whole suite" "$update_flat" \
+  "Run the full checks once, the whole test suite included" no
+expect_line "the repo's CLAUDE.md names the full_suite option" "$(flat "$ROOT/CLAUDE.md")" '`full_suite`'
+expect_line "the repo's CLAUDE.md says what each full_suite setting means" "$(flat "$ROOT/CLAUDE.md")" \
+  "unset.*local.*nothing"
+
 # Every relative link to a markdown file in a skill, as "<file>: <target>", that doesn't resolve.
 dangling=""
 while IFS= read -r f; do
