@@ -59,7 +59,7 @@ Send git as one plain command per Bash call: no env prefix, pipe, `&&` or `;`. A
 allowed `Bash(git *)`, which matches only a plain git command; anything around it goes to
 the auto mode classifier, which can deny it. The editors are already off in a run
 (`GIT_EDITOR` and `GIT_SEQUENCE_EDITOR` are `true`), so `git rebase --continue` and
-`git commit` need no prefix. When a git step is denied anyway, retry it once as separate
+`git merge` need no prefix. When a git step is denied anyway, retry it once as separate
 plain git commands before you write a `blocked` comment.
 
 Keep a check's logs and scratch files inside the worktree's ignored files or under
