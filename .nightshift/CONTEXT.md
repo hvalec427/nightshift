@@ -19,6 +19,8 @@ nightshift's runs read this file and keep it up to date.
   a PR body, the order PRs should merge in.
 - **cycle**: open PRs whose after markers lead back to themselves, so none can merge first. The
   lowest issue goes first, turning its after markers on the cycle into overlaps markers.
+- **heartbeat**: what `nightshift status` shows of a running issue's run, from its `log`: its
+  latest step (the last tool call, a subagent's too) and its last activity (the log's last change).
 - **world**: a test's throwaway machine from `world()` in `scripts/test-lib.sh`, with the
   fakes in `scripts/fake/`.
 - **full_suite**: the `.nightshift/config` option for where a repo's whole test suite runs:

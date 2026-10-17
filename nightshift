@@ -4,7 +4,7 @@
 #   nightshift watch                     poll the configured repos and run agents
 #   nightshift start                     run `watch` in the background, whenever you're logged in
 #   nightshift once                      one poll, then exit (for testing)
-#   nightshift status [--all]            the service, the issues in progress (--all: done too) and what each is doing
+#   nightshift status [--all]            the service, the issues in progress (--all: done too), what each is doing, a run's last step
 #   nightshift stop                      stop the service (until `nightshift start`)
 #   nightshift stop <owner/repo>#<n>     stop an issue's running agent
 #   nightshift logs [<owner/repo>#<n>] [-f] [-v…]  what every issue (or one) does, at a level
@@ -1753,8 +1753,8 @@ cmd_status() {
     if [ -f "$d/ignored" ]; then what="ignored (labelled by someone else)"
     elif [ -f "$d/done" ] && [ "$(cat "$d/done")" = "PR merged" ]; then what="done · PR $(cat "$d/pr") merged $(age "$d/done") ago"
     elif [ -f "$d/done" ]; then what="done · $(cat "$d/done") $(age "$d/done") ago"
-    elif running "$d" && [ -f "$d/updating" ]; then what="PR $(cat "$d/pr") · $(head -1 "$d/updating") $(age "$d/pid") (pid $(cat "$d/pid"))"
-    elif running "$d"; then what="$(label_or "$d" running)$(skill_note "$d") $(age "$d/pid") (pid $(cat "$d/pid"))"
+    elif running "$d" && [ -f "$d/updating" ]; then what="PR $(cat "$d/pr") · $(head -1 "$d/updating") $(age "$d/pid") (pid $(cat "$d/pid"))$(heartbeat "$d")"
+    elif running "$d"; then what="$(label_or "$d" running)$(skill_note "$d") $(age "$d/pid") (pid $(cat "$d/pid"))$(heartbeat "$d")"
     elif [ -f "$d/off" ] && [ -f "$d/interrupted" ]; then what="stopped $(age "$d/off") ago ($(cat "$d/off")) · $(resume_hint "$d")"
     elif [ -f "$d/off" ] && [ -f "$d/pr" ]; then what="PR $(cat "$d/pr") · $(cat "$d/off")"
     elif [ -f "$d/off" ]; then what="$(cat "$d/off") $(age "$d/off") ago"
@@ -1821,6 +1821,15 @@ resume_hint() {
 # The skill an issue's run is in, or its last one ended in.
 skill_note() {
   [ -s "$1/skill" ] && printf ' · %s' "$(cat "$1/skill")"
+}
+
+# A running issue's heartbeat: its run's last tool call (a subagent's too), cut
+# to 60 characters, and how long since its log last changed; nothing without a log.
+heartbeat() {
+  [ -f "$1/log" ] || return 0
+  awk 'sub(/^2\t[0-9:]+ +→ /, "") { step = $0; sub(/ +$/, "", step) }
+    END { if (step != "") printf " · now: %s", (length(step) > 60 ? substr(step, 1, 59) "…" : step) }' "$1/log"
+  printf ' · last activity %s ago' "$(age "$1/log")"
 }
 
 # How long an issue has waited since its last run ended, after a prefix; nothing
