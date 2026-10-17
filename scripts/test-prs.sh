@@ -207,8 +207,7 @@ MERGES='commit feature.txt; open_pr; merge_pr; hold; comment done'
   BG=$!
   wait_for "$CLAUDE_FAKE/runs/1/waiting"
   poll
-  expect_ok "merged mid-run, a poll: the run isn't stopped" test ! -f "$CLAUDE_FAKE/runs/1/stopped"
-  expect_ok "it isn't marked interrupted" test ! -f "$(idir 7)/interrupted"
+  expect_ok "merged mid-run, a poll: it isn't marked interrupted" test ! -f "$(idir 7)/interrupted"
   expect_line "the watch log: finishing" "$(cat "$NS/watch.log")" "o/r#7: issue closed: finishing$"
   touch "$CLAUDE_FAKE/runs/1/go"
   wait "$BG"
@@ -229,6 +228,7 @@ MERGES='commit feature.txt; open_pr; merge_pr; hold; comment done'
   wait_for "$CLAUDE_FAKE/runs/1/waiting"
   poll
   expect_ok "closed after its done comment, a poll: the run isn't stopped" test ! -f "$(idir 7)/interrupted"
+  expect_line "the watch log: finishing" "$(cat "$NS/watch.log")" "o/r#7: issue closed: finishing$"
   touch "$CLAUDE_FAKE/runs/1/go"
   wait "$BG"
   poll
@@ -248,6 +248,25 @@ MERGES='commit feature.txt; open_pr; merge_pr; hold; comment done'
   expect_ok "not done" test ! -f "$(idir 7)/done"
   expect_line "status: reopen to resume" "$(ns status)" "(issue closed) · reopen to resume"
   expect "a stopped run records its pr" "$(state 7 pr)" "https://github.com/o/r/pull/100")
+
+# Brought back from its merge, then closed mid-run with nothing new merged:
+# the old merge doesn't make it finishing.
+(world
+  built
+  gh_pr_set o/r "$(prn)" state '"MERGED"'
+  poll
+  gh_comment o/r 7 alice "one more thing" >/dev/null
+  gh_state o/r 7 open
+  runs_do 'gh_state "$NIGHTSHIFT_REPO" "$NIGHTSHIFT_ISSUE" closed; hold'
+  "$ROOT/nightshift" once &
+  BG=$!
+  wait_for "$CLAUDE_FAKE/runs/2/waiting"
+  poll
+  expect "revived, closed mid-run, nothing new merged: stopped" "$(state 7 interrupted)" "issue closed"
+  touch "$CLAUDE_FAKE/runs/2/go"
+  wait "$BG"
+  poll
+  expect "not done again by the old merge" "$(state 7 "done")" "")
 
 # Already stopped this way (closed, interrupted, idle): retired on the next poll
 # when its branch's pull request merged, or its run had posted its done comment.

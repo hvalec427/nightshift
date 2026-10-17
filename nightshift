@@ -1060,7 +1060,7 @@ check_done() {
       if [ ! -f "$d/interrupted" ]; then
         why="issue closed"
         [ -n "$pr" ] && [ "$(gh pr view "$pr" --repo "$repo" --json state -q .state 2>/dev/null)" = MERGED ] && why="PR merged"
-      elif merged_pr "$repo" "$n"; then
+      elif merged_pr "$repo" "$n" "$d"; then
         # Stopped by the close of a run that was finishing (see poll_repo).
         why="PR merged"
         echo "$mpr" >"$d/pr"
@@ -1296,10 +1296,11 @@ list_issues() {
 }
 
 # The merged pull request of $1#$2's branch, asked by head branch (`pr` may not
-# be recorded), in $mpr; fails without one.
+# be recorded), in $mpr; fails without one, or when the newest is the one issue
+# dir $3 was brought back from (`revived`).
 merged_pr() {
   mpr=$(gh pr list --repo "$1" --head "nightshift/issue-$2" --state merged --json url -q '.[0].url' 2>/dev/null)
-  [ -n "$mpr" ]
+  [ -n "$mpr" ] && [ "$mpr" != "$(cat "$3/revived" 2>/dev/null)" ]
 }
 
 # Whether issue dir $1's current run has posted its done comment.
@@ -1311,7 +1312,7 @@ posted_done() {
 # Whether the run going in issue dir $3 of $1#$2 is finishing: its branch's
 # pull request merged, or it has posted its done comment since its run started.
 run_finishing() {
-  merged_pr "$1" "$2" || posted_done "$3"
+  merged_pr "$1" "$2" "$3" || posted_done "$3"
 }
 
 poll_repo() {
