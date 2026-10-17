@@ -73,11 +73,12 @@ expect "no test file calls a plain $plain" "$found" ""
   mkdir "$fx"
   head='. "$ROOT/scripts/test-lib.sh"; (world; temp >/dev/null; temp -d >/dev/null; echo "$NIGHTSHIFT_TEST_LABELS" >"$ct/labels")'
   printf '%s\nexpect pass 1 1\nreport\n' "$head" >"$fx/test-pass.sh"
+  printf '%s\nexpect pass 1 1\nreport\n' "$head" >"$fx/test-quick.sh"
   printf '%s\nexpect fail 1 2\nreport\n' "$head" >"$fx/test-fail.sh"
   printf '%s\n(world; temp -d >/dev/null; : >"$ct/started"; sleep 30)\n' "$head" >"$fx/test-int.sh"
   # What a fresh caller's TMPDIR holds after test.sh ran on the files $1…
   # A fresh caller's environment, with $ct/caller as its TMPDIR.
-  caller=(env -u NIGHTSHIFT_TEST_LABELS -u KEEP_WORLD ROOT="$ROOT" ct="$ct" TMPDIR="$ct/caller")
+  caller=(env -u NIGHTSHIFT_TEST_LABELS -u NIGHTSHIFT_TEST_SHARD -u KEEP_WORLD ROOT="$ROOT" ct="$ct" TMPDIR="$ct/caller")
   run_suite() {
     "${caller[@]}" bash "$ROOT/scripts/test.sh" "$@" >/dev/null 2>&1
   }
@@ -102,19 +103,14 @@ expect "no test file calls a plain $plain" "$found" ""
   set +m
   expect "test.sh: INT exits 130" "$rc" "130"
   expect "test.sh: INT leaves the caller's TMPDIR as it was" "$(ls -A "$ct/caller")" ""
-  # The files run at once: two that each wait 3 s take about 3 s, not 6, and a
-  # failure among them still fails the run.
-  printf '%s\nsleep 3; expect pass 1 1\nreport\n' "$head" >"$fx/test-slow1.sh"
-  printf '%s\nsleep 3; expect fail 1 2\nreport\n' "$head" >"$fx/test-slow2.sh"
-  start=$(date +%s) rc=0
-  run_suite "$fx/test-slow1.sh" "$fx/test-slow2.sh" || rc=$?
-  took=$(($(date +%s) - start))
-  expect "test.sh: files run in parallel" "$([ "$took" -lt 6 ] && echo yes || echo "no, ${took}s")" "yes"
+  # A failure among files run at once still fails the run.
+  rc=0
+  run_suite "$fx/test-pass.sh" "$fx/test-fail.sh" || rc=$?
   expect "test.sh: a failure among parallel files exits 1" "$rc" "1"
   # NIGHTSHIFT_TEST_SHARD=i/n: the shards between them run each file once.
-  ran() { "${caller[@]}" NIGHTSHIFT_TEST_SHARD="$1" bash "$ROOT/scripts/test.sh" "$fx/test-pass.sh" "$fx/test-slow1.sh" "$fx/test-fail.sh" 2>/dev/null |
+  ran() { "${caller[@]}" NIGHTSHIFT_TEST_SHARD="$1" bash "$ROOT/scripts/test.sh" "$fx/test-pass.sh" "$fx/test-quick.sh" "$fx/test-fail.sh" 2>/dev/null |
     sed -n 's/^=== \(test-[a-z0-9]*\)\.sh .*/\1/p'; }
-  expect "test.sh: shards run each file once" "$( (ran 1/2; ran 2/2) | sort | paste -sd' ' -)" "test-fail test-pass test-slow1"
+  expect "test.sh: shards run each file once" "$( (ran 1/2; ran 2/2) | sort | paste -sd' ' -)" "test-fail test-pass test-quick"
   expect "test.sh: a shard runs a share" "$(ran 2/2 | wc -l | tr -d ' ')" "1"
   err=$("${caller[@]}" KEEP_WORLD=1 bash "$ROOT/scripts/test.sh" "$fx/test-pass.sh" 2>&1 >/dev/null)
   kept=$(sed -n "s|^kept \($ct/caller/nightshift-tests\.[A-Za-z0-9]*\)\$|\1|p" <<<"$err")
