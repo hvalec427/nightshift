@@ -102,6 +102,15 @@ expect "no test file calls a plain $plain" "$found" ""
   set +m
   expect "test.sh: INT exits 130" "$rc" "130"
   expect "test.sh: INT leaves the caller's TMPDIR as it was" "$(ls -A "$ct/caller")" ""
+  # The files run at once: two that each wait 3 s take about 3 s, not 6, and a
+  # failure among them still fails the run.
+  printf '%s\nsleep 3; expect pass 1 1\nreport\n' "$head" >"$fx/test-slow1.sh"
+  printf '%s\nsleep 3; expect fail 1 2\nreport\n' "$head" >"$fx/test-slow2.sh"
+  start=$(date +%s) rc=0
+  run_suite "$fx/test-slow1.sh" "$fx/test-slow2.sh" || rc=$?
+  took=$(($(date +%s) - start))
+  expect "test.sh: files run in parallel" "$([ "$took" -lt 6 ] && echo yes || echo "no, ${took}s")" "yes"
+  expect "test.sh: a failure among parallel files exits 1" "$rc" "1"
   err=$("${caller[@]}" KEEP_WORLD=1 bash "$ROOT/scripts/test.sh" "$fx/test-pass.sh" 2>&1 >/dev/null)
   kept=$(sed -n "s|^kept \($ct/caller/nightshift-tests\.[A-Za-z0-9]*\)\$|\1|p" <<<"$err")
   expect "KEEP_WORLD=1: test.sh keeps its dir and says where" "$([ -n "$kept" ] && [ -d "$kept" ] && echo kept)" "kept")

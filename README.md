@@ -415,6 +415,9 @@ bash scripts/test.sh            # all of them
 bash scripts/test.sh runs prs   # scripts/test-runs.sh and scripts/test-prs.sh
 ```
 
+The files run in parallel, the biggest first, 8 at a time (`NIGHTSHIFT_TEST_JOBS`
+changes it); each one's results print when it ends, with how long it took.
+
 Each `scripts/test-*.sh` drives nightshift the way it's used, in a throwaway
 `HOME` and `NIGHTSHIFT_HOME`, against a fake GitHub and a fake Claude
 (`scripts/fake`): nothing reaches GitHub, Claude or your own `~/.nightshift`. The
