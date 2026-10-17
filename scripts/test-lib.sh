@@ -8,7 +8,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
 # A temp file, or with -d a dir, under TMPDIR, which a plain call to the tool
 # ignores on macOS: the only way a test makes one, so a suite's go in its dir.
-temp() { mktemp "$@" "${TMPDIR:-/tmp}/tmp.XXXXXX"; } # the one call
+temp() { mktemp "$@" "${TMPDIR:-/tmp}/tmp.XXXXXX"; }
 # Tests run in subshells, so failures are counted in a file.
 FAILS=$(temp)
 # Gone when the test file exits, passed or failed. A subshell has its own traps.

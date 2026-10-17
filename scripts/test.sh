@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Run the tests: every scripts/test-*.sh, or the ones named (`release`, or
 # `scripts/test-release.sh`). Prints each file's results, then a summary;
-# fails if any test does. Every file runs in a temp dir of its own, as TMPDIR
-# (see `temp` in test-lib.sh), removed at the end, even on INT; KEEP_WORLD=1
+# fails if any test does. The files run in one temp dir of the run's own, as
+# TMPDIR (see `temp` in test-lib.sh), removed at the end, even on INT; KEEP_WORLD=1
 # keeps it, and the worlds in it, and prints where it is.
 #   bash scripts/test.sh [<name>…]
 set -u

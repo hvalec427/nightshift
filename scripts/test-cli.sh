@@ -26,7 +26,8 @@ set -euo pipefail
   got=$(FAILS=$(temp)
     set -o pipefail
     out=$(expect_line "big" "$big" "^the line$")
-    printf '%s|%s' "${out%%$'\n'*}" "$(cat "$FAILS")")
+    printf '%s|%s' "${out%%$'\n'*}" "$(cat "$FAILS")"
+    rm -f "$FAILS")
   expect "expect_line: a match on line 1 of a large input" "$got" "ok   big|")
 
 # A test's world is removed when it ends; KEEP_WORLD=1 keeps it and says where.
@@ -57,10 +58,10 @@ rm -rf "$w"
   g=$(TMPDIR=$d temp -d)
   expect "temp -d: a dir in TMPDIR" "$([ -d "$g" ] && echo "${g%/*}")" "$d")
 
-# No test file or the test lib calls the plain tool (bar temp's one line, and
+# No test file or the test lib calls the plain tool (bar temp itself, and
 # comments); that is what keeps a suite's files in its own TMPDIR.
 plain='mk''temp'
-found=$(cd "$ROOT" && grep -n "$plain" scripts/test-*.sh | grep -v ':[0-9]*:[[:space:]]*#' | grep -v 'the one call' || true)
+found=$(cd "$ROOT" && grep -n "$plain" scripts/test-*.sh | grep -v ':[0-9]*:[[:space:]]*#' | grep -v '^scripts/test-lib\.sh:[0-9]*:temp() ' || true)
 expect "no test file calls a plain $plain" "$found" ""
 
 # A run of test.sh on files of its own (a pass, a fail, one stopped by INT),
@@ -75,8 +76,10 @@ expect "no test file calls a plain $plain" "$found" ""
   printf '%s\nexpect fail 1 2\nreport\n' "$head" >"$fx/test-fail.sh"
   printf '%s\n(world; temp -d >/dev/null; : >"$ct/started"; sleep 30)\n' "$head" >"$fx/test-int.sh"
   # What a fresh caller's TMPDIR holds after test.sh ran on the files $1…
+  # A fresh caller's environment, with $ct/caller as its TMPDIR.
+  caller=(env -u NIGHTSHIFT_TEST_LABELS -u KEEP_WORLD ROOT="$ROOT" ct="$ct" TMPDIR="$ct/caller")
   run_suite() {
-    env -u NIGHTSHIFT_TEST_LABELS -u KEEP_WORLD ROOT="$ROOT" ct="$ct" TMPDIR="$ct/caller" bash "$ROOT/scripts/test.sh" "$@" >/dev/null 2>&1
+    "${caller[@]}" bash "$ROOT/scripts/test.sh" "$@" >/dev/null 2>&1
   }
   mkdir "$ct/caller"
   run_suite "$fx/test-pass.sh"
@@ -90,8 +93,7 @@ expect "no test file calls a plain $plain" "$found" ""
   # As a ^C reaches it: its own process group, and INT not ignored (as it is
   # for anything started in the background by a script).
   set -m
-  perl -e '$SIG{INT} = "DEFAULT"; exec @ARGV' env -u NIGHTSHIFT_TEST_LABELS -u KEEP_WORLD ROOT="$ROOT" ct="$ct" TMPDIR="$ct/caller" \
-    bash "$ROOT/scripts/test.sh" "$fx/test-int.sh" >/dev/null 2>&1 &
+  perl -e '$SIG{INT} = "DEFAULT"; exec @ARGV' "${caller[@]}" bash "$ROOT/scripts/test.sh" "$fx/test-int.sh" >/dev/null 2>&1 &
   pid=$!
   wait_for "$ct/started"
   kill -INT -- "-$pid"
@@ -100,7 +102,7 @@ expect "no test file calls a plain $plain" "$found" ""
   set +m
   expect "test.sh: INT exits 130" "$rc" "130"
   expect "test.sh: INT leaves the caller's TMPDIR as it was" "$(ls -A "$ct/caller")" ""
-  err=$(env -u NIGHTSHIFT_TEST_LABELS KEEP_WORLD=1 ROOT="$ROOT" ct="$ct" TMPDIR="$ct/caller" bash "$ROOT/scripts/test.sh" "$fx/test-pass.sh" 2>&1 >/dev/null)
+  err=$("${caller[@]}" KEEP_WORLD=1 bash "$ROOT/scripts/test.sh" "$fx/test-pass.sh" 2>&1 >/dev/null)
   kept=$(sed -n "s|^kept \($ct/caller/nightshift-tests\.[A-Za-z0-9]*\)\$|\1|p" <<<"$err")
   expect "KEEP_WORLD=1: test.sh keeps its dir and says where" "$([ -n "$kept" ] && [ -d "$kept" ] && echo kept)" "kept")
 
