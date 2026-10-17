@@ -417,6 +417,8 @@ bash scripts/test.sh runs prs   # scripts/test-runs.sh and scripts/test-prs.sh
 
 The files run in parallel, the biggest first, 8 at a time (`NIGHTSHIFT_TEST_JOBS`
 changes it); each one's results print when it ends, with how long it took.
+`NIGHTSHIFT_TEST_SHARD=1/2` runs every other one of them, as CI's two test
+jobs do.
 
 Each `scripts/test-*.sh` drives nightshift the way it's used, in a throwaway
 `HOME` and `NIGHTSHIFT_HOME`, against a fake GitHub and a fake Claude

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Run the tests: every scripts/test-*.sh, or the ones named (`release`, or
 # `scripts/test-release.sh`). The files run in parallel, the biggest first,
-# NIGHTSHIFT_TEST_JOBS (default 8) at a time; each one's results print once it
+# NIGHTSHIFT_TEST_JOBS (default 8) at a time (NIGHTSHIFT_TEST_SHARD=i/n, a
+# share of them); each one's results print once it
 # ends, then a summary; fails if any test does. The files run in one temp dir
 # of the run's own, as TMPDIR (see `temp` in test-lib.sh), removed at the end,
 # even on INT; KEEP_WORLD=1 keeps it, and the worlds in it, and prints where it is.
@@ -36,6 +37,11 @@ sized() {
   done
 }
 files=$(sized "$@" | sort -rn | awk '{print $2}')
+# NIGHTSHIFT_TEST_SHARD=i/n: only the i-th of every n of them (CI splits the
+# suite across machines this way); the sizes alternate, so each gets a share.
+if [ -n "${NIGHTSHIFT_TEST_SHARD:-}" ]; then
+  files=$(printf '%s\n' $files | awk -v s="$NIGHTSHIFT_TEST_SHARD" 'BEGIN { split(s, a, "/") } (NR - 1) % a[2] == a[1] - 1')
+fi
 
 # File $1's results: printed, and its name added to the failed ones if it failed.
 failed=""

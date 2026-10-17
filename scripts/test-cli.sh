@@ -111,6 +111,11 @@ expect "no test file calls a plain $plain" "$found" ""
   took=$(($(date +%s) - start))
   expect "test.sh: files run in parallel" "$([ "$took" -lt 6 ] && echo yes || echo "no, ${took}s")" "yes"
   expect "test.sh: a failure among parallel files exits 1" "$rc" "1"
+  # NIGHTSHIFT_TEST_SHARD=i/n: the shards between them run each file once.
+  ran() { "${caller[@]}" NIGHTSHIFT_TEST_SHARD="$1" bash "$ROOT/scripts/test.sh" "$fx/test-pass.sh" "$fx/test-slow1.sh" "$fx/test-fail.sh" 2>/dev/null |
+    sed -n 's/^=== \(test-[a-z0-9]*\)\.sh .*/\1/p'; }
+  expect "test.sh: shards run each file once" "$( (ran 1/2; ran 2/2) | sort | paste -sd' ' -)" "test-fail test-pass test-slow1"
+  expect "test.sh: a shard runs a share" "$(ran 2/2 | wc -l | tr -d ' ')" "1"
   err=$("${caller[@]}" KEEP_WORLD=1 bash "$ROOT/scripts/test.sh" "$fx/test-pass.sh" 2>&1 >/dev/null)
   kept=$(sed -n "s|^kept \($ct/caller/nightshift-tests\.[A-Za-z0-9]*\)\$|\1|p" <<<"$err")
   expect "KEEP_WORLD=1: test.sh keeps its dir and says where" "$([ -n "$kept" ] && [ -d "$kept" ] && echo kept)" "kept")
