@@ -168,6 +168,8 @@ expect_line "the brief points at the plan comment through gh" "$brief" "issue nu
 expect_line "the brief gives the worktree's absolute path" "$brief" "worktree's absolute path"
 expect_line "the brief gives the commits so far" "$brief" "commits so far"
 expect_line "the brief says to pass the issue number, not paste the ticket" "$brief" "not pasted"
+expect_line "the brief lists the earlier tickets' replies" "$brief" "replies of the earlier tickets"
+expect_line "those replies say what each delivered and flagged" "$brief" "earlier tickets[^.]*delivered[^.]*flagged"
 
 # On go, each ticket becomes a sub-issue (no agent label) that the brief and the PR body name.
 subissues=$(flat "$SKILLS/build/SUB-ISSUES.md" 2>/dev/null)

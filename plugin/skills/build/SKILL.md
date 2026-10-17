@@ -68,6 +68,9 @@ the subagent can read itself unpasted.
   worktree;
 - this worktree's absolute path, and the commits so far (the tickets already committed in
   it: `git log --oneline` against the default branch shows them);
+- for the second ticket on, the replies of the earlier tickets: what each delivered and what
+  it flagged, a short list from the summaries the subagents returned in this build, not
+  their logs. A ticket is then not caught by what an earlier one already ran into;
 - how the repo is checked (as above), and the commit style;
 - what it may do: build, check and commit this one ticket, in this worktree. Everything
   else is yours: it never comments on the issue, changes labels, pushes, opens a pull
