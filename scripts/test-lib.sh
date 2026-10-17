@@ -7,6 +7,8 @@
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 # Tests run in subshells, so failures are counted in a file.
 FAILS=$(mktemp)
+# Gone when the test file exits, passed or failed. A subshell has its own traps.
+trap 'rm -f "$FAILS"' EXIT
 FAKES="$ROOT/scripts/fake"
 # shellcheck source=fake/github.sh
 . "$FAKES/github.sh"
@@ -89,13 +91,15 @@ world() {
   trap end_world EXIT
 }
 
-# Whatever a test left running in its world (on a failure): stopped.
+# Whatever a test left running in its world (on a failure): stopped, and the
+# world removed, unless KEEP_WORLD=1, which keeps it and says where it is.
 end_world() {
   local p
   for p in "$NS/watch.pid" "$NS"/issues/*/pid; do
     [ -f "$p" ] && { kill -9 "$(cat "$p")" 2>/dev/null || true; }
   done
   pkill -9 -f "$W/" 2>/dev/null || true
+  if [ -n "${KEEP_WORLD:-}" ]; then echo "kept $W" >&2; else rm -rf "${W:?}"; fi
   return 0
 }
 
