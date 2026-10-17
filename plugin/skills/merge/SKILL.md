@@ -4,7 +4,7 @@ description: Wait for an issue's pull request checks, then squash-merge it when 
 allowed-tools: Bash(gh pr *) Bash(gh issue *) Bash(git fetch *) Bash(git log *) Bash(git diff *) Bash(git rev-parse *)
 user-invocable: false
 model: sonnet
-effort: medium
+effort: high
 ---
 
 # Merge a pull request

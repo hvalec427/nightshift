@@ -234,11 +234,11 @@ No setting changes them: `model=` and `effort=` in the config are ignored, and
 |---|---|---|
 | `issue` (routing) | sonnet | low |
 | `questions`, `plan` | opus | high |
-| `build`, `update`, `review` (its fixes) | sonnet | high |
+| `build`, `update`, `review` (its fixes), `merge` | sonnet | high |
 | Ticket builder (agent `ticket`) | sonnet | high |
 | Spec reviewer (agent `spec-review`) | opus | high |
 | Standards reviewer (agent `standards-review`) | sonnet | medium |
-| `answer`, `finish`, `merge` | sonnet | medium |
+| `answer`, `finish` | sonnet | medium |
 
 Each run's line in `nightshift logs` shows the models it used, the main one first.
 
