@@ -16,8 +16,8 @@ Build the tickets in order, one at a time, in this worktree. The sequence:
 
 1. **Sub-issues.** Before the first ticket, give each ticket a sub-issue of the issue, by
    [SUB-ISSUES.md](SUB-ISSUES.md): it is where the ticket's text lives, for you, the
-   subagent and the user. Done when `gh issue view <issue> --json subIssues` lists one per
-   ticket.
+   subagent and the user. Done when the issue lists one sub-issue per ticket
+   (`gh issue view <issue> --json subIssues`, or `gh api` on its `sub_issues`).
 2. **Each ticket,** in order. With two or more tickets, hand each to a **ticket subagent**
    ([below](#ticket-subagents)), so a ticket's reads, test output and fixes don't fill the
    context of the next. A plan with one ticket you build yourself, after invoking the

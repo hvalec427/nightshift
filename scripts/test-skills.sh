@@ -200,6 +200,7 @@ expect_line "the merge danger names the blast radius in one word, narrow or wide
 expect_line "the PR body keeps the open review findings" "$finish" "open review findings"
 expect_line "the PR body keeps the overlap lines and their markers" "$finish" "overlap lines[^.]*<!-- nightshift:after #N -->[^.]*<!-- nightshift:overlaps #N -->"
 expect_line "the closing lines and overlap lines are for nightshift only" "$finish" "Outside nightshift[^.]*no \`Closes\`"
+expect_line "implement-spec is credited in the notices" "$(flat "$ROOT/plugin/THIRD_PARTY.md")" "\`implement-spec\` in \`build\`"
 expect_line "the PR skill is credited in the notices" "$(cat "$ROOT/plugin/THIRD_PARTY.md")" "\`pr\` in \`finish\`"
 
 # The merge skill takes a wide blast radius as a look item; the one definition is the finish skill's BODY.md.
@@ -233,7 +234,7 @@ EOF
 expect_line "the plan points a wide refactor to expand-contract" "$(flat "$SKILLS/plan/WIDE-REFACTOR.md" 2>/dev/null)" "Expand.*Migrate.*Contract"
 expect_line "the review's smell baseline names its smells" "$(flat "$SKILLS/review/SMELLS.md" 2>/dev/null)" "Mysterious Name.*Refused Bequest"
 expect_line "the review skill pastes the smell baseline into the Standards brief" "$(flat "$SKILLS/review/SKILL.md")" "SMELLS.md[^.]*pasted in full"
-expect_line "writing-for-agents is credited in the notices" "$(tr -s ' \n' ' ' <"$ROOT/plugin/THIRD_PARTY.md")" "every skill and agent is written by his \`writing-for-agents\`"
+expect_line "writing-for-agents is credited in the notices" "$(flat "$ROOT/plugin/THIRD_PARTY.md")" "every skill and agent is written by his \`writing-for-agents\`"
 
 # The plugin's SessionStart hook, as Claude Code runs it: your own sessions get
 # nightshift's defaults, a run (which has them in its system prompt) nothing.

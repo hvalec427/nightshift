@@ -116,7 +116,7 @@ calls for:
 
 | Label | nightshift |
 |---|---|
-| `bug` | finds the cause, and its plan starts with a test that fails the way the bug does; the fix makes it pass |
+| `bug` | finds the cause with a check that fails the way the bug does (or asks, when it can't build one), and its plan starts with a test that fails the way the bug does; the fix makes it pass |
 | `enhancement` | asks, plans, builds and opens a pull request, as above |
 | `documentation` | the same, kept to the docs |
 | `question` | answers it in a comment: no plan, no pull request. Reply to follow up, or ask for a change to have it built |
@@ -154,8 +154,9 @@ waiting on you:
 The watcher sets them as runs start and end, and as a run invokes one of
 nightshift's skills: `nightshift:questions` and `diagnose` set `thinking`, `plan` `planning`,
 `build`, `tdd`, `review` and `finish` `building`, `update` `updating`, `merge` `merging` and
-`answer` `answering` (`nightshift label <status>` sets one by hand). They come off once it's done, or when you remove the `agent` label with nothing
-running (and come back with it). `nightshift status` says the same, with the
+`answer` `answering` (`nightshift label <status>` sets one by hand). They come off once
+it's done, or when you remove the `agent` label with nothing running (and come back with
+it). `nightshift status` says the same, with the
 skill a run is in (or its last one ended in).
 
 A run that spots a real defect outside its own issue (a bug, broken docs, a
