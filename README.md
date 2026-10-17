@@ -286,6 +286,10 @@ interval=5
     marketplace; `name@marketplace`, that one. Each must be installed and
     enabled (`claude plugin install …`); one that isn't, the run goes without,
     and its log says so. Without `plugins=`, runs get only nightshift's plugin.
+  - `full_suite` says where the whole test suite runs: `local` runs it before each
+    push, `nothing` never has nightshift run it. Unset (or any other value), the
+    default: CI runs it, and a run runs it itself only in a repo with no CI checks on
+    its pull requests. Every run's prompt carries the setting.
 - `allowed_users`: whose labels and comments count (default: your gh account).
 - `max_parallel`: issues worked at once (each may run its app).
 - `interval`: seconds between polls (default 5). A poll that finds nothing new

@@ -120,6 +120,56 @@ auto_merge=false"
   poll
   expect_line "a repo line's auto_merge=true doesn't beat the file" "$(run_prompt)" "$NO_MERGE")
 
+# full_suite in .nightshift/config sets the suite line of the prompt.
+SUITE_CI="^This repo leaves its whole test suite to CI: check what you touched, then push; run the whole suite yourself only if the repo has no CI checks on its pull requests\.$"
+SUITE_LOCAL="^This repo runs its whole test suite locally (full_suite=local in \.nightshift/config): run it before you push\.$"
+SUITE_NOTHING="^nightshift runs no whole test suite in this repo (full_suite=nothing in \.nightshift/config): check what you touched, then push\.$"
+
+(world
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  expect_line "no .nightshift/config: the default suite line" "$(run_prompt)" "$SUITE_CI"
+  expect_line "no .nightshift/config: not the local line" "$(run_prompt)" "$SUITE_LOCAL" no
+  expect_line "no .nightshift/config: not the nothing line" "$(run_prompt)" "$SUITE_NOTHING" no)
+
+(world
+  origin_config "full_suite=local"
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  expect_line "full_suite=local: the local line" "$(run_prompt)" "$SUITE_LOCAL"
+  expect_line "full_suite=local: not the default line" "$(run_prompt)" "$SUITE_CI" no)
+
+(world
+  origin_config "full_suite=nothing"
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  expect_line "full_suite=nothing: the nothing line" "$(run_prompt)" "$SUITE_NOTHING"
+  expect_line "full_suite=nothing: not the default line" "$(run_prompt)" "$SUITE_CI" no)
+
+(world
+  origin_config "full_suite=ci"
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  expect_line "an unknown full_suite: the default line" "$(run_prompt)" "$SUITE_CI")
+
+(world
+  origin_config "auto_merge=false"
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  expect_line "a config without full_suite: the default line" "$(run_prompt)" "$SUITE_CI")
+
+(world
+  origin_file .nightshift/config "full_suite=local" nightshift/issue-7
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  expect_line "full_suite only on the issue's branch: the default line" "$(run_prompt)" "$SUITE_CI")
+
 # A branch can't change its own settings: only the default branch counts.
 (world
   origin_file .nightshift/config "auto_merge=false" nightshift/issue-7
