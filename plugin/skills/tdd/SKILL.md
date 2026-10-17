@@ -61,8 +61,7 @@ Effort then lands on the critical paths and the complex logic, not on every edge
 - **Refactoring belongs to the review stage** (the `nightshift:review` skill), outside the
   red → green cycle.
 - **A repo without tests at that seam:** check the ticket the way the repo is checked (build,
-  typecheck, lint, a scratch run, the running app), and say so in the summary or `progress`
-  comment.
+  typecheck, lint, a scratch run, the running app), and say so in the summary or report.
 
 Done when the ticket's behaviour has a test that went red and is green, at a seam the plan
 named, or the repo's own check passes where the repo has no test at that seam.

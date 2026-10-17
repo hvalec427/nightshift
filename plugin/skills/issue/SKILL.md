@@ -26,7 +26,7 @@ Write every comment with `gh issue comment <n> --body-file <file>`, as:
 ```
 
 `<!-- nightshift -->` is how the watcher tells your comments from the user's: every one
-carries it. The stages are `questions`, `answer`, `plan`, `tasks`, `progress`, `done`,
+carries it. The stages are `questions`, `answer`, `plan`, `progress`, `done`,
 `blocked` and `look`. `<skill>` is the skill you're in as you write it (`plan`, `build`,
 …, or `issue` for a comment of this skill's own), so the user can see which guidance
 wrote it.
@@ -37,9 +37,9 @@ issue, earlier comments, what the diff shows). Lengths to aim for:
 
 - `questions`: one line per question or option (the questions skill);
 - `plan`: a minute to read, the full spec collapsed (the plan skill);
-- `tasks`: a line per ticket, ticked as each is committed (the build skill);
-- `progress`, `done`, `blocked`: one or two lines, e.g. "T2 done: short comments in the
-  issue skill. Tests and shellcheck pass.";
+- `progress`, `blocked`: one or two lines, e.g. "Waiting for #4's PR to merge first.";
+- `done`: the build's report, led by the pull request's link and what's in it, the review
+  collapsed (the build skill; the merge skill's `done` and `look` open with it);
 - `answer`: the answer first, in a few lines, then where it comes from;
 - `look`: a line per thing the user needs to see before it merges (the merge skill).
 

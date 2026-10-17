@@ -14,17 +14,14 @@ overlap, bounds) hold throughout. The ticket brief is adapted from Matt Pocock's
 
 Build the tickets in order, one at a time, in this worktree. The sequence:
 
-1. **Tasks.** Before the first ticket, post the issue's `tasks` comment, a checklist line
-   per ticket, or reuse the one an earlier build posted, by [TASKS.md](TASKS.md). Done
-   when the issue has one `tasks` comment listing every ticket of the latest plan.
-2. **Ticket files.** Before the first ticket, write each ticket of the latest `plan`
+1. **Ticket files.** Before the first ticket, write each ticket of the latest `plan`
    comment to `.nightshift/tickets/T<n>.md` in this worktree: its text, blockers and
    acceptance criteria, plus the spec's decisions it needs, and any reply of the user's
    after the plan that changed it. A resumed build rewrites them, since the plan may have
    been revised. The plan comment stays the source; the files are a working copy, never
    committed (the CLI keeps `.nightshift/tickets/` out of git) and gone with the
    worktree. Done when every ticket of the latest plan has its file.
-3. **Each ticket,** in order. With two or more tickets, hand each to a **ticket subagent**
+2. **Each ticket,** in order. With two or more tickets, hand each to a **ticket subagent**
    ([below](#ticket-subagents)), so a ticket's reads, test output and fixes don't fill the
    context of the next. A plan with one ticket you build yourself, after invoking the
    `nightshift:tdd` skill with the Skill tool: there's no next ticket to keep clean.
@@ -35,34 +32,38 @@ Build the tickets in order, one at a time, in this worktree. The sequence:
      whole test suite: that runs once, after the review. Run them in the foreground and
      wait for them, however long they take: a run ends when you stop.
    - Commit each ticket on its own, in the repo's and the user's commit style.
-   - After its commit, tick its box in the `tasks` comment, and post a short `progress`
-     comment: what the ticket delivered and how it was checked.
+   - Post no comment per ticket: the issue stays quiet until the closing comment (step 5).
+     Keep what the ticket delivered and how it was checked for that report.
    - A ticket that can't be finished (a decision the plan didn't cover, a broken
      dependency) gets one `blocked` comment saying what's needed; end the run there.
 
-   Done when every ticket has its commit, its tick and its `progress` comment.
-4. **Review.** Invoke the `nightshift:review` skill with the Skill tool: one review, one fix
+   Done when every ticket has its commit.
+3. **Review.** Invoke the `nightshift:review` skill with the Skill tool: one review, one fix
    pass. Done when it hands back its three lists (fixed, dismissed, open).
    Then the **full checks**, once: the whole test suite with the build, typecheck and lint,
    in the foreground. A failure is fixed and only what failed is run again, then the whole
    suite once more. Done when they pass on the last commit.
-5. **Finish.** Check the **overlap** (in the issue skill) again, since other work may have
+4. **Finish.** Check the **overlap** (in the issue skill) again, since other work may have
    started or merged since the plan, then invoke the `nightshift:finish` skill to open the
    pull request, handing it the overlap lines for the body. The review's findings left
    open go in the pull request body too, as what's left open. Done when you have the pull
    request's URL.
-6. **Report.** A `done` comment with the pull request's link and what's in it, and the
-   review: a line counting it, then each finding in a `<details>` block, a line each (its
-   axis, what it found, and fixed, or dismissed and why, or left open):
+5. **Report.** The pull request's link and what's in it, and the review: a line counting
+   it, then each finding in a `<details>` block, a line each (its axis, what it found, and
+   fixed, or dismissed and why, or left open):
 
    ```
    **Review:** <n> found: <n> fixed, <n> dismissed, <n> left open.
    ```
 
-7. **Merge.** When the run prompt says "This repo auto-merges", invoke the
-   `nightshift:merge` skill with the Skill tool: it merges the pull request, with a
-   one-line `done` comment, or posts a `look` comment saying what needs the user. The
-   watcher removes the worktree after this run.
+   Post it as the `done` comment, the run's one closing comment, only when the repo doesn't
+   auto-merge. With auto-merge (the run prompt says "This repo auto-merges") you post
+   nothing here: step 6 hands the report on.
+6. **Merge.** When the run prompt says "This repo auto-merges", hand the
+   report from step 5, as it stands, to the `nightshift:merge` skill, invoked with the
+   Skill tool: it puts it at the top of its one closing comment, then merges the
+   pull request (`done`), or posts a `look` comment saying what needs the user. The watcher
+   removes the worktree after this run.
 
 ## Ticket subagents
 
@@ -92,6 +93,6 @@ the subagent can read itself unpasted.
   finished and what it left uncommitted. It commits only finished work.
 
 When it returns, check the work is there: the ticket's commit on top, and the tree clean.
-Then post the `progress` comment from its summary and start the next ticket. A `BLOCKED:`
+Then start the next ticket; its summary goes in the report, not in a comment. A `BLOCKED:`
 reply (or no commit) gets the one `blocked` comment, from what it said, and ends the run;
 the next run hands the same ticket to a new subagent.
