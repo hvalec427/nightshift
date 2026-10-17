@@ -7,7 +7,7 @@ request. You only ever reply on the issue.
 
 It runs on a machine of yours (your Mac, a Mac mini, a macOS VM), polling GitHub,
 so nothing is added to your repos and no admin rights are needed. A repo's runs
-load the Claude Code plugins its line names, and follow its own instructions on
+load the Claude Code plugins its `.nightshift/config` names, and follow its own instructions on
 how to check and show a change, so a pull request can come with screenshots and
 a recording (see [Plugins](#plugins)).
 
@@ -42,12 +42,16 @@ Then:
    (`chmod 600`): a year of unattended runs on your Claude subscription.
 2. `gh auth login` (gh 2.99 or newer, for screenshots in pull requests).
 3. For each repo: a clone of it on the machine, then
-   `nightshift add <owner/repo> <path to the clone>`, with
-   `instructions=<file>` for the project's own rules (see below) and
-   `plugins=<name>,…` for the plugins its runs need (see [Plugins](#plugins)).
-   That also creates its `agent` label and the status labels.
+   `nightshift add <owner/repo> <path to the clone>`.
+   That also creates its `agent` label and the status labels, and leaves
+   `.nightshift/config` (the defaults, commented) and `.nightshift/CONTEXT.md`
+   (a stub for the project's glossary) in the clone, where they're missing and
+   uncommitted: commit them to the repo's default branch. `add` takes no
+   options; they live in the repo's `.nightshift/` (see [Config](#config)).
+   The project's own rules go in its `.nightshift/instructions/` (see below).
    nightshift merges the repo's pull requests itself; to merge them yourself,
-   add `auto_merge=false` (see [Config](#config)).
+   or to load plugins in its runs, put `auto_merge=false` or `plugins=…` in the
+   repo's `.nightshift/config`.
 
 ## What it needs
 
@@ -55,7 +59,7 @@ Then:
 nightshift version that runs (and, on a release, whether a newer one is out):
 what's installed and its version, gh's login, a Claude token, nightshift's
 plugin, and each watched repo's clone and `agent` label (with a hint when GitHub
-keeps merged branches there), then a line for each plugin its repo line names:
+keeps merged branches there), then a line for each plugin its `.nightshift/config` names:
 `ok`, or `missing` with how to install it (`claude plugin install <name>`) or
 enable it (`claude plugin enable <id>`). It says what's missing and how to get it, and
 fails when something required is; `nightshift start` won't start the service until
@@ -70,7 +74,7 @@ Always:
 | [Claude Code](https://claude.com/claude-code) (`claude`), with a token in `~/.nightshift/token` (or logged in) | the runs | 2.1.286 (the version its run flags were checked on) |
 | jq | reading GitHub's and Claude's JSON, and the logs | 1.6 |
 
-What a repo's runs need beyond that comes with the plugins its line names
+What a repo's runs need beyond that comes with the plugins its `.nightshift/config` names
 (see [Plugins](#plugins)).
 
 ## Working an issue
@@ -80,7 +84,7 @@ What a repo's runs need beyond that comes with the plugins its line names
 | Open an issue, add the `agent` label (and a [type](#issue-types) label) | Reads it and the code; asks its questions in one comment (each with its recommended answer), or goes straight to the plan |
 | Reply | More questions, or a plan: the spec and its tickets, in the to-spec and to-tickets format of [Matt Pocock's skills](https://github.com/mattpocock/skills) |
 | Reply **go** (or what to change) | Posts the tickets as a checklist comment on the issue, ticked as each is committed, then builds the tickets in order, each in a subagent of its own (so one ticket's work doesn't crowd the next; a one-ticket plan is built directly), a progress comment per ticket; has two fresh subagents review the change against the plan and the repo's standards, and fixes what they found in one pass; then opens the pull request, which closes the issue, and links it, with what the review found |
-| Nothing (unless the repo has `auto_merge=false`) | Once the pull request is open or updated and its checks pass, squash-merges it when nothing in it needs you; otherwise lists what does in a look comment (a decision the plan didn't cover, a finding left open, a breaking or security-relevant change, …) |
+| Nothing (unless the repo's `.nightshift/config` has `auto_merge=false`) | Once the pull request is open or updated and its checks pass, squash-merges it when nothing in it needs you; otherwise lists what does in a look comment (a decision the plan didn't cover, a finding left open, a breaking or security-relevant change, …) |
 | Reply **merge** to a look comment | Checks it again (checks, conflicts, the pull requests it goes after) and merges it |
 | Comment on the issue after that | Makes the change on the same branch and pushes it (and checks it for merging again) |
 | Merge another pull request | Rebases and updates the ones it affects (below) |
@@ -250,12 +254,12 @@ Each run's line in `nightshift logs` shows the models it used, the main one firs
 
 ## Config
 
-`~/.nightshift/config`, written by `nightshift add`:
+`~/.nightshift/config`, whose `repo` lines `nightshift add` writes:
 
 ```
 repo hvalec427/nightshift /Users/me/dev/nightshift
-repo me/app /Users/me/dev/app instructions=/Users/me/notes/app.md plugins=web-tools
-repo hvalec427/other /Users/me/dev/other auto_merge=false
+repo me/app /Users/me/dev/app
+repo hvalec427/other /Users/me/dev/other
 allowed_users=hvalec427
 max_parallel=2
 interval=5
@@ -263,12 +267,19 @@ interval=5
 
 - `repo <owner/repo> <clone path> [key=value …]`: a watched repo and its clone
   (spaces in the path are fine, but its last word can't look like `key=value`:
-  it would read as an option), then its options, in any order:
-  - `instructions`: a file of the project's own rules for runs (below);
-    `nightshift doctor` says when it's missing.
+  it would read as an option). `instructions=`, `auto_merge=` and `plugins=` on a
+  repo line are ignored now, and `doctor` says where they go: the repo's
+  `.nightshift/instructions/` folder, or its `.nightshift/config`.
+- `<repo>/.nightshift/config`, committed to the repo's **default branch**
+  (`key=value` lines, `#` comments; the last value of a key wins). nightshift
+  reads it from origin's copy of that branch, fetched before each run, so a
+  branch or pull request can't change its own settings: a change applies once
+  it's merged. `status` and `doctor` use the last fetch. Without the file or a
+  key, the defaults apply.
   - `auto_merge=false` makes its pull requests wait for you to merge; without
-    it, nightshift merges them on its own. It's on by default, so repos added
-    before it start merging on their own after an upgrade. `status` and
+    it, nightshift merges them on its own. An `auto_merge=false` left on a
+    repo line from an older version is ignored, so that repo merges on its own
+    after an upgrade until the file has it (`doctor` notes it). `status` and
     `doctor` say which repos have it off.
   - `plugins`: the Claude Code plugins its runs load, comma-separated:
     `plugins=web-tools,other@marketplace`. A name matches that plugin from any
@@ -299,7 +310,7 @@ skills from `~/.claude/skills`, no `~/.claude/settings.json`,
 `~/.claude/CLAUDE.md`, plugins, hooks or MCP servers of yours. A run loads the
 repo's own `.claude` setup, nightshift's plugin (its copy in
 `~/.nightshift/plugin`, which the install keeps up to date) and the plugins
-its repo line names; commits and pull requests get no Claude attribution.
+its `.nightshift/config` names; commits and pull requests get no Claude attribution.
 Runs can't use `pkill` or `killall`: a name pattern matches other runs
 too, so they stop a background task by its PID.
 `isolated=` and `permission_mode=` lines from older versions are ignored
@@ -315,8 +326,12 @@ it waits for its checks instead of leaving them running. Your own sessions get t
 from the plugin's `SessionStart` hook. Runs get them in the worktree's `CLAUDE.local.md`,
 which every agent and subagent loads: nightshift writes it before each run, kept
 out of git (in the clone's `info/exclude`), so a change applies from the next
-run. Then come the repo's `instructions=` file, if it names one, which wins where
-the two disagree; nightshift only reads it. A repo that tracks its own
+run. Then come the repo's own: every `.md` in the worktree's `.nightshift/instructions/`
+(the branch's copy, committed), in name order, under a "This project's instructions"
+heading, which win where they disagree with nightshift's. Split them by topic as you
+like; none there, and runs get nightshift's alone. An `instructions=` file on a repo
+line from an older version is ignored: copy it into that folder (`nightshift doctor`
+notes it). A repo that tracks its own
 `CLAUDE.local.md` keeps it, without nightshift's instructions (`nightshift
 doctor` flags it). Runs skip the clone's own
 `CLAUDE.md`, `.claude/CLAUDE.md` and `CLAUDE.local.md` (the worktree has its
@@ -327,18 +342,18 @@ doctor` notes it).
 
 ## Plugins
 
-A repo's runs load nightshift's plugin and the ones its line names
+A repo's runs load nightshift's plugin and the ones its `.nightshift/config` names
 (`plugins=`, see [Config](#config)), nothing else. The rest of what its runs
 need is in the repo's own committed setup: the tools they may use in its
 `.claude/settings.json`, and how to check and show a change (screenshots, a
-recording) in its `CLAUDE.md` (or its `instructions=` file). Installing the
+recording) in its `CLAUDE.md` (or its `.nightshift/instructions/`). Installing the
 plugins and the tools they drive is up to each machine; the repo's `CLAUDE.md`
 lists them, and `nightshift doctor` says which named plugins are missing.
 
 A React Native repo that relied on [rn-agent](https://github.com/hvalec427/rn-agent)
 being loaded in every run gets it back with:
 
-- `plugins=rn-agent` on its line: `nightshift add me/app ~/dev/app plugins=rn-agent`.
+- `plugins=rn-agent` in its `.nightshift/config`, committed to its default branch.
 - signalbox and boop allowed in its committed `.claude/settings.json`:
 
   ```json
@@ -349,7 +364,7 @@ being loaded in every run gets it back with:
   }
   ```
 
-- In its `CLAUDE.md` (or `instructions=` file), how to show a change: e.g. run the app on its own
+- In its `CLAUDE.md` (or `.nightshift/instructions/`), how to show a change: e.g. run the app on its own
   simulator, take screenshots and a recording with boop into a git-excluded
   folder, and stop the app with `signalbox down --detached-only` when done.
 

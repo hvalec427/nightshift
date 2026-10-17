@@ -15,13 +15,17 @@ try() {
 
 # --- add --------------------------------------------------------------------------
 
+USE="usage: nightshift add <owner/repo> <clone path>"
+SCAFFOLD="created .nightshift/config and .nightshift/CONTEXT.md in the clone: commit them to the default branch"
+
 (world
   : >"$NS/config"
   git init -q "$W/other"
   gh_repo o/x "$W/other"
   try ns add o/x "$W/other"
-  expect "add: says so, and that its PRs merge on their own" "$OUT" \
-    "watching o/x (clone: $W/other); PRs merge on their own (auto_merge=false turns it off); add the \`agent\` label to an issue to start"
+  expect "add: says so, that its PRs merge on their own, and to commit the scaffold" "$OUT" \
+    "watching o/x (clone: $W/other); PRs merge on their own (auto_merge=false in .nightshift/config turns it off); add the \`agent\` label to an issue to start
+$SCAFFOLD"
   expect "add: the repo line" "$(cat "$NS/config")" "repo o/x $W/other"
   expect_line "add: the agent label is created" "$(cat "$(gh_dir o/x)/labels")" "^agent$"
   expect_line "add: the status labels too" "$(cat "$(gh_dir o/x)/labels")" "^nightshift: needs you$"
@@ -34,22 +38,7 @@ try() {
   try ns add o/y "$W/plain"
   expect "add a directory that isn't a clone: fails" "$ST $OUT" "1 nightshift: $W/plain isn't a git checkout"
   try ns add o/y
-  expect "add without a clone: the usage" "$ST $OUT" "1 nightshift: usage: nightshift add <owner/repo> <clone path> [instructions=<path>] [auto_merge=false] [plugins=<name>,…]"
-  git init -q "$W/third"
-  gh_repo o/z "$W/third"
-  try ns add o/z "$W/third" auto_merge=false
-  expect "add auto_merge=false: says its PRs wait" "$OUT" \
-    "watching o/z (clone: $W/third); PRs wait for you; add the \`agent\` label to an issue to start"
-  expect_line "add auto_merge=false: on the repo line" "$(cat "$NS/config")" "^repo o/z $W/third auto_merge=false$"
-  gh_repo o/q "$W/third"
-  try ns add o/q "$W/third" plugins=rn-agent,web@other
-  expect "add with plugins: watches it" "$ST" 0
-  expect_line "add with plugins: on its line as given" "$(cat "$NS/config")" "^repo o/q $W/third plugins=rn-agent,web@other$"
-  try ns add o/w "$W/plain" colour=red
-  expect "add with an unknown option: the usage" "$ST $OUT" "1 nightshift: usage: nightshift add <owner/repo> <clone path> [instructions=<path>] [auto_merge=false] [plugins=<name>,…] (colour isn't an option)"
-  expect_line "add with an unknown option: no line" "$(cat "$NS/config")" "o/w" no
-  try ns add o/w "$W/plain" rn-agent
-  expect "add with a word that isn't key=value: the usage" "$ST $OUT" "1 nightshift: usage: nightshift add <owner/repo> <clone path> [instructions=<path>] [auto_merge=false] [plugins=<name>,…] (rn-agent isn't key=value)"
+  expect "add without a clone: the usage" "$ST $OUT" "1 nightshift: $USE"
   git init -q "$W/my dir=1"
   before=$(cat "$NS/config")
   try ns add o/s "$W/my dir=1"
@@ -59,49 +48,89 @@ try() {
   gh_repo o/s "$W/my clone"
   try ns add o/s "$W/my clone"
   expect "add a clone path with a space: on the repo line" "$ST $(tail -1 "$NS/config")" "0 repo o/s $W/my clone"
-  before=$(cat "$NS/config")
-  try ns add o/d "$W/third" auto_merge=false auto_merge=false
-  expect "add auto_merge= twice: fails" "$ST $OUT" "1 nightshift: auto_merge= given twice"
-  expect "add auto_merge= twice: nothing written" "$(cat "$NS/config")" "$before"
-  echo "Ours." >"$W/ours.md"
-  try ns add o/d "$W/third" "instructions=$W/ours.md" "instructions=$W/ours.md"
-  expect "add instructions= twice: fails" "$ST $OUT" "1 nightshift: instructions= given twice"
-  expect "add instructions= twice: nothing written" "$(cat "$NS/config")" "$before"
-  try ns add o/d "$W/third" plugins=rn-agent plugins=web
-  expect "add plugins= twice: fails" "$ST $OUT" "1 nightshift: plugins= given twice"
-  expect "add plugins= twice: nothing written" "$(cat "$NS/config")" "$before"
-  try ns add o/d "$W/third" colour=red colour=red
-  expect "add an unknown option twice: the usage" "$ST $OUT" "1 nightshift: usage: nightshift add <owner/repo> <clone path> [instructions=<path>] [auto_merge=false] [plugins=<name>,…] (colour isn't an option)"
   expect_no_unexpected)
 
 (world
   : >"$NS/config"
   git init -q "$W/other"
   gh_repo o/x "$W/other"
-  gh_repo o/y "$W/other"
-  gh_repo o/z "$W/other"
+  before=$(cat "$NS/config")
+  try ns add o/x "$W/other" auto_merge=false
+  expect "add auto_merge=false: fails, naming .nightshift/config" "$ST $OUT" \
+    "1 nightshift: auto_merge= isn't an option of add any more: put it in the repo's .nightshift/config"
+  try ns add o/x "$W/other" plugins=rn-agent,web@other
+  expect "add plugins=: fails, naming .nightshift/config" "$ST $OUT" \
+    "1 nightshift: plugins= isn't an option of add any more: put it in the repo's .nightshift/config"
   echo "Ours." >"$W/ours.md"
   try ns add o/x "$W/other" "instructions=$W/ours.md"
-  expect "add with instructions=: the repo line has it" "$ST $(cat "$NS/config")" "0 repo o/x $W/other instructions=$W/ours.md"
-  mkdir -p "$W/home/notes"
-  echo "Ours." >"$W/home/notes/y.md"
-  (cd "$W" && HOME="$W/home" "$ROOT/nightshift" add o/y other "instructions=~/notes/y.md" >/dev/null)
-  expect "add with instructions=~/: home expanded" "$(tail -1 "$NS/config")" "repo o/y $W/other instructions=$W/home/notes/y.md"
-  (cd "$W" && "$ROOT/nightshift" add o/z other instructions=ours.md >/dev/null)
-  expect "add with a relative instructions=: made absolute" "$(tail -1 "$NS/config")" "repo o/z $W/other instructions=$W/ours.md"
-  : >"$NS/config"
-  try ns add o/x "$W/other" "instructions=$W/gone.md"
-  expect "add with a missing instructions= file: fails" "$ST $OUT" "1 nightshift: $W/gone.md doesn't exist"
-  expect "add with a missing instructions= file: nothing written" "$(cat "$NS/config")" ""
+  expect "add instructions=: fails, naming .nightshift/instructions/" "$ST $OUT" \
+    "1 nightshift: instructions= isn't an option of add any more: put the file in the repo's .nightshift/instructions/"
   try ns add o/x "$W/other" instructions=
-  expect "add with an empty instructions=: the usage" "$ST $OUT" "1 nightshift: usage: nightshift add <owner/repo> <clone path> [instructions=<path>] [auto_merge=false] [plugins=<name>,…] (instructions needs a value)"
-  expect "add with an empty instructions=: nothing written" "$(cat "$NS/config")" "")
+  expect "add an empty instructions=: the same" "$ST $OUT" \
+    "1 nightshift: instructions= isn't an option of add any more: put the file in the repo's .nightshift/instructions/"
+  try ns add o/x "$W/other" colour=red
+  expect "add an unknown option: the usage" "$ST $OUT" "1 nightshift: $USE (colour=red isn't an option)"
+  try ns add o/x "$W/other" rn-agent
+  expect "add any other word: the usage" "$ST $OUT" "1 nightshift: $USE (rn-agent isn't an option)"
+  try ns add o/x "$W/other" auto_merge=false plugins=web
+  expect "add several options: names the first" "$ST $OUT" \
+    "1 nightshift: auto_merge= isn't an option of add any more: put it in the repo's .nightshift/config"
+  expect "add with an option: nothing written to the config" "$(cat "$NS/config")" "$before"
+  expect "add with an option: no .nightshift in the clone" "$([ -e "$W/other/.nightshift" ] && echo yes || echo no)" "no"
+  expect_no_unexpected)
+
+(world
+  : >"$NS/config"
+  git init -q "$W/other"
+  gh_repo o/x "$W/other"
+  try ns add o/x "$W/other"
+  expect "add: .nightshift/config is scaffolded with the defaults, commented" "$(cat "$W/other/.nightshift/config")" \
+    "# nightshift's settings for this repo. It reads this file from the default branch on origin,
+# so a change applies once it's merged. Uncomment a line to change it.
+#
+# auto_merge=false: its pull requests wait for you to merge (default true: nightshift merges them).
+# auto_merge=false
+#
+# plugins: the Claude Code plugins its runs load, comma-separated (default none).
+# plugins=name,other@marketplace"
+  expect "add: CONTEXT.md is scaffolded with a heading and what goes in it" "$(cat "$W/other/.nightshift/CONTEXT.md")" \
+    "# Context
+
+The project's glossary: the terms it uses and what each means here, one entry per term.
+nightshift's runs read this file and keep it up to date."
+  expect "add: the scaffold is left uncommitted" "$(git -C "$W/other" status --porcelain)" "?? .nightshift/"
+
+  # Never overwrites.
+  printf 'auto_merge=false\n' >"$W/other/.nightshift/config"
+  printf '# Mine\n' >"$W/other/.nightshift/CONTEXT.md"
+  : >"$NS/config"
+  try ns add o/x "$W/other"
+  expect "add with both files there: says nothing about creating (the config is read from origin, not the clone)" "$ST $OUT" \
+    "0 watching o/x (clone: $W/other); PRs merge on their own (auto_merge=false in .nightshift/config turns it off); add the \`agent\` label to an issue to start"
+  expect "add with both files there: config untouched" "$(cat "$W/other/.nightshift/config")" "auto_merge=false"
+  expect "add with both files there: CONTEXT.md untouched" "$(cat "$W/other/.nightshift/CONTEXT.md")" "# Mine"
+
+  # Only what's missing.
+  rm "$W/other/.nightshift/CONTEXT.md"
+  : >"$NS/config"
+  try ns add o/x "$W/other"
+  expect "add with only config there: creates CONTEXT.md, says so" "$OUT" \
+    "watching o/x (clone: $W/other); PRs merge on their own (auto_merge=false in .nightshift/config turns it off); add the \`agent\` label to an issue to start
+created .nightshift/CONTEXT.md in the clone: commit it to the default branch"
+  expect "add with only config there: config untouched" "$(cat "$W/other/.nightshift/config")" "auto_merge=false"
+  expect_line "add with only config there: CONTEXT.md exists" "$(ls "$W/other/.nightshift")" "^CONTEXT.md$"
+  rm "$W/other/.nightshift/config"
+  : >"$NS/config"
+  try ns add o/x "$W/other"
+  expect "add with only CONTEXT.md there: creates config, says so" "$(echo "$OUT" | tail -1)" \
+    "created .nightshift/config in the clone: commit it to the default branch"
+  expect_no_unexpected)
 
 # --- status -----------------------------------------------------------------------
 
 (world
   expect "status, nothing yet" "$(ns status)" "service: not installed
-pull requests merge on their own (auto_merge=false on a repo line turns it off)
+pull requests merge on their own (auto_merge=false in a repo's .nightshift/config turns it off)
 no issues yet"
   sh -c 'exit 0' &
   dead=$!
@@ -111,14 +140,44 @@ no issues yet"
   try ns status --everything
   expect "status, a bad option: the usage" "$ST $OUT" "2 usage: nightshift status [--all]")
 
+# A second watched repo, o/x, cloned in $W/other, with .nightshift/config $1
+# on its default branch (none if empty).
+second_repo() {
+  git init -q --bare -b master "$W/x.git"
+  git clone -q "$W/x.git" "$W/other" 2>/dev/null
+  git -C "$W/other" config commit.gpgsign false
+  mkdir -p "$W/other/.nightshift"
+  echo hi >"$W/other/README"
+  [ -z "$1" ] || printf '%s\n' "$1" >"$W/other/.nightshift/config"
+  git -C "$W/other" add -A && git -C "$W/other" commit -q -m "chore: start"
+  git -C "$W/other" push -q origin master
+  gh_repo o/x "$W/x.git"
+  printf 'repo o/x %s\n' "$W/other" >>"$NS/config"
+}
+
 (world
-  printf 'repo o/x %s auto_merge=false\n' "$W/other" >>"$NS/config"
+  second_repo "auto_merge=false"
   expect "status: the repos auto-merge is off for" "$(ns status | sed -n 2p)" \
-    "pull requests merge on their own (off for: o/x; auto_merge=false on a repo line turns it off)"
-  printf 'repo %s %s auto_merge=false\n' "$REPO" "$CLONE" >"$NS/config"
-  printf 'repo o/x %s auto_merge=false\n' "$W/other" >>"$NS/config"
+    "pull requests merge on their own (off for: o/x; auto_merge=false in a repo's .nightshift/config turns it off)"
+  origin_config "auto_merge=false"
+  git -C "$CLONE" fetch -q origin
   expect "status: off for every repo, they wait" "$(ns status | sed -n 2p)" \
-    "pull requests wait for you (auto_merge=false on every repo line)"
+    "pull requests wait for you (auto_merge=false in every repo's .nightshift/config)")
+
+(world
+  printf 'repo %s %s auto_merge=false\n' "$REPO" "$CLONE" >"$NS/config"
+  expect "status: auto_merge=false on a repo line is ignored" "$(ns status | sed -n 2p)" \
+    "pull requests merge on their own (auto_merge=false in a repo's .nightshift/config turns it off)")
+
+(world
+  origin_config "auto_merge=false"
+  expect "status: uses the last fetch, not origin's newest" "$(ns status | sed -n 2p)" \
+    "pull requests merge on their own (auto_merge=false in a repo's .nightshift/config turns it off)"
+  git -C "$CLONE" fetch -q origin
+  expect "status: after the fetch" "$(ns status | sed -n 2p)" \
+    "pull requests wait for you (auto_merge=false in every repo's .nightshift/config)")
+
+(world
   : >"$NS/config"
   expect "status: no repos, no merge line" "$(ns status)" "service: not installed
 no issues yet")
@@ -280,9 +339,25 @@ without() {
   expect_line "doctor: all good" "$OUT" "^all good$")
 
 (healthy
-  printf 'repo %s %s auto_merge=false\n' "$REPO" "$CLONE" >"$NS/config"
-  expect_line "doctor: auto_merge=false, its PRs wait" "$(ns doctor)" \
-    "^  ok      o/r: clone $CLONE, \`agent\` label, PRs wait for you (auto_merge=false)$")
+  origin_config "auto_merge=false"
+  git -C "$CLONE" fetch -q origin
+  expect_line "doctor: auto_merge=false in .nightshift/config, its PRs wait" "$(ns doctor)" \
+    "^  ok      o/r: clone $CLONE, \`agent\` label, PRs wait for you (auto_merge=false in .nightshift/config)$")
+
+(healthy
+  printf 'repo %s %s auto_merge=false plugins=rn-agent\n' "$REPO" "$CLONE" >"$NS/config"
+  try ns doctor
+  expect "doctor: options on a repo line: ignored, only a note" "$ST" 0
+  expect_line "doctor: auto_merge=false on the repo line, its PRs still merge" "$OUT" \
+    "^  ok      o/r: clone $CLONE, \`agent\` label, PRs merge on their own$"
+  expect_line "doctor: a note for the ignored auto_merge=" "$OUT" \
+    "^  note    o/r: auto_merge=false on its repo line is ignored now: put it in .nightshift/config on o/r's default branch$"
+  expect_line "doctor: a note for the ignored plugins=" "$OUT" \
+    "^  note    o/r: plugins=rn-agent on its repo line is ignored now: put it in .nightshift/config on o/r's default branch$"
+  expect_line "doctor: its plugin isn't checked" "$OUT" "plugin rn-agent" no)
+
+(healthy
+  expect_line "doctor: no options on the repo line, no note" "$(ns doctor)" "^  note    o/r:" no)
 
 (healthy
   set_config model sonnet
@@ -365,7 +440,8 @@ without() {
 (healthy
   plugin rn-agent@hvalec427
   rmdir "$W/rn-agent"
-  sed -i.bak 's|^repo o/r .*|& plugins=rn-agent|' "$NS/config"
+  origin_config "plugins=rn-agent"
+  git -C "$CLONE" fetch -q origin
   try ns doctor
   expect_line "doctor: a plugin whose folder is gone" "$OUT" "^  missing o/r: plugin rn-agent's folder $W/rn-agent: reinstall it: claude plugin install rn-agent$")
 
@@ -374,14 +450,15 @@ without() {
 
 (healthy
   echo "Ours." >"$W/ours.md"
-  printf 'repo o/r %s instructions=%s\n' "$CLONE" "$W/ours.md" >"$NS/config"
+  printf 'repo o/r %s instructions=%s other=x\n' "$CLONE" "$W/ours.md" >"$NS/config"
   try ns doctor
-  expect_line "doctor: the repo's instructions" "$OUT" "^  ok      o/r: instructions $W/ours.md$"
-  expect "doctor: with instructions=: passes" "$ST" 0
-  printf 'repo o/r %s instructions=%s other=x\n' "$CLONE" "$W/gone.md" >"$NS/config"
+  expect_line "doctor: instructions= on a repo line: a note to copy the file" "$OUT" \
+    "^  note    o/r: instructions=$W/ours.md on its repo line is ignored now: copy the file into .nightshift/instructions/ in o/r$"
+  expect "doctor: the note isn't a problem" "$ST" 0
+  printf 'repo o/r %s instructions=%s\n' "$CLONE" "$W/gone.md" >"$NS/config"
   try ns doctor
-  expect_line "doctor: the repo's instructions missing" "$OUT" "^  missing o/r: its instructions ($W/gone.md): create it, or fix its repo line in $NS/config$"
-  expect_line "doctor: counts it" "$OUT" "^1 to fix")
+  expect_line "doctor: instructions= of a missing file: still only the note" "$OUT" "^  note    o/r: instructions=$W/gone.md on its repo line is ignored now"
+  expect "doctor: a missing file isn't a problem either" "$ST" 0)
 
 (healthy
   echo "The repo's own." >"$CLONE/CLAUDE.local.md"
@@ -396,14 +473,16 @@ without() {
 
 (healthy
   plugin rn-agent@hvalec427
-  sed -i.bak 's|^repo o/r .*|& plugins=rn-agent|' "$NS/config"
+  origin_config "plugins=rn-agent"
+  git -C "$CLONE" fetch -q origin
   try ns doctor
   expect "doctor: the repo's plugins installed: passes" "$ST" 0)
 
 (healthy
   plugin rn-agent@hvalec427
   plugin web@other false
-  sed -i.bak 's|^repo o/r .*|& plugins=rn-agent,web,nope|' "$NS/config"
+  origin_config "plugins=rn-agent,web,nope"
+  git -C "$CLONE" fetch -q origin
   try ns doctor
   expect "doctor: a missing or disabled plugin: fails" "$ST" 1
   expect_line "doctor: an installed plugin" "$OUT" "^  ok      o/r: plugin rn-agent$"

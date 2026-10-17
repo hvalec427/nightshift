@@ -18,10 +18,10 @@ Your output is a proven cause behind a red check, handed to the plan. You diagno
 stop there: no fix commits, and nothing of yours in the repo's tests; the fix is the
 plan's and the build's. Take the phases in order; skip one only when you can say why.
 
-Start by reading the code the issue points at, with the project's vocabulary (a
-`GLOSSARY.md` if it has one) and its ADRs in the area. That tells you where the bug could
-be; the theory of the cause waits for the check. Done when you can name the code path the
-symptom runs through.
+Start by reading the code the issue points at, with the project's vocabulary
+(`.nightshift/CONTEXT.md`, if it has one) and its ADRs in the area. That tells you where
+the bug could be; the theory of the cause waits for the check. Done when you can name the
+code path the symptom runs through.
 
 **Redact** every secret in the commands, outputs and artifacts you show in comments:
 write `<REDACTED>` in its place. Build checks against environment variables, so the
