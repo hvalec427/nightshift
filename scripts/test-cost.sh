@@ -114,6 +114,17 @@ OPUS=claude-opus-5-5 HAIKU=claude-haiku-4-5-20251001
   expect_line "stopped (no result): its context" "$(tail -1 "$(idir 7)/log")" "^0	=== [0-9:]* run stopped after [0-9]*s · context 200k$"
   expect_no_unexpected)
 
+# A run whose skill and two subagents ran on their own models: all three, the
+# main one first.
+SONNET=claude-sonnet-4-5-20250929
+(world
+  gh_issue o/r 7 alice agent
+  runs_do "costs 0.2 $SONNET 1 1 1 1; costs 0.1 $HAIKU 1 1 1 1; costs 1 $OPUS 1 1 1 1
+    turn $SONNET 5 1000 0 toolu_1; turn $HAIKU 5 1000 0 toolu_2; turn $OPUS 5 50000 0; comment questions"
+  poll
+  expect_line "its log: the main model, then its subagents'" "$(cat "$(idir 7)/log")" \
+    "^0	=== [0-9:]* run done in [0-9]*s · opus-5-5, sonnet-4-5, haiku-4-5 · context 50k$")
+
 # Shown by status.
 (world
   gh_issue o/r 7 alice agent

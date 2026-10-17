@@ -396,11 +396,11 @@ Run make check.")
   gh_issue o/r 7 alice agent
   runs_do 'comment questions'
   poll
-  expect "the model from the config" "$(run_opt --model)" sonnet
-  expect "the effort from the config" "$(run_opt --effort)" high
+  expect "model in the config: no --model" "$(run_opt --model)" ""
+  expect "effort in the config: no --effort" "$(run_opt --effort)" ""
   gh_comment o/r 7 alice "1 yes" >/dev/null
   poll
-  expect "a resumed run: still the model" "$(run_opt --model)" sonnet
-  expect "a resumed run: still the effort" "$(run_opt --effort)" high)
+  expect "a resumed run: still no --model" "$(run_opt --model)" ""
+  expect "a resumed run: still no --effort" "$(run_opt --effort)" "")
 
 report

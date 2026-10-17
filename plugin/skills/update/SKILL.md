@@ -2,6 +2,8 @@
 name: update
 description: Rebase an issue's pull request onto the default branch after it moved, and adapt the change to what merged. Started by the issue skill on an update run.
 user-invocable: false
+model: sonnet
+effort: high
 ---
 
 # Update a pull request

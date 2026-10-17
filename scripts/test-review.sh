@@ -27,6 +27,9 @@ if [ -f "$REVIEW" ]; then
   expect_line "it bounds the fixes to one pass" "$review_skill" '^## .*One fix pass$'
   expect_line "it pastes the CLAUDE.md rules in" "$(section "$REVIEW" '^## 2\.')" 'the `CLAUDE\.md` rules'
   expect_line "the Standards reviewer checks a CLAUDE.md change against them" "$(section "$REVIEW" '^### Standards')" 'a `CLAUDE\.md` change in the diff, checked against'
+  expect_line "the spec reviewer is the plugin's spec-review agent" "$review_skill" "\`nightshift:spec-review\`"
+  expect_line "the standards reviewer is the plugin's standards-review agent" "$review_skill" "\`nightshift:standards-review\`"
+  expect_line "the reviewers' models are their agents' own" "$review_skill" "without a \`model\`"
 fi
 
 review=$(line_of "$BUILD" 'nightshift:review`')

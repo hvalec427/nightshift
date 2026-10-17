@@ -251,7 +251,7 @@ without() {
   expect_line "doctor: the plugin copy" "$OUT" "^  ok      nightshift's plugin for runs ($NS/plugin)$"
   expect_line "doctor: the plugin in Claude Code" "$OUT" "^  ok      nightshift's plugin in Claude Code"
   expect_line "doctor: the instructions" "$OUT" "^  ok      instructions: nightshift's defaults$"
-  expect_line "doctor: runs' model and effort, unset" "$OUT" "^  ok      runs: the account's default model, the default effort (set model= and effort= in $NS/config to choose)$"
+  expect "doctor: no model or effort in the config: no line for them" "$(echo "$OUT" | grep -E '^  note    (model|effort) ')" ""
   expect_line "doctor: the repo, its PRs merge on their own" "$OUT" "^  ok      o/r: clone $CLONE, \`agent\` label, PRs merge on their own$"
   expect_line "doctor: a hint for merged branches" "$OUT" "^  hint    o/r: GitHub keeps merged branches"
   expect_line "doctor: no React Native section" "$OUT" "React Native" no
@@ -266,12 +266,9 @@ without() {
   set_config model sonnet
   set_config effort high
   try ns doctor
-  expect "doctor: model and effort set: passes" "$ST" 0
-  expect_line "doctor: runs' model and effort" "$OUT" "^  ok      runs: model sonnet, effort high$"
-  set_config effort extreme
-  try ns doctor
-  expect "doctor: a bad effort: fails" "$ST" 1
-  expect_line "doctor: says which efforts there are" "$OUT" "^  invalid runs: effort extreme: set effort= in $NS/config to low, medium, high, xhigh or max$")
+  expect "doctor: model and effort in the config: passes" "$ST" 0
+  expect_line "doctor: model in the config: a note" "$OUT" "^  note    model in the config is ignored now: each skill sets its own model$"
+  expect_line "doctor: effort in the config: a note" "$OUT" "^  note    effort in the config is ignored now: each skill sets its own effort$")
 
 (healthy
   gh_edit "$(gh_dir o/r)/repo.json" '.delete_branch_on_merge = true'
