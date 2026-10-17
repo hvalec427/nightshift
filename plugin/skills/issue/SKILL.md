@@ -55,9 +55,11 @@ set it yourself.
 The user gives an issue its type with one of GitHub's default labels next to `agent`; the
 prompt names it ("Its type label: `bug`") or says it has none. It changes how you work it:
 
-- **`bug`**: find the cause before anything else. The plan is short: the cause, the fix
-  and the test, with the tickets. The first ticket is a test that fails the way the bug
-  does; the fix makes it pass.
+- **`bug`**: find the cause before anything else: with no plan yet, the
+  `nightshift:diagnose` skill builds a check that fails the way the bug does and proves the
+  cause, then hands on to `nightshift:plan` (step 2 below). The plan is short: the cause,
+  the red check and the hypotheses, the fix and the test, with the tickets. The first
+  ticket turns the minimised repro into a failing test; the fix makes it pass.
 - **`enhancement`**: the steps below, as they are.
 - **`documentation`**: the steps below, kept to the docs; a change to code it needs is a
   question for the user.
@@ -84,8 +86,11 @@ guidance is in that skill, not here.
 
 1. **No plan yet, open decisions.** Decisions that are the user's and that the issue and
    the code don't settle: invoke the `nightshift:questions` skill, which asks them.
-2. **No plan yet, nothing open** (or the answers are in). Invoke the `nightshift:plan`
-   skill: it writes the plan, with the spec and ticket guidance.
+2. **No plan yet, nothing open** (or the answers are in). On a `bug`, invoke the
+   `nightshift:diagnose` skill: it finds the cause behind a red check, then invokes
+   `nightshift:plan` itself (or asks in a `questions` comment when it can't build the
+   check). Otherwise invoke the `nightshift:plan` skill: it writes the plan, with the spec
+   and ticket guidance.
 3. **A plan, and the user asked for changes.** Invoke `nightshift:plan` too, for a revised
    plan, then wait again.
 4. **A plan the user approved** ("go", or anything that clearly means build it). Run

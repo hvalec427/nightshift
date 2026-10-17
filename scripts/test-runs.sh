@@ -136,6 +136,19 @@ resumed_label() {
   expect "a resumed tdd run: building from the start" "$(resumed_label 'skill nightshift:tdd')" "nightshift: building"
   expect_no_unexpected)
 (world
+  gh_issue o/r 7 alice agent bug
+  runs_do 'at() { '"$AT_LABEL"'; '"$LABELS_NOW"'$2"; }
+    skill nightshift:plan; at planning plan
+    skill nightshift:diagnose; at thinking diagnose
+    comment questions'
+  poll
+  expect "the diagnose skill: thinking, not the last skill's planning" "$(grep '^nightshift: ' "$CLAUDE_FAKE/runs/1/diagnose")" "nightshift: thinking"
+  expect "the diagnose skill is kept" "$(state 7 skill)" "nightshift:diagnose"
+  expect_no_unexpected)
+(world
+  expect "a resumed run after diagnose: thinking from the start" "$(resumed_label 'skill nightshift:plan; skill nightshift:diagnose')" "nightshift: thinking"
+  expect_no_unexpected)
+(world
   expect "a resumed plan run: planning from the start" "$(resumed_label 'skill nightshift:plan')" "nightshift: planning"
   expect_no_unexpected)
 (world

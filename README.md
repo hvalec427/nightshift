@@ -152,7 +152,7 @@ waiting on you:
 | `nightshift: stopped` | a run was stopped partway |
 
 The watcher sets them as runs start and end, and as a run invokes one of
-nightshift's skills: `nightshift:questions` sets `thinking`, `plan` `planning`,
+nightshift's skills: `nightshift:questions` and `diagnose` set `thinking`, `plan` `planning`,
 `build`, `tdd`, `review` and `finish` `building`, `update` `updating`, `merge` `merging` and
 `answer` `answering` (`nightshift label <status>` sets one by hand). They come off once it's done, or when you remove the `agent` label with nothing
 running (and come back with it). `nightshift status` says the same, with the

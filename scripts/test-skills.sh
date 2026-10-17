@@ -9,7 +9,7 @@ set -euo pipefail
 
 SKILLS="$ROOT/plugin/skills"
 ISSUE="$SKILLS/issue/SKILL.md"
-STAGES="questions plan build update answer"
+STAGES="questions plan build update answer diagnose"
 
 # The value of the frontmatter field $2 in the skill file $1.
 field() { sed -n '/^---$/,/^---$/p' "$1" | sed -n "s/^$2: *//p"; }
@@ -39,6 +39,33 @@ expect_line "a seam the plan didn't name is a blocked comment" "$tddtext" "\`blo
 expect_line "the tdd skill covers a repo without tests at that seam" "$tddtext" "repo without tests at that seam"
 expect_line "refactoring is the review's, not the loop's" "$tddtext" "Refactoring.*review"
 expect_line "the review skill covers refactoring" "$(flat "$SKILLS/review/SKILL.md")" "refactor"
+
+# The diagnose skill: the issue skill starts it for a bug with no plan, and it ends in the plan.
+diag="$SKILLS/diagnose/SKILL.md"
+diagtext=$(flat "$diag" 2>/dev/null)
+expect_line "a bug with no plan is diagnosed before it is planned" "$(flat "$ISSUE")" "\`bug\`[^.]*\`nightshift:diagnose\`"
+expect_line "the issue skill diagnoses a bug only when there's no plan yet" "$(flat "$ISSUE")" "nothing open.*On a \`bug\`, invoke the \`nightshift:diagnose\`"
+expect_line "open decisions on a bug are still asked first" "$(flat "$ISSUE")" "No plan yet, open decisions"
+expect_line "diagnose builds a feedback loop that goes red" "$diagtext" "red-capable"
+expect_line "diagnose reproduces and minimises" "$diagtext" "inimise"
+expect_line "diagnose ranks 3-5 falsifiable hypotheses" "$diagtext" "3.5 ranked hypotheses"
+expect_line "diagnose instruments one variable at a time" "$diagtext" "one variable at a time"
+expect_line "the hypotheses go in the plan, not to the user to await" "$diagtext" "plan[^.]*wait"
+expect_line "with no red-capable check it posts a questions comment" "$diagtext" "No red-capable check.*\`questions\` comment"
+expect_line "that comment says what it tried" "$diagtext" "What you tried"
+expect_line "that comment says what it needs" "$diagtext" "What you need"
+expect_line "diagnose doesn't guess without a red check" "$diagtext" "Don.t guess"
+expect_line "diagnose ends by invoking nightshift:plan" "$diagtext" "invoke \`nightshift:plan\`"
+expect_line "it hands the plan the cause, the red check and the hypotheses" "$diagtext" "cause[^.]*red check[^.]*hypotheses"
+expect_line "the first ticket turns the minimised repro into the failing test" "$diagtext" "first ticket[^.]*minimised repro[^.]*failing test"
+expect_line "diagnose commits no fix" "$diagtext" "no fix"
+expect_line "diagnose says where the scratch repro lives" "$diagtext" "scratch"
+expect_line "diagnose redacts secrets" "$diagtext" "REDACTED"
+planflat=$(flat "$SKILLS/plan/SKILL.md")
+expect_line "a bug plan shows the cause" "$planflat" "bug[^.]*the cause"
+expect_line "a bug plan shows the red check" "$planflat" "bug[^.]*red check"
+expect_line "a bug plan shows the ranked hypotheses" "$planflat" "bug[^.]*hypotheses"
+expect_line "the diagnosing-bugs skill is credited in the notices" "$(cat "$ROOT/plugin/THIRD_PARTY.md")" "\`diagnosing-bugs\` in \`diagnose\`"
 
 # The merge skill: started by the build, update and issue skills, not routed to as a stage.
 merge="$SKILLS/merge/SKILL.md"
@@ -90,7 +117,7 @@ model_effort() {
   expect "$1: its effort" "$(field "$2" effort)" "$4"
 }
 model_effort "the issue skill" "$ISSUE" sonnet low
-for s in questions plan; do model_effort "the $s skill" "$SKILLS/$s/SKILL.md" opus high; done
+for s in questions plan diagnose; do model_effort "the $s skill" "$SKILLS/$s/SKILL.md" opus high; done
 for s in build update review merge tdd; do model_effort "the $s skill" "$SKILLS/$s/SKILL.md" sonnet high; done
 for s in answer finish; do model_effort "the $s skill" "$SKILLS/$s/SKILL.md" sonnet medium; done
 bad="" nomodel=""
