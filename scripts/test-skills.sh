@@ -72,8 +72,9 @@ merge="$SKILLS/merge/SKILL.md"
 expect "the merge skill is named merge" "$(field "$merge" name 2>/dev/null)" merge
 expect "the merge skill isn't user-invocable" "$(field "$merge" user-invocable 2>/dev/null)" false
 expect_line "the merge skill says who starts it" "$(field "$merge" description 2>/dev/null)" "build, update and issue skills"
-expect "the merge skill reaches only gh pr, gh issue and git" \
-  "$(field "$merge" allowed-tools 2>/dev/null | grep -o '[A-Za-z]*([^)]*)' | grep -Ev '^Bash\((gh pr|gh issue|git [a-z-]+) \*\)$')" ""
+expect "the merge skill reaches only gh pr, gh issue, gh run and git" \
+  "$(field "$merge" allowed-tools 2>/dev/null | grep -o '[A-Za-z]*([^)]*)' | grep -Ev '^Bash\((gh pr|gh issue|gh run|git [a-z-]+) \*\)$')" ""
+expect_line "the merge skill may read a failed run's log with gh run" "$(field "$merge" allowed-tools 2>/dev/null)" 'Bash(gh run \*)'
 expect_line "the merge skill merges only when the prompt says the repo auto-merges" "$(cat "$merge" 2>/dev/null)" '"This repo auto-merges"'
 expect_line "the merge skill merges only the head it checked" "$(cat "$merge" 2>/dev/null)" "match-head-commit"
 
@@ -92,6 +93,46 @@ for s in build update; do
   expect_line "the $s skill says to wait for the checks" \
     "$(cat "$SKILLS/$s/SKILL.md")" "a run ends when you stop"
 done
+
+# Where the whole test suite runs follows the run prompt's whole-suite line (the CLI's suite_note):
+# the build, the review and the update run it only under the local line, or the default line in a
+# repo without CI, and never under the nothing line.
+build_flat=$(flat "$SKILLS/build/SKILL.md")
+review_flat=$(flat "$SKILLS/review/SKILL.md")
+update_flat=$(flat "$SKILLS/update/SKILL.md")
+expect_line "the build runs the whole suite under the local line" "$build_flat" \
+  "full checks[^.]*only[^.]*local line"
+expect_line "the build runs it under the default line only without CI" "$build_flat" \
+  "local line, or the default line[^.]*no CI"
+expect_line "the build quotes the default line" "$build_flat" '"This repo leaves its whole test suite to CI'
+expect_line "the build quotes the local line" "$build_flat" '"This repo runs its whole test suite locally'
+expect_line "the build never runs the whole suite under the nothing line" "$build_flat" \
+  "[Nn]ever[^.]*nothing line"
+expect_line "the build quotes the nothing line" "$build_flat" '"nightshift runs no whole test suite'
+expect_line "the build defines has CI by a pull_request workflow" "$build_flat" \
+  "has CI[^.]*\.github/workflows/[^.]*pull_request"
+expect_line "has CI counts external checks on the latest merged pull request" "$build_flat" \
+  "has CI.*latest merged pull request.*gh pr checks"
+expect_line "has CI matters only under the default line" "$build_flat" \
+  "It matters only under the default line"
+expect_line "the ticket bullet says where the whole suite runs instead" "$build_flat" \
+  "Not the whole test suite: that runs once, after the review, where"
+expect_line "the review's aside follows the same rule as the build's" "$review_flat" \
+  "whole suite[^.]*local line, or the default line[^.]*no CI"
+expect_line "the review's aside says never under the nothing line" "$review_flat" "[Nn]ever[^.]*nothing line"
+expect_line "the review no longer says the whole suite always runs after it" "$review_flat" \
+  "the whole suite runs once after this, in the build skill" no
+expect_line "the update runs the whole suite under the local line" "$update_flat" \
+  "whole test suite[^.]*local line, or the default line[^.]*no CI"
+expect_line "the update never runs it under the nothing line" "$update_flat" "[Nn]ever[^.]*nothing line"
+expect_line "the update points at the build's definition of has CI" "$update_flat" "has CI[^.]*build skill"
+expect_line "the update checks what the rebase and adaptation touched" "$update_flat" \
+  "checks for what the rebase and the adaptation touched"
+expect_line "the update no longer always runs the whole suite" "$update_flat" \
+  "Run the full checks once, the whole test suite included" no
+expect_line "the repo's CLAUDE.md names the full_suite option" "$(flat "$ROOT/CLAUDE.md")" '`full_suite`'
+expect_line "the repo's CLAUDE.md says what each full_suite setting means" "$(flat "$ROOT/CLAUDE.md")" \
+  "unset.*local.*nothing"
 
 # Every relative link to a markdown file in a skill, as "<file>: <target>", that doesn't resolve.
 dangling=""
@@ -238,6 +279,21 @@ expect_line "the wide definition works for any worked repo, with nightshift's ex
 expect_line "the merge skill reads Merge Danger and judges the diff itself" "$merge_flat" "Merge Danger[^.]*the diff"
 expect_line "a one-way door alone isn't a look item" "$merge_flat" "one-way door alone"
 expect_line "the plan says nothing of a tasks checklist" "$(flat "$SKILLS/plan/SKILL.md")" "tasks checklist" no
+
+# A failing check is fixed before the user is asked: read the log, fix, push, at most two rounds.
+expect_line "a failing check is read with gh run view --log-failed" "$merge_flat" "gh run view[^.]*--log-failed"
+expect_line "the run id comes from gh pr checks --json" "$merge_flat" "run id[^.]*gh pr checks[^.]*--json"
+expect_line "the fix is checked, committed and pushed, then the gates run again" "$merge_flat" \
+  "commit[^.]*git push[^.]*Conflicts and Checks gates again"
+expect_line "a check with no gh run log can be a look item at once" "$merge_flat" "no \`gh run\` log behind it"
+expect_line "no checks reported still passes" "$merge_flat" '"no checks reported" counts as passing'
+expect_line "the merge skill fixes a failing check at most twice" "$merge_flat" "at most two fix rounds"
+expect_line "a check still failing after the fixes is a look item" "$merge_flat" "[Ss]till failing[^.]*look item"
+expect_line "a failure it can't fix (flaky, runner, network, quota) is a look item" "$merge_flat" "can.t reproduce or fix (flaky[^.]*look item"
+expect_line "the look item names the check, the cause and what was tried" "$merge_flat" "Either look item names the check, the cause and what you tried"
+expect_line "checks pending after 30 minutes stay a look item" "$merge_flat" "pending after 30 minutes[^.]*look item"
+expect_line "the closing comment lists the fixes pushed" "$merge_flat" "done. comment[^.]*it lists each fix (the check, the cause, the commit)"
+expect_line "the gates after a look comment fix a failing check the same way" "$merge_flat" "After a look comment.*A failing check you fix the same way"
 expect_line "the plan no longer says tickets are only in the comment" "$(flat "$SKILLS/plan/SKILL.md")" "All tickets are in this comment" no
 
 # Reference that only some branches need lives in a sibling file, linked from its SKILL.md.

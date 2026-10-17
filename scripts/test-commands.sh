@@ -92,7 +92,11 @@ $SCAFFOLD"
 # auto_merge=false
 #
 # plugins: the Claude Code plugins its runs load, comma-separated (default none).
-# plugins=name,other@marketplace"
+# plugins=name,other@marketplace
+#
+# full_suite: where the whole test suite runs. Unset (the default): on CI, and locally only if the
+# repo has no CI checks on its pull requests. local: before each push. nothing: never by nightshift.
+# full_suite=local"
   expect "add: CONTEXT.md is scaffolded with a heading and what goes in it" "$(cat "$W/other/.nightshift/CONTEXT.md")" \
     "# Context
 

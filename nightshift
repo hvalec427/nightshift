@@ -580,6 +580,7 @@ $intro}"
 This checkout is the issue's own worktree, on branch nightshift/issue-$n.
 $(type_note "$repo" "$n" "$dir")
 $(merge_note "$repo")
+$(suite_note "$repo")
 
 $intro"
   # The run says when it plans or builds (`nightshift label`); until then, a
@@ -765,6 +766,16 @@ merge_note() {
   if auto_merges "$1"; then echo "This repo auto-merges: once its pull request is open or updated, use the merge skill."
   else echo "This repo doesn't auto-merge (auto_merge=false in .nightshift/config): leave merging to the user."
   fi
+}
+
+# What a run is told of repo $1's whole test suite: `full_suite=local` runs it
+# before the push, `nothing` runs none, else (unset or unknown) CI runs it.
+suite_note() {
+  case "$(repo_option "$1" full_suite)" in
+    local) echo "This repo runs its whole test suite locally (full_suite=local in .nightshift/config): run it before you push." ;;
+    nothing) echo "nightshift runs no whole test suite in this repo (full_suite=nothing in .nightshift/config): check what you touched, then push." ;;
+    *) echo "This repo leaves its whole test suite to CI: check what you touched, then push; run the whole suite yourself only if the repo has no CI checks on its pull requests." ;;
+  esac
 }
 
 # What a run is told of its issue's type: its type label, or that it has none,
@@ -2024,6 +2035,10 @@ scaffold_repo() {
 #
 # plugins: the Claude Code plugins its runs load, comma-separated (default none).
 # plugins=name,other@marketplace
+#
+# full_suite: where the whole test suite runs. Unset (the default): on CI, and locally only if the
+# repo has no CI checks on its pull requests. local: before each push. nothing: never by nightshift.
+# full_suite=local
 EOS
     sr_made=".nightshift/config"
   fi

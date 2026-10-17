@@ -1,7 +1,7 @@
 ---
 name: merge
 description: Squash-merge an issue's pull request once its checks pass and nothing needs a human look, or list what does in a look comment. Started by the build, update and issue skills when the run prompt says the repo auto-merges.
-allowed-tools: Bash(gh pr *) Bash(gh issue *) Bash(git fetch *) Bash(git log *) Bash(git diff *) Bash(git rev-parse *)
+allowed-tools: Bash(gh pr *) Bash(gh issue *) Bash(gh run *) Bash(git fetch *) Bash(git log *) Bash(git diff *) Bash(git rev-parse *)
 user-invocable: false
 model: sonnet
 effort: high
@@ -35,7 +35,16 @@ needs a human; otherwise tell the user exactly what does, and let them say **mer
    - **Checks.** `gh pr checks <pr> --watch --interval 30`, run with the Bash tool's
      10-minute timeout so it can't hang the run; still pending when it times out, run it
      again, three times at most (30 minutes). "no checks reported" counts as passing.
-     Failing, or still pending after 30 minutes: a look item, naming the checks.
+     Still pending after 30 minutes: a look item, naming the checks.
+     A failing check is yours to fix before you ask the user, in at most two fix rounds.
+     A round: the run id is in the failing check's `link` (`gh pr checks <pr> --json
+     name,state,link`); read `gh run view <run> --log-failed`, find the cause and fix it,
+     run the checks for what the fix touched, commit, `git push`, take the new
+     `headRefOid` as the head and run the Conflicts and Checks gates again on it, with
+     30 minutes of their own. Still failing after two rounds: a look item. A failure you
+     can't reproduce or fix (flaky, runner, network, quota), or a check with no `gh run`
+     log behind it (external CI) whose cause its link doesn't show: a look item at once.
+     Either look item names the check, the cause and what you tried.
 
    Done when each gate has passed or become a look item.
 2. **Triggers.** Read the issue and its thread, the approved plan, the review's report
@@ -61,12 +70,14 @@ needs a human; otherwise tell the user exactly what does, and let them say **mer
      needed a human look." and the one-line why (`gh pr view <pr> --json body -q .body` to
      a file, the line appended, `gh pr edit <pr> --body-file <file>`). Then
      `gh pr merge <pr> --squash --match-head-commit <head>`, with the head you checked,
-     and leave the branch: the watcher deletes it. Then the closing `done` comment: the report you were handed, then
-     merged, and why nothing needed a look.
-   - **Something to look at:** a `look` comment: the report you were handed, then the head you checked
-     (`` At `<head>`: ``), then one line per item, exactly what the user needs to know,
-     ending "Reply **merge** to merge it, or tell me what to change." End the run there:
-     the issue waits on the user.
+     and leave the branch: the watcher deletes it. Then the closing `done` comment: the
+     report you were handed, then merged, and why nothing needed a look; if you pushed
+     fixes, it lists each fix (the check, the cause, the commit).
+   - **Something to look at:** a `look` comment: the report you were handed, then the head
+     you checked (`` At `<head>`: ``), then one line per item, exactly what the user needs
+     to know, and a line per fix you pushed (the check, the cause, the commit), ending
+     "Reply **merge** to merge it, or tell me what to change." End the run there: the issue
+     waits on the user.
 
    Done when the pull request is merged and the `done` comment (report included) is up, or
    the `look` comment is.
@@ -75,7 +86,9 @@ needs a human; otherwise tell the user exactly what does, and let them say **mer
 
 When the user replies **merge**, run the hard gates again, and skip the triggers they just
 approved; for commits since the look comment's head, run the triggers on what's new only.
-All clear: close out as in step 3. A gate failing now: a new `look` comment saying which.
+All clear: close out as in step 3. A failing check you fix the same way, with two fix
+rounds of its own. Any other gate failing now, or a check you can't fix: a new `look`
+comment saying which.
 
 Merge only with passing checks, no conflicts, and the pull request this one goes after
 already merged.

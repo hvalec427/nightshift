@@ -22,10 +22,12 @@ the pull requests can merge in any order.
    duplicates it: use what landed instead of a copy, follow a rename, drop what's done.
    A clean rebase is the start of this step. Done when no part of the change copies what
    landed.
-3. **Check and push.** Run the full checks once, the whole test suite included, as after the
-   build's review, in the foreground, and wait for them: a run ends when you stop. Then
-   `git push --force-with-lease origin HEAD`. Done when the checks pass and the push
-   succeeds.
+3. **Check and push.** Run the checks for what the rebase and the adaptation touched, plus
+   the build, typecheck and lint, in the foreground, and wait for them:
+   a run ends when you stop. Run the whole test suite too, as after the build's review, only
+   under the local line, or the default line in a repo with no CI (see "has CI" in the build
+   skill), and never under the nothing line. Then `git push --force-with-lease origin HEAD`.
+   Done when the checks pass and the push succeeds.
 4. **Overlap lines.** In the PR body (`gh pr edit --body-file`), drop the lines about the
    merged work and add any new ones. Done when the body's lines match the work still open.
 5. **Report.** What conflicted and how you fixed it, then what changed beyond the
