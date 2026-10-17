@@ -1593,8 +1593,13 @@ cmd_add() {
   # repos would read such a word as an option.
   printf '%s\n' "$clone" | grep -q ' [a-z_][a-z_]*=[^ ]*$' && die "$clone: a clone path can't end in a word like key=value"
   shift 2
-  opts=""
+  opts="" seen=" "
   for o in "$@"; do
+    case "$o" in ?*=?*)
+      case "$seen" in *" ${o%%=*} "*) die "${o%%=*}= given twice" ;; esac
+      seen="$seen${o%%=*} "
+      ;;
+    esac
     case "$o" in
     instructions=?*)
       f=${o#instructions=}

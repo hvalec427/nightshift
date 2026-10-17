@@ -59,6 +59,17 @@ try() {
   gh_repo o/s "$W/my clone"
   try ns add o/s "$W/my clone"
   expect "add a clone path with a space: on the repo line" "$ST $(tail -1 "$NS/config")" "0 repo o/s $W/my clone"
+  before=$(cat "$NS/config")
+  try ns add o/d "$W/third" auto_merge=false auto_merge=false
+  expect "add auto_merge= twice: fails" "$ST $OUT" "1 nightshift: auto_merge= given twice"
+  expect "add auto_merge= twice: nothing written" "$(cat "$NS/config")" "$before"
+  echo "Ours." >"$W/ours.md"
+  try ns add o/d "$W/third" "instructions=$W/ours.md" "instructions=$W/ours.md"
+  expect "add instructions= twice: fails" "$ST $OUT" "1 nightshift: instructions= given twice"
+  expect "add instructions= twice: nothing written" "$(cat "$NS/config")" "$before"
+  try ns add o/d "$W/third" plugins=rn-agent plugins=web
+  expect "add plugins= twice: fails" "$ST $OUT" "1 nightshift: plugins= given twice"
+  expect "add plugins= twice: nothing written" "$(cat "$NS/config")" "$before"
   expect_no_unexpected)
 
 (world
