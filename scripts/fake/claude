@@ -6,6 +6,9 @@
 # in $CLAUDE_FAKE/script (shell, with the steps below; none: it just ends).
 set -u
 : "${CLAUDE_FAKE:?}"
+# GitHub's files, which a script changes the way a run's gh would (gh_state).
+# shellcheck source=github.sh
+. "$(dirname "$0")/github.sh"
 echo "$*" | tr '\n' ' ' >>"$CLAUDE_FAKE/calls"
 echo >>"$CLAUDE_FAKE/calls"
 
@@ -90,6 +93,13 @@ open_pr() {
   git push -q origin HEAD
   gh pr create --repo "$NIGHTSHIFT_REPO" --head "nightshift/issue-$NIGHTSHIFT_ISSUE" --base master \
     --title "feat: issue $NIGHTSHIFT_ISSUE" --body "${1:-Closes #$NIGHTSHIFT_ISSUE}" >"$RUN/pr"
+}
+# The run's pull request merged and its issue closed, as the merge skill's
+# `gh pr merge` does (the fake gh has no `pr merge`).
+merge_pr() {
+  tool_use "gh pr merge $(cat "$RUN/pr")"
+  gh_pr_set "$NIGHTSHIFT_REPO" "$(sed 's|.*/||' "$RUN/pr")" state '"MERGED"'
+  gh_state "$NIGHTSHIFT_REPO" "$NIGHTSHIFT_ISSUE" closed
 }
 # What the run cost: dollars $1, and of model $2 tokens in $3, out $4, cache
 # read $5 and cache written $6 (again for another model: added). The result

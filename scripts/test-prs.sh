@@ -197,4 +197,111 @@ started"
   poll
   expect "closed by its merge: done, merged" "$(state 7 "done")" "PR merged")
 
+# A run that merges its own pull request (which closes the issue) while a poll
+# comes: not stopped, and retired done once it exits.
+MERGES='commit feature.txt; open_pr; merge_pr; hold; comment done'
+(world
+  gh_issue o/r 7 alice agent
+  runs_do "$MERGES"
+  "$ROOT/nightshift" once &
+  BG=$!
+  wait_for "$CLAUDE_FAKE/runs/1/waiting"
+  poll
+  expect_ok "merged mid-run, a poll: it isn't marked interrupted" test ! -f "$(idir 7)/interrupted"
+  expect_line "the watch log: finishing" "$(cat "$NS/watch.log")" "o/r#7: issue closed: finishing$"
+  touch "$CLAUDE_FAKE/runs/1/go"
+  wait "$BG"
+  poll
+  expect "it ends done, merged" "$(state 7 "done")" "PR merged"
+  expect "no status label left" "$(status_label 7)" ""
+  expect_ok "its worktree is gone" test ! -d "$CLONE/.claude/worktrees/issue-7"
+  expect_line "a cost comment" "$(gh_comments o/r 7)" "^<!-- nightshift --> <!-- nightshift:cost -->$"
+  expect_line "status --all: done, merged" "$(ns status --all)" "^o/r#7  *done · PR .* merged "
+  expect_no_unexpected)
+
+# Closed mid-run after its done comment, nothing merged: it finishes too.
+(world
+  gh_issue o/r 7 alice agent
+  runs_do 'commit feature.txt; open_pr; comment done; gh_state "$NIGHTSHIFT_REPO" "$NIGHTSHIFT_ISSUE" closed; hold'
+  "$ROOT/nightshift" once &
+  BG=$!
+  wait_for "$CLAUDE_FAKE/runs/1/waiting"
+  poll
+  expect_ok "closed after its done comment, a poll: the run isn't stopped" test ! -f "$(idir 7)/interrupted"
+  expect_line "the watch log: finishing" "$(cat "$NS/watch.log")" "o/r#7: issue closed: finishing$"
+  touch "$CLAUDE_FAKE/runs/1/go"
+  wait "$BG"
+  poll
+  expect "it ends done, closed" "$(state 7 "done")" "issue closed")
+
+# Closed mid-run with no merge and no done comment: stopped, as before.
+(world
+  gh_issue o/r 7 alice agent
+  runs_do 'commit feature.txt; open_pr; gh_state "$NIGHTSHIFT_REPO" "$NIGHTSHIFT_ISSUE" closed; hang'
+  "$ROOT/nightshift" once &
+  BG=$!
+  wait_for "$CLAUDE_FAKE/runs/1/waiting"
+  poll
+  wait "$BG"
+  expect_ok "closed with nothing merged or done: the run is stopped" test -f "$CLAUDE_FAKE/runs/1/stopped"
+  expect "it's interrupted" "$(state 7 interrupted)" "issue closed"
+  expect_ok "not done" test ! -f "$(idir 7)/done"
+  expect_line "status: reopen to resume" "$(ns status)" "(issue closed) · reopen to resume"
+  expect "a stopped run records its pr" "$(state 7 pr)" "https://github.com/o/r/pull/100")
+
+# Brought back from its merge, then closed mid-run with nothing new merged:
+# the old merge doesn't make it finishing.
+(world
+  built
+  gh_pr_set o/r "$(prn)" state '"MERGED"'
+  poll
+  gh_comment o/r 7 alice "one more thing" >/dev/null
+  gh_state o/r 7 open
+  runs_do 'gh_state "$NIGHTSHIFT_REPO" "$NIGHTSHIFT_ISSUE" closed; hold'
+  "$ROOT/nightshift" once &
+  BG=$!
+  wait_for "$CLAUDE_FAKE/runs/2/waiting"
+  poll
+  expect "revived, closed mid-run, nothing new merged: stopped" "$(state 7 interrupted)" "issue closed"
+  touch "$CLAUDE_FAKE/runs/2/go"
+  wait "$BG"
+  poll
+  expect "not done again by the old merge" "$(state 7 "done")" "")
+
+# Already stopped this way (closed, interrupted, idle): retired on the next poll
+# when its branch's pull request merged, or its run had posted its done comment.
+STUCK='commit feature.txt; open_pr; gh_state "$NIGHTSHIFT_REPO" "$NIGHTSHIFT_ISSUE" closed; hang'
+stuck() {
+  gh_issue o/r 7 alice agent
+  runs_do "$STUCK"
+  "$ROOT/nightshift" once &
+  BG=$!
+  wait_for "$CLAUDE_FAKE/runs/1/waiting"
+  poll
+  wait "$BG"
+  rm -f "$(idir 7)/pr"
+}
+
+(world
+  stuck
+  poll
+  expect "closed, stopped, nothing merged or done: stays stopped" "$(state 7 interrupted)" "issue closed"
+  expect_ok "not done" test ! -f "$(idir 7)/done"
+  gh_pr_set o/r 100 state '"MERGED"'
+  poll
+  expect "its pr merged, none recorded: done, merged" "$(state 7 "done")" "PR merged"
+  expect_ok "no longer interrupted" test ! -f "$(idir 7)/interrupted"
+  expect "no status label left" "$(status_label 7)" ""
+  expect_ok "its worktree is gone" test ! -d "$CLONE/.claude/worktrees/issue-7"
+  expect_line "status --all: done, merged" "$(ns status --all)" "^o/r#7  *done · PR .* merged "
+  expect_no_unexpected)
+
+(world
+  stuck
+  printf '0\t12:00:00  commented (done)\n' >>"$(idir 7)/log"
+  poll
+  expect "its run had posted its done comment: done, closed" "$(state 7 "done")" "issue closed"
+  expect_ok "no longer interrupted" test ! -f "$(idir 7)/interrupted"
+  expect "no status label left" "$(status_label 7)" "")
+
 report
