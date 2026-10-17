@@ -1042,8 +1042,9 @@ check_prs() {
 }
 
 # Issues that are done, with nothing running: their pull request merged, or
-# the issue closed with no stopped run to resume. A merge is one in
-# merged/<owner>_<repo>, or for a closed issue, GitHub says so.
+# the issue closed with no stopped run to resume (or a stopped one that had
+# merged or said it was done). A merge is one in merged/<owner>_<repo>, or for
+# a closed issue, GitHub says so.
 check_done() {
   repo=$1 clone=$2
   seen="$NS/merged/$(echo "$repo" | tr '/' '_')"
@@ -1055,9 +1056,17 @@ check_done() {
     why=""
     if [ -n "$pr" ] && [ "$(cat "$d/revived" 2>/dev/null)" != "$pr" ] && grep -qxF "${pr##*/} $n" "$seen" 2>/dev/null; then
       why="PR merged"
-    elif [ "$(cat "$d/off" 2>/dev/null)" = "issue closed" ] && [ ! -f "$d/interrupted" ]; then
-      why="issue closed"
-      [ -n "$pr" ] && [ "$(gh pr view "$pr" --repo "$repo" --json state -q .state 2>/dev/null)" = MERGED ] && why="PR merged"
+    elif [ "$(cat "$d/off" 2>/dev/null)" = "issue closed" ]; then
+      if [ ! -f "$d/interrupted" ]; then
+        why="issue closed"
+        [ -n "$pr" ] && [ "$(gh pr view "$pr" --repo "$repo" --json state -q .state 2>/dev/null)" = MERGED ] && why="PR merged"
+      elif merged_pr "$repo" "$n"; then
+        # Stopped by the close of a run that was finishing (see poll_repo).
+        why="PR merged"
+        echo "$mpr" >"$d/pr"
+      elif posted_done "$d"; then
+        why="issue closed"
+      fi
     fi
     [ -n "$why" ] && retire "$repo" "$n" "$clone" "$d" "$why"
   done
@@ -1286,13 +1295,23 @@ list_issues() {
   cat "$f.json"
 }
 
-# Whether the run going in issue dir $3 of $1#$2 is finishing: its branch's
-# pull request merged (asked by head branch: `pr` may not be recorded yet), or
-# it has posted its done comment since its run started.
-run_finishing() {
-  [ -n "$(gh pr list --repo "$1" --head "nightshift/issue-$2" --state merged --json url -q '.[0].url' 2>/dev/null)" ] && return 0
+# The merged pull request of $1#$2's branch, asked by head branch (`pr` may not
+# be recorded), in $mpr; fails without one.
+merged_pr() {
+  mpr=$(gh pr list --repo "$1" --head "nightshift/issue-$2" --state merged --json url -q '.[0].url' 2>/dev/null)
+  [ -n "$mpr" ]
+}
+
+# Whether issue dir $1's current run has posted its done comment.
+posted_done() {
   # shellcheck disable=SC2016 # awk's, not the shell's
-  awk '/^0\t=== [0-9-]+ [0-9:]+ run$/ { c = 0 } /^0\t[0-9:]+ +commented \(done\)$/ { c = 1 } END { exit !c }' "$3/log" 2>/dev/null
+  awk '/^0\t=== [0-9-]+ [0-9:]+ run$/ { c = 0 } /^0\t[0-9:]+ +commented \(done\)$/ { c = 1 } END { exit !c }' "$1/log" 2>/dev/null
+}
+
+# Whether the run going in issue dir $3 of $1#$2 is finishing: its branch's
+# pull request merged, or it has posted its done comment since its run started.
+run_finishing() {
+  merged_pr "$1" "$2" || posted_done "$3"
 }
 
 poll_repo() {
