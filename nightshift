@@ -1264,14 +1264,10 @@ delete_remote_branch() {
 }
 
 # An update run for an issue's pull request, started by the issue loop: its
-# status, and why, which the issue gets as a comment and the run as its news.
+# status, and why, which the run gets as its news. The issue gets no comment
+# of its own: the run's closing comment says what it did.
 queue_update() {
   printf '%s\n%s\n' "$3" "$4" >"$(issue_dir "$1" "$2")/update"
-  gh issue comment "$2" --repo "$1" --body "🤖 **nightshift** · progress
-
-$4
-
-$MARKER <!-- nightshift:progress -->" >/dev/null 2>&1 || log "$1#$2: couldn't comment the update"
   log "$1#$2: pull request $3"
 }
 

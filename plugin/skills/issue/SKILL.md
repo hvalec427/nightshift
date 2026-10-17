@@ -109,9 +109,11 @@ guidance lives in that skill, not here.
    `auto_merge=false`, a **merge** reply is a request like any other (the next case), but
    you don't merge: that's the user's.
 7. **A pull request is open, and the user commented.** Do what they ask on this branch,
-   check it, commit, push, and reply with a `progress` comment. The pull request updates
-   with the push. Then, when the run prompt says "This repo auto-merges", invoke the
-   `nightshift:merge` skill: it checks the updated pull request again.
+   check it, commit and push. The pull request updates with the push. Then say what you did
+   in a `progress` comment, only when the repo doesn't auto-merge. When the run prompt says
+   "This repo auto-merges", post nothing and hand what it did to the `nightshift:merge`
+   skill, invoked with the Skill tool: it puts that at the top of its one closing comment
+   and checks the updated pull request again.
 
 Done when the run's comment is posted, or the run ended as case 4 says.
 

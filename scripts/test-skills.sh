@@ -187,6 +187,13 @@ expect_line "the merge comment opens with the report it was handed" "$merge_flat
 expect_line "the merge comment gives the pull request link and the review" "$merge_flat" "report[^.]*pull request.s link[^.]*review"
 expect_line "the merge skill's review source is the PR body's open findings" "$merge_flat" "the PR body.s open findings"
 expect_line "the merge skill no longer reads the build's done comment" "$merge_flat" "the build.s \`done\` comment" no
+# An update run and a follow-up report once: through the merge comment with auto-merge, one progress comment without.
+update_flat=$(flat "$SKILLS/update/SKILL.md")
+issue_flat=$(flat "$ISSUE")
+expect_line "the update skill posts its progress comment only when the repo doesn't auto-merge" "$update_flat" "\`progress\` comment[^.]*only when the repo doesn.t auto-merge"
+expect_line "with auto-merge the update skill hands its report to the merge skill" "$update_flat" "hand[^.]*report[^.]*to the \`nightshift:merge\` skill"
+expect_line "issue case 7 posts its progress comment only when the repo doesn't auto-merge" "$issue_flat" "\`progress\` comment[^.]*only when the repo doesn.t auto-merge"
+expect_line "with auto-merge issue case 7 hands what it did to the merge skill" "$issue_flat" "hand[^.]*what it did[^.]*to the \`nightshift:merge\` skill"
 expect_line "the brief points at the ticket's ID and its file" "$brief" "the ticket's ID[^.]*\`.nightshift/tickets/T<n>.md\`"
 expect_line "the build writes a file per ticket before the first ticket" "$brief" "Before the first ticket[^.]*\`.nightshift/tickets/T<n>.md\`"
 expect_line "the files come from the latest plan and the replies that changed it" "$brief" "write each ticket of the latest \`plan\` comment.*reply of the user's after the plan that changed it"
