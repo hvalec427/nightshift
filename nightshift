@@ -538,7 +538,7 @@ run_agent() {
     # The plan is approved: built in a fresh session, the planning one kept.
     intro=$(build_intro "$repo" "$n" "$dir")
     said=$(cat "$dir/build")
-    mv "$dir/session" "$dir/plan-session"
+    [ ! -f "$dir/session" ] || mv "$dir/session" "$dir/plan-session"
     rm -f "$dir/build"
     resume=""
   elif [ ! -s "$dir/session" ]; then
@@ -1502,8 +1502,9 @@ This is an update run: the update skill's job.
 }
 
 # Whether issue dir $1 can still hand off to a build session: it has a
-# planning session, and no build session or pull request yet.
-handoff_ok() { [ -s "$1/session" ] && [ ! -f "$1/plan-session" ] && [ ! -f "$1/pr" ] && [ ! -f "$1/build" ]; }
+# planning session, and no build session or pull request yet. A carry-on ($2
+# `carry`) can come from a first run, whose session is kept only once it ends.
+handoff_ok() { { [ -s "$1/session" ] || [ "${2:-}" = carry ]; } && [ ! -f "$1/plan-session" ] && [ ! -f "$1/pr" ] && [ ! -f "$1/build" ]; }
 
 # Whether the new comments on $1#$2 ($3, the jq filter for them) are a plain
 # "go", replying to a plan: the last nightshift comment.
@@ -2093,10 +2094,11 @@ cmd_build() {
   esac
   [ -n "${NIGHTSHIFT_REPO:-}" ] && [ -n "${NIGHTSHIFT_ISSUE:-}" ] || die "nightshift build only works in a nightshift run"
   bd=$(issue_dir "$NIGHTSHIFT_REPO" "$NIGHTSHIFT_ISSUE")
-  if handoff_ok "$bd" && [ ! -f "$bd/updating" ]; then
-    if [ $carry = 1 ]; then printf '%s\n' "$CARRY_ON" >"$bd/build"
-    else cp "$bd/news" "$bd/build" 2>/dev/null || : >"$bd/build"
-    fi
+  if [ $carry = 1 ] && handoff_ok "$bd" carry && [ ! -f "$bd/updating" ]; then
+    printf '%s\n' "$CARRY_ON" >"$bd/build"
+    echo "A fresh session builds it, with the issue, the plan and the comments since: end this run now, with no comment."
+  elif [ $carry = 0 ] && handoff_ok "$bd" && [ ! -f "$bd/updating" ]; then
+    cp "$bd/news" "$bd/build" 2>/dev/null || : >"$bd/build"
     echo "A fresh session builds it, with the issue, the plan and the approval: end this run now, with no comment."
   else
     echo "Build it in this session: invoke the nightshift:build skill."

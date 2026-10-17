@@ -2,8 +2,8 @@
 
 A machine that works your GitHub issues with Claude Code. Label an issue `agent`;
 nightshift asks you what it needs to know on the issue, posts a plan (a spec and
-its tickets), builds the tickets in order once you say **go**, and opens a pull
-request. You only ever reply on the issue.
+its tickets), builds the tickets in order once you say **go** (or right away, when
+the plan has no open choices), and opens a pull request. You only ever reply on the issue.
 
 It runs on a machine of yours (your Mac, a Mac mini, a macOS VM), polling GitHub,
 so nothing is added to your repos and no admin rights are needed. A repo's runs
@@ -82,7 +82,7 @@ What a repo's runs need beyond that comes with the plugins its `.nightshift/conf
 | You | nightshift |
 |---|---|
 | Open an issue, add the `agent` label (and a [type](#issue-types) label) | Reads it and the code; asks its questions in one comment (each with its recommended answer), or goes straight to the plan; a small issue (about 20 lines in a file or two, nothing to decide, no new command, CI or security change) it builds straight away, with no plan, and says so: reply **full process** for a plan instead |
-| Reply | More questions, or a plan: the spec and its tickets, in the to-spec and to-tickets format of [Matt Pocock's skills](https://github.com/mattpocock/skills) |
+| Reply | More questions, or a plan: the spec and its tickets, in the to-spec and to-tickets format of [Matt Pocock's skills](https://github.com/mattpocock/skills). A plan with no open choices (nothing it decided that the issue and your answers didn't) says so and goes on to the build without waiting for **go**; comment to stop or change it |
 | Reply **go** (or what to change) | Builds the tickets in order, each in a subagent of its own (so one ticket's work doesn't crowd the next; a one-ticket plan is built directly), with no comment on the issue meanwhile; has two fresh subagents review the change against the plan and the repo's standards, and fixes what they found in one pass; then opens the pull request, which closes the issue, and links it, with what the review found |
 | Nothing (unless the repo's `.nightshift/config` has `auto_merge=false`) | Once the pull request is open or updated and its checks pass (it fixes a failing check itself first, twice at most), squash-merges it when nothing in it needs you; otherwise lists what does in a look comment (a decision the plan didn't cover, a finding left open, a breaking or security-relevant change, …) |
 | Reply **merge** to a look comment | Checks it again (checks, conflicts, the pull requests it goes after) and merges it |
@@ -94,7 +94,7 @@ What a repo's runs need beyond that comes with the plugins its `.nightshift/conf
 
 Each issue gets its own worktree (in the repo's clone, `.claude/worktrees/issue-<n>`,
 branch `nightshift/issue-<n>`) and a Claude session that its runs continue. When
-you approve the plan, the build starts in a fresh one, given the issue, the plan, the
+you approve the plan (or it carries on, with no open choices), the build starts in a fresh one, given the issue, the plan, the
 comments since the plan and your approval, so it doesn't carry (and pay for) the
 planning conversation: a reply of just **go** starts it straight away, and any other approval once the planning
 session has read it. Later runs (your comments, updates) continue the build session,

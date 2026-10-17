@@ -175,6 +175,21 @@ planned() {
   expect "carry-on: the build run is not a reply" "$(state 7 agents | jq -s -c '.[-1].reply')" false
   expect_no_unexpected)
 
+# The same from a first run, which plans straight away: its session is kept
+# once it ends, and the build still gets a fresh one.
+(world
+  gh_issue o/r 7 alice agent enhancement
+  runs_do 'comment plan "T1: the fast path."; nightshift build --carry-on >"$RUN/said"; [ "$k" = 2 ] || comment progress'
+  poll
+  expect_line "carry-on from a first run: told to end" "$(cat "$CLAUDE_FAKE/runs/1/said")" "fresh session.*end this run now"
+  expect "carry-on from a first run: queued" "$(status_label 7)" queued
+  poll
+  expect "carry-on from a first run: the build run" "$(runs)" 2
+  expect "carry-on from a first run: a fresh session" "$(run_opt --resume)" ""
+  expect_line "carry-on from a first run: the prompt" "$(run_prompt)" "^The plan has no open choices"
+  expect "carry-on from a first run: the planning session is kept" "$(state 7 plan-session)" session-1
+  expect_no_unexpected)
+
 (world
   planned
   runs_do 'nightshift build --carry-on >"$RUN/said"'

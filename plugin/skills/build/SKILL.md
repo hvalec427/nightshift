@@ -1,6 +1,6 @@
 ---
 name: build
-description: Build an issue's approved plan ticket by ticket, test-first, then open its pull request. Started by the issue skill when the user approved the plan, or for a small issue.
+description: Build an issue's approved plan ticket by ticket, test-first, then open its pull request. Started by the issue skill when the user approved the plan, or for a small issue, and by the plan skill when the plan has no open choices.
 user-invocable: false
 model: sonnet
 effort: high
