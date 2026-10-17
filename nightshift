@@ -649,6 +649,7 @@ $intro"
     else set_status "$repo" "$n" stopped
     fi
     rm -f "$dir/stalled"
+    record_pr "$repo" "$n" "$dir" || true
     return
   fi
   if [ $status -ne 0 ] || grep '"type" *: *"result"' "$dir/out.jsonl" | grep -q '"is_error" *: *true'; then
@@ -674,15 +675,21 @@ $intro"
   fi
   # Once there's a pull request, the worktree's work is on GitHub: remove it
   # (the branch stays; a later comment brings it back).
-  pr=$(gh pr list --repo "$repo" --head "nightshift/issue-$n" --state all --json url -q '.[0].url' 2>/dev/null)
-  if [ -n "$pr" ]; then
-    [ "$(cat "$dir/pr" 2>/dev/null)" = "$pr" ] || log "$repo#$n: pull request $pr"
-    echo "$pr" >"$dir/pr"
+  if record_pr "$repo" "$n" "$dir"; then
     if [ -z "$(git -C "$wt" status --porcelain 2>/dev/null)" ]; then
       git -C "$clone" worktree remove --force "$wt" 2>>"$dir/log" && rm -f "$dir/worktree"
     fi
   fi
   set_status "$repo" "$n" "$(idle_status "$dir")"
+}
+
+# The pull request of $1#$2's branch, if it has one, into issue dir $3's `pr`
+# and $pr; fails without one.
+record_pr() {
+  pr=$(gh pr list --repo "$1" --head "nightshift/issue-$2" --state all --json url -q '.[0].url' 2>/dev/null)
+  [ -n "$pr" ] || return 1
+  [ "$(cat "$3/pr" 2>/dev/null)" = "$pr" ] || log "$1#$2: pull request $pr"
+  echo "$pr" >"$3/pr"
 }
 
 # Whether the run that just ended in issue dir $1 stalled: it ended while
@@ -1279,6 +1286,15 @@ list_issues() {
   cat "$f.json"
 }
 
+# Whether the run going in issue dir $3 of $1#$2 is finishing: its branch's
+# pull request merged (asked by head branch: `pr` may not be recorded yet), or
+# it has posted its done comment since its run started.
+run_finishing() {
+  [ -n "$(gh pr list --repo "$1" --head "nightshift/issue-$2" --state merged --json url -q '.[0].url' 2>/dev/null)" ] && return 0
+  # shellcheck disable=SC2016 # awk's, not the shell's
+  awk '/^0\t=== [0-9-]+ [0-9:]+ run$/ { c = 0 } /^0\t[0-9:]+ +commented \(done\)$/ { c = 1 } END { exit !c }' "$3/log" 2>/dev/null
+}
+
 poll_repo() {
   repo=$1 clone=$2
   allowed=$(allowed_json)
@@ -1313,9 +1329,15 @@ poll_repo() {
     fi
     echo "$why" >"$d/off"
     if running "$d"; then
-      echo "$why" >"$d/interrupted"
-      kill -TERM "$(cat "$d/pid")" 2>/dev/null
-      log "$repo#$n: $why: stopped"
+      # A run that merged its own pull request, or said it's done, closed the
+      # issue itself: it ends on its own, and check_done retires it.
+      if [ "$state" = closed ] && run_finishing "$repo" "$n" "$d"; then
+        log "$repo#$n: $why: finishing"
+      else
+        echo "$why" >"$d/interrupted"
+        kill -TERM "$(cat "$d/pid")" 2>/dev/null
+        log "$repo#$n: $why: stopped"
+      fi
     else
       log "$repo#$n: $why"
       set_status "$repo" "$n" ""
