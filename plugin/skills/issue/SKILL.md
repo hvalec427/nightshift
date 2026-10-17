@@ -60,9 +60,9 @@ prompt names it ("Its type label: `bug`") or says it has none. The type sets how
 
 - **`bug`**: cause first. With no plan yet (and not small, case 2 below), the
   `nightshift:diagnose` skill builds a check that fails the way the bug does and proves
-  the cause, then hands on to `nightshift:plan` (case 3). The plan is short: the cause, the red check and the hypotheses, the fix
-  and the test, with the tickets. The first ticket turns the minimised repro into a failing
-  test; the fix makes it pass.
+  the cause, then hands on to `nightshift:plan` (case 3). The plan is short: the cause, the
+  red check and the hypotheses, the fix and the test, with the tickets. The first ticket
+  turns the minimised repro into a failing test; the fix makes it pass.
 - **`enhancement`**: the steps below, as they are.
 - **`documentation`**: the steps below, kept to the docs; a change to code it needs is a
   question for the user.
@@ -85,7 +85,8 @@ as theirs. Labels other than the type and status ones are the user's.
 Read the thread first (`gh issue view <n> --comments`), take the first case below that
 applies, and end the run after its comment. Most cases are a stage with a skill of its own:
 invoke it by name with the Skill tool and follow it, with the rules above. The stage's
-guidance lives in that skill, not here.
+guidance lives in that skill, not here. "No plan yet" means no plan and no pull request: a
+small issue (case 2) has a pull request and no plan, and its later runs take cases 6 to 8.
 
 1. **No plan yet, open decisions.** Decisions that are the user's and that the issue and
    the code don't settle: invoke the `nightshift:questions` skill, which asks them.
@@ -93,8 +94,8 @@ guidance lives in that skill, not here.
    two files; nothing for the user to decide (the issue already says what to do); none of
    the merge skill's look triggers (a new command or option, a breaking change, anything
    security-relevant, CI, releases or installing); and, on a `bug`, a cause already plain
-   from the issue and the code. When in doubt, it isn't small. Decide it once, on the
-   first run with no plan, and invoke the `nightshift:build` skill in this session (no
+   from the issue and the code. When in doubt, it isn't small. Decide it on a run with
+   no plan yet, and invoke the `nightshift:build` skill in this session (no
    `nightshift build` first: there's no planning conversation to leave behind). It builds
    the issue as its one ticket, with no plan and no wait for a **go**.
 3. **No plan yet, nothing open** (or the answers are in). On a `bug`, invoke the
