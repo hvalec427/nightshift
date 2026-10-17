@@ -88,6 +88,7 @@ planned() {
   expect "the build's is the session now" "$(state 7 session)" session-3
   expect_line "the build session builds" "$(cat "$CLAUDE_FAKE/runs/3/said")" "in this session"
   expect_ok "and hands nothing off" test ! -f "$(idir 7)/build"
+  expect "the build run: a reply, from its approval" "$(state 7 agents | jq -s -c '.[-1].reply')" true
   poll
   expect "then nothing new: no run" "$(runs)" 3
   expect_no_unexpected)

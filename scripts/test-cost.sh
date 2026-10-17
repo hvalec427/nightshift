@@ -191,7 +191,8 @@ agents() { state "$1" agents | jq -S -c '.run = "R" | if .kind == "session" then
   expect "a run with no events: nothing recorded" "$(wc -c <"$(idir 7)/agents" | tr -d ' ')" 0)
 
 # A run the user's comment started has reply true; an update run, with only
-# the watcher's news, false, even when it resumes a session.
+# the watcher's news, false, even when it resumes a session, and so is a resume
+# after an interrupted run.
 (world
   gh_issue o/r 7 alice agent
   runs_do "costs 1 $OPUS 1 1 1 1; skill nightshift:issue; comment questions"
@@ -203,7 +204,11 @@ agents() { state "$1" agents | jq -S -c '.run = "R" | if .kind == "session" then
   gh_comment o/r 7 alice "thanks" >/dev/null
   runs_do "costs 1 $OPUS 1 1 1 1; skill nightshift:issue; comment progress"
   poll
-  expect "a comment after: a reply" "$(state 7 agents | jq -s -c 'map(.reply)')" "[false,false,true]")
+  expect "a comment after: a reply" "$(state 7 agents | jq -s -c 'map(.reply)')" "[false,false,true]"
+  echo "the machine slept" >"$(idir 7)/interrupted"
+  runs_do "costs 1 $OPUS 1 1 1 1; skill nightshift:issue; comment progress"
+  poll
+  expect "a resume the watcher started: no reply" "$(state 7 agents | jq -s -c 'map(.reply)')" "[false,false,true,false]")
 
 # Shown by status.
 (world
