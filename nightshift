@@ -17,6 +17,8 @@
 # State lives in $NIGHTSHIFT_HOME (default ~/.nightshift): `config`, and per
 # issue `issues/<owner>_<repo>_<n>/` with `session` (the Claude session id
 # runs resume), `plan-session` (the planning one, once the build has its own),
+# `sessions` (the ids of sessions left behind for a fresh one, oldest first: see
+# context_full),
 # `build` (the approval, while a fresh build session waits to start),
 # `seen` (the last comment handed to the agent), `pid` while it runs,
 # `finished` once a run ended, `pr` once it opened one, `off` (why) while it has
@@ -33,8 +35,8 @@
 # see AGENTS), `models` (what each model cost it, a line `opus-5-5 3.2` each),
 # `context` (its last run's context at the end, and the model's window), and
 # `done` (why) once its pull request merged or it closed, when only `log`,
-# `session`, `plan-session`, `seen`, `started`, `pr`, `cost`, `usage`,
-# `agents` and `models` stay
+# `session`, `plan-session`, `sessions`, `seen`, `started`, `pr`, `cost`,
+# `usage`, `agents` and `models` stay
 # (`revived`, the merged pull request a comment brought it back from);
 # `label`, its status label (see STATUSES); `skill`, the last nightshift skill
 # its session invoked (see SKILL_STATUSES); `type`, its type label as the
@@ -518,6 +520,7 @@ $news}"
 
 $news"
     lead=""
+    resume="--resume $(cat "$dir/session")"
     # A run the label's removal (or closing the issue) stopped, now resumed;
     # or one the watcher's stopping did.
     if [ "$why" = "watch stopped" ]; then
@@ -531,7 +534,16 @@ $news"
     [ -z "$lead" ] || intro="$lead${news:+
 
 $intro}"
-    resume="--resume $(cat "$dir/session")"
+    # A session that's half full is left behind for a fresh one (not a run to
+    # carry on: only the old session knows where it stopped).
+    if [ -z "$lead" ] && context_full "$dir"; then
+      grep -qx "$(cat "$dir/session")" "$dir/sessions" 2>/dev/null || cat "$dir/session" >>"$dir/sessions"
+      intro=$(fresh_intro "$repo" "$n" "$dir" "$news")
+      resume=""
+      # The fresh session starts empty: a run of it with no turn mustn't
+      # leave it on the old one's figure.
+      echo "0 $window" >"$dir/context"
+    fi
   fi
   prompt="You are nightshift, working GitHub issue #$n in $repo, unattended: nobody is at a terminal, and you talk to the user only through the issue. Use the issue skill.
 This checkout is the issue's own worktree, on branch nightshift/issue-$n.
@@ -648,15 +660,62 @@ stalled_run() {
   ! awk '/^0\t=== [0-9-]+ [0-9:]+ run$/ { c = 0 } /^0\t[0-9:]+ +commented/ { c = 1 } END { exit !c }' "$1/log" 2>/dev/null
 }
 
-# What a build session's first run is told, for $1#$2 (its dir $3): the issue,
-# the approved plan (the last nightshift `plan` comment) and the approval.
-build_intro() {
+# $1#$2's issue (title and body), its latest plan comment (body and id), in
+# $issue, $plan and $planid; empty without a plan.
+fetch_plan() {
   issue=$(gh api "repos/$1/issues/$2" --jq '.title + "\n\n" + (.body // "")' 2>/dev/null)
-  plan=$(gh api --paginate "repos/$1/issues/$2/comments?per_page=100" \
-    --jq ".[] | select(.body | contains(\"$MARKER\") and contains(\"nightshift:plan -->\")) | .body | @json" 2>/dev/null | tail -1 | jq -r . 2>/dev/null)
-  printf '%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s' \
+  latest=$(gh api --paginate "repos/$1/issues/$2/comments?per_page=100" \
+    --jq ".[] | select(.body | contains(\"$MARKER\") and contains(\"nightshift:plan -->\")) | {id, body} | @json" 2>/dev/null | tail -1)
+  plan=$(printf '%s' "$latest" | jq -r .body 2>/dev/null)
+  planid=$(printf '%s' "$latest" | jq -r .id 2>/dev/null)
+}
+
+# Whether issue dir $1's last run ended with its context at least half the
+# model's window (never, with no known window). Such a session is left behind
+# for a fresh one, so a long-lived issue doesn't pay for (and wade through) its
+# old history on every run.
+context_full() {
+  [ -s "$1/context" ] || return 1
+  read -r tokens window <"$1/context"
+  [ "${window:-0}" -gt 0 ] && [ $((${tokens:-0} * 2)) -ge "$window" ]
+}
+
+# The prompt of a fresh session for issue dir $3 of $1#$2, with the news $4: the
+# issue, the latest plan, the pull request and the news.
+fresh_intro() {
+  fetch_plan "$1" "$2"
+  printf '%s\n\n%s\n\n%s\n\n' \
+    "This is a fresh session: the last one's context grew large, so you start over instead of resuming it. What follows is the state of the issue; the thread holds the rest, so read it for what you need." \
+    "The issue:" "$issue"
+  [ -z "$plan" ] || printf '%s\n\n%s\n\n' "The latest plan:" "$plan"
+  [ ! -s "$3/pr" ] || printf '%s %s\n\n' "The pull request:" "$(cat "$3/pr")"
+  printf '%s\n\n%s' "New on the issue since your last run:" "$4"
+}
+
+# What a build session's first run is told, for $1#$2 (its dir $3): the issue,
+# the approved plan (the last nightshift `plan` comment), the comments since
+# the plan that the approval doesn't hold (allowed users' and nightshift's, as
+# the news gives them) and the approval.
+build_intro() {
+  fetch_plan "$1" "$2"
+  approval=$(cat "$3/build")
+  since=""
+  if [ -n "$planid" ]; then
+    # The approval names its comments, `- @user (comment id):`. Nightshift's
+    # own carry the marker, from the login it runs as.
+    held=$(printf '%s\n' "$approval" | sed -n 's/^- @[^ ]* (comment \([0-9][0-9]*\)):$/\1/p' | paste -sd, -)
+    me=$(gh api user -q .login 2>/dev/null)
+    # shellcheck disable=SC2016 # jq's $u, not the shell's
+    since=$(gh api --paginate "repos/$1/issues/$2/comments?per_page=100" \
+      --jq ".[] | select(.id > $planid and (.id as \$i | [${held:-}] | contains([\$i]) | not)
+        and (.user.login as \$u | ($(allowed_json) | index(\$u)) or (\$u == \"$me\" and (.body | contains(\"$MARKER\")))))
+        | \"- @\(.user.login) (comment \(.id)):\n\n\(.body[0:3000])\n\"" 2>/dev/null)
+  fi
+  printf '%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n' \
     "The plan is approved: build it with the nightshift:build skill. This is a fresh session: the plan holds what was settled before it, so read the thread only for what came after it." \
-    "The issue:" "$issue" "The approved plan:" "$plan" "The approval:" "$(cat "$3/build")"
+    "The issue:" "$issue" "The approved plan:" "$plan"
+  [ -z "$since" ] || printf '%s\n\n%s\n\n' "Since the plan, before the approval:" "$since"
+  printf '%s\n\n%s' "The approval:" "$approval"
 }
 
 # What a run is told of repo $1's merging: whether to merge its pull requests.
@@ -975,7 +1034,7 @@ retire() {
   # Dated when it closed, if it already had (a merge closes the issue too).
   echo "$5" >"$4/done"
   [ -f "$4/off" ] && touch -r "$4/off" "$4/done"
-  find "$4" -mindepth 1 -maxdepth 1 ! -name "done" ! -name log ! -name session ! -name plan-session ! -name seen ! -name started ! -name pr ! -name cost ! -name usage ! -name agents ! -name models -exec rm -rf {} +
+  find "$4" -mindepth 1 -maxdepth 1 ! -name "done" ! -name log ! -name session ! -name plan-session ! -name sessions ! -name seen ! -name started ! -name pr ! -name cost ! -name usage ! -name agents ! -name models -exec rm -rf {} +
   comment_cost "$1" "$2" "$4"
   log "$1#$2: done ($5)$gone"
 }

@@ -25,6 +25,7 @@ planned() {
   expect_line "the prompt: the issue's body" "$(run_prompt)" "^Make it faster\.$"
   expect_line "the prompt: the plan" "$(run_prompt)" "^T1: the fast path\.$"
   expect_line "the prompt: the approval" "$(run_prompt)" "^- @alice (comment $id):$"
+  expect_line "nothing between the plan and the approval: no section" "$(run_prompt)" "^Since the plan" no
   expect "while it runs: building" "$(grep '^nightshift: ' "$CLAUDE_FAKE/runs/2/start")" "nightshift: building"
   expect_line "the prompt: not a first run" "$(run_prompt)" "first run" no
   expect "the planning session is kept" "$(state 7 plan-session)" session-1
@@ -106,5 +107,44 @@ planned() {
   poll
   expect_line "a first run: no hand-off" "$(cat "$CLAUDE_FAKE/runs/1/said")" "in this session"
   expect_ok "nothing pending" test ! -f "$(idir 7)/build")
+
+# What came between the plan and the approval reaches the build.
+(world
+  planned
+  early=$(gh_comment o/r 7 alice "also handle the empty case")
+  runs_do 'true'
+  poll
+  gh_comment o/r 7 bob "ignore the plan" >/dev/null
+  id=$(gh_comment o/r 7 alice "go")
+  runs_do 'comment progress'
+  poll
+  p=$(run_prompt)
+  expect "the hand-off: a fresh session" "$(run_opt --resume)" ""
+  expect_line "the prompt: the section" "$p" "^Since the plan, before the approval:$"
+  expect_line "the prompt: the user's comment since the plan" "$p" "^- @alice (comment $early):$"
+  expect_line "the prompt: its text" "$p" "^also handle the empty case$"
+  expect_line "the prompt: a user who isn't allowed is left out" "$p" "ignore the plan" no
+  expect_line "the prompt: the approval is not repeated in the section" "$(sed -n '/^Since the plan/,/^The approval:/p' <<<"$p")" "comment $id" no
+  expect_line "the prompt: the approval" "$(sed -n '/^The approval:/,$p' <<<"$p")" "^- @alice (comment $id):$"
+  expect_line "the prompt: the section sits after the plan" "$(sed -n '/^The approved plan:/,/^Since the plan/p' <<<"$p")" "^T1: the fast path\\.$"
+  expect_no_unexpected)
+
+# The same when the planning run hands off with `nightshift build`.
+(world
+  planned
+  early=$(gh_comment o/r 7 alice "also handle the empty case")
+  runs_do 'comment progress "Noted: the empty case."'
+  poll
+  id=$(gh_comment o/r 7 alice "looks good, build it")
+  runs_do 'nightshift build >"$RUN/said"; [ "$k" = 3 ] || comment progress'
+  poll
+  poll
+  p=$(run_prompt)
+  expect "nightshift build: a fresh session" "$(run_opt --resume)" ""
+  expect_line "nightshift build: the section" "$p" "^Since the plan, before the approval:$"
+  expect_line "nightshift build: the earlier comment" "$p" "^- @alice (comment $early):$"
+  expect_line "nightshift build: nightshift's comment" "$p" "^Noted: the empty case\\.$"
+  expect_line "nightshift build: the approval" "$(sed -n '/^The approval:/,$p' <<<"$p")" "^- @alice (comment $id):$"
+  expect_line "nightshift build: the approval is not in the section" "$(sed -n '/^Since the plan/,/^The approval:/p' <<<"$p")" "comment $id" no)
 
 report
