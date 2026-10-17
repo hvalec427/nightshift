@@ -36,8 +36,9 @@ Build the tickets in order, one at a time, in this worktree. The sequence:
    pass. Done when it hands back its three lists (fixed, dismissed, open).
 4. **Finish.** Check the **overlap** (in the issue skill) again, since other work may have
    started or merged since the plan, then invoke the `nightshift:finish` skill to open the
-   pull request, handing it the overlap lines for the body. The review's findings left open go in the pull request body too, as
-   what's left open. Done when you have the pull request's URL.
+   pull request, handing it the overlap lines for the body. The review's findings left
+   open go in the pull request body too, as what's left open. Done when you have the pull
+   request's URL.
 5. **Report.** A `done` comment with the pull request's link and what's in it, and the
    review: a line counting it, then each finding in a `<details>` block, a line each (its
    axis, what it found, and fixed, or dismissed and why, or left open):

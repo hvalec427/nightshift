@@ -17,10 +17,10 @@ the build in the thread. The tickets' text stays in the plan comment.
 - **Reuse before posting.** Before the first ticket, find the latest comment carrying
   `<!-- nightshift:tasks -->` on its last line (`gh api
   repos/{owner}/{repo}/issues/<issue>/comments --paginate`, its `id` and `body`): a plan
-  comment can quote the marker in its text, and isn't one. With none, post it with `gh issue comment`. With one,
-  a resumed or fresh build edits it to match the latest plan's tickets, keeping the ticks
-  of the tickets already committed, so the issue has one checklist and its state stays
-  right.
+  comment can quote the marker in its text, and isn't one. With none, post it with
+  `gh issue comment`. With one, edit it to match the latest plan's tickets, keeping the
+  ticks of the tickets already committed, so a resumed or fresh build leaves the issue one
+  checklist with its state right.
 - **Edit it by its comment id:** write the whole body to a file and
   `gh api -X PATCH repos/{owner}/{repo}/issues/comments/<id> -F body=@<file>`. Ticking a
   box is the same edit, with its `- [ ]` turned to `- [x]`.

@@ -179,12 +179,12 @@ expect_line "the tasks comment carries its marker" "$tasks" "<!-- nightshift:tas
 expect_line "a task line is the ticket's ID and title" "$tasks" "\`- \[ \] T1: <ticket title>\`"
 expect_line "the build reuses the latest tasks comment" "$tasks" "latest comment carrying"
 expect_line "a reused tasks comment keeps its ticks" "$tasks" "keeping the ticks"
-expect_line "the tasks comment is edited by its comment id" "$tasks" "gh api -X PATCH repos/{owner}/{repo}/issues/comments/<id>"
+expect_line "the tasks comment is edited by its comment id" "$tasks" "gh api -X PATCH repos/{owner}/{repo}/issues/comments/<id> -F body=@<file>"
 expect_line "the build posts the tasks comment before the first ticket" "$brief" "Before the first ticket"
 expect_line "the build ticks a ticket's box after its commit" "$brief" "commit[^.]*tick its box"
 expect_line "the brief points at the ticket's ID and the plan comment" "$brief" "the ticket's ID[^.]*plan comment"
 for w in "sub-issue" "sub_issue" "--parent" "Closes #<sub>"; do
-  expect "no skill or agent mentions $w" "$(grep -rl -e "$w" "$ROOT/plugin" | sed "s|^$ROOT/||")" ""
+  expect "no skill or agent mentions $w" "$(grep -rli -e "$w" "$ROOT/plugin" | sed "s|^$ROOT/||")" ""
 done
 finish=$(flat "$SKILLS/finish/BODY.md" 2>/dev/null)
 expect_line "the finish skill writes the body by BODY.md" "$(flat "$SKILLS/finish/SKILL.md")" "by \[BODY.md\](BODY.md)"
