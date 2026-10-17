@@ -5,8 +5,12 @@
 # Claude (scripts/fake) and a clone of o/r watched.
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+
+# A temp file, or with -d a dir, under TMPDIR, which a plain call to the tool
+# ignores on macOS: the only way a test makes one, so a suite's go in its dir.
+temp() { mktemp "$@" "${TMPDIR:-/tmp}/tmp.XXXXXX"; } # the one call
 # Tests run in subshells, so failures are counted in a file.
-FAILS=$(mktemp)
+FAILS=$(temp)
 # Gone when the test file exits, passed or failed. A subshell has its own traps.
 trap 'rm -f "$FAILS"' EXIT
 FAKES="$ROOT/scripts/fake"
@@ -60,7 +64,7 @@ report() {
 # the system's own tools, GitHub logged in as alice, and o/r on GitHub (its
 # remote in $ORIGIN, with a commit on master) watched with its clone in $CLONE.
 world() {
-  W=$(mktemp -d)
+  W=$(temp -d)
   W=$(cd "$W" && pwd -P)
   mkdir -p "$W/home" "$W/ns/issues" "$W/gh" "$W/claude" "$W/curl" "$W/bin"
   export HOME="$W/home" NIGHTSHIFT_HOME="$W/ns" GH_FAKE="$W/gh" CLAUDE_FAKE="$W/claude" CURL_FAKE="$W/curl"

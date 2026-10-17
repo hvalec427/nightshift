@@ -23,7 +23,7 @@ set -euo pipefail
 # expect_line under pipefail, on an input far bigger than a pipe holds whose
 # first line matches: grep quits at line 1, and that is still a match.
 (big=$(awk 'BEGIN { print "the line"; for (i = 0; i < 100000; i++) print "another line" }')
-  got=$(FAILS=$(mktemp)
+  got=$(FAILS=$(temp)
     set -o pipefail
     out=$(expect_line "big" "$big" "^the line$")
     printf '%s|%s' "${out%%$'\n'*}" "$(cat "$FAILS")")
@@ -47,5 +47,61 @@ rm -rf "$w"
     bash "$W/$f.sh" "$ROOT" "$W/$f.fails" >/dev/null || true
     expect "FAILS: removed when a $f file exits" "$([ -e "$(cat "$W/$f.fails")" ] && echo there || echo gone)" "gone"
   done)
+
+# temp makes a file (or, with -d, a dir) under TMPDIR: on macOS a plain
+# mktemp ignores TMPDIR, so it is the only way a test makes one.
+(d=$(temp -d)
+  trap 'rm -rf "$d"' EXIT
+  f=$(TMPDIR=$d temp)
+  expect "temp: a file in TMPDIR" "$([ -f "$f" ] && echo "${f%/*}")" "$d"
+  g=$(TMPDIR=$d temp -d)
+  expect "temp -d: a dir in TMPDIR" "$([ -d "$g" ] && echo "${g%/*}")" "$d")
+
+# No test file or the test lib calls the plain tool (bar temp's one line, and
+# comments); that is what keeps a suite's files in its own TMPDIR.
+plain='mk''temp'
+found=$(cd "$ROOT" && grep -n "$plain" scripts/test-*.sh | grep -v ':[0-9]*:[[:space:]]*#' | grep -v 'the one call' || true)
+expect "no test file calls a plain $plain" "$found" ""
+
+# A run of test.sh on files of its own (a pass, a fail, one stopped by INT),
+# with a fresh TMPDIR as its caller's: it leaves that as it was, bar the
+# label pool, and exits as ever.
+(ct=$(temp -d)
+  trap 'rm -rf "$ct"' EXIT
+  fx=$ct/fixtures
+  mkdir "$fx"
+  head='. "$ROOT/scripts/test-lib.sh"; (world; temp >/dev/null; temp -d >/dev/null; echo "$NIGHTSHIFT_TEST_LABELS" >"$ct/labels")'
+  printf '%s\nexpect pass 1 1\nreport\n' "$head" >"$fx/test-pass.sh"
+  printf '%s\nexpect fail 1 2\nreport\n' "$head" >"$fx/test-fail.sh"
+  printf '%s\n(world; temp -d >/dev/null; : >"$ct/started"; sleep 30)\n' "$head" >"$fx/test-int.sh"
+  # What a fresh caller's TMPDIR holds after test.sh ran on the files $1…
+  run_suite() {
+    env -u NIGHTSHIFT_TEST_LABELS -u KEEP_WORLD ROOT="$ROOT" ct="$ct" TMPDIR="$ct/caller" bash "$ROOT/scripts/test.sh" "$@" >/dev/null 2>&1
+  }
+  mkdir "$ct/caller"
+  run_suite "$fx/test-pass.sh"
+  expect "test.sh: a passing file exits 0" "$?" "0"
+  expect "test.sh: a pass leaves the caller's TMPDIR as it was" "$(ls -A "$ct/caller")" ""
+  expect "test.sh: the label pool comes from the caller's TMPDIR" "$(cat "$ct/labels")" "$ct/caller/nightshift-test-labels"
+  rc=0
+  run_suite "$fx/test-fail.sh" || rc=$?
+  expect "test.sh: a failing file exits 1" "$rc" "1"
+  expect "test.sh: a failure leaves the caller's TMPDIR as it was" "$(ls -A "$ct/caller")" ""
+  # As a ^C reaches it: its own process group, and INT not ignored (as it is
+  # for anything started in the background by a script).
+  set -m
+  perl -e '$SIG{INT} = "DEFAULT"; exec @ARGV' env -u NIGHTSHIFT_TEST_LABELS -u KEEP_WORLD ROOT="$ROOT" ct="$ct" TMPDIR="$ct/caller" \
+    bash "$ROOT/scripts/test.sh" "$fx/test-int.sh" >/dev/null 2>&1 &
+  pid=$!
+  wait_for "$ct/started"
+  kill -INT -- "-$pid"
+  rc=0
+  { wait "$pid" || rc=$?; } 2>/dev/null
+  set +m
+  expect "test.sh: INT exits 130" "$rc" "130"
+  expect "test.sh: INT leaves the caller's TMPDIR as it was" "$(ls -A "$ct/caller")" ""
+  err=$(env -u NIGHTSHIFT_TEST_LABELS KEEP_WORLD=1 ROOT="$ROOT" ct="$ct" TMPDIR="$ct/caller" bash "$ROOT/scripts/test.sh" "$fx/test-pass.sh" 2>&1 >/dev/null)
+  kept=$(sed -n "s|^kept \($ct/caller/nightshift-tests\.[A-Za-z0-9]*\)\$|\1|p" <<<"$err")
+  expect "KEEP_WORLD=1: test.sh keeps its dir and says where" "$([ -n "$kept" ] && [ -d "$kept" ] && echo kept)" "kept")
 
 report

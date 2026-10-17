@@ -9,7 +9,7 @@ SCRIPTS="$(cd "$(dirname "$0")" && pwd -P)"
 
 # A fresh repo in a temp dir, as the current directory.
 repo() {
-  cd "$(mktemp -d)"
+  cd "$(temp -d)"
   git init -q
   git config user.name test
   git config user.email test@example.com
@@ -134,7 +134,7 @@ expect "lint: full stop" "$(lint "fix: add x.")" fail
 expect "lint: over 72" "$(lint "fix: $(printf 'a%.0s' $(seq 1 68))")" fail
 expect "lint: 72 exactly" "$(lint "fix: $(printf 'a%.0s' $(seq 1 67))")" pass
 
-(cd "$(mktemp -d)"
+(cd "$(temp -d)"
   { echo "fix: keep the session"; echo
     awk 'BEGIN { for (i = 0; i < 50000; i++) print "a line of a long body" }'; } >msg
   expect "lint: a large message file" \
