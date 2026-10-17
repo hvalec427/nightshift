@@ -81,7 +81,7 @@ What a repo's runs need beyond that comes with the plugins its `.nightshift/conf
 
 | You | nightshift |
 |---|---|
-| Open an issue, add the `agent` label (and a [type](#issue-types) label) | Reads it and the code; asks its questions in one comment (each with its recommended answer), or goes straight to the plan |
+| Open an issue, add the `agent` label (and a [type](#issue-types) label) | Reads it and the code; asks its questions in one comment (each with its recommended answer), or goes straight to the plan; a small issue (about 20 lines in a file or two, nothing to decide, no new command, CI or security change) it builds straight away, with no plan, and says so: reply **full process** for a plan instead |
 | Reply | More questions, or a plan: the spec and its tickets, in the to-spec and to-tickets format of [Matt Pocock's skills](https://github.com/mattpocock/skills) |
 | Reply **go** (or what to change) | Builds the tickets in order, each in a subagent of its own (so one ticket's work doesn't crowd the next; a one-ticket plan is built directly), with no comment on the issue meanwhile; has two fresh subagents review the change against the plan and the repo's standards, and fixes what they found in one pass; then opens the pull request, which closes the issue, and links it, with what the review found |
 | Nothing (unless the repo's `.nightshift/config` has `auto_merge=false`) | Once the pull request is open or updated and its checks pass (it fixes a failing check itself first, twice at most), squash-merges it when nothing in it needs you; otherwise lists what does in a look comment (a decision the plan didn't cover, a finding left open, a breaking or security-relevant change, …) |
@@ -125,8 +125,8 @@ calls for:
 
 | Label | nightshift |
 |---|---|
-| `bug` | finds the cause with a check that fails the way the bug does (or asks, when it can't build one), and its plan starts with a test that fails the way the bug does; the fix makes it pass |
-| `enhancement` | asks, plans, builds and opens a pull request, as above |
+| `bug` | finds the cause with a check that fails the way the bug does (or asks, when it can't build one), and its plan starts with a test that fails the way the bug does; the fix makes it pass; a small one whose cause is plain is fixed straight away |
+| `enhancement` | asks, plans, builds and opens a pull request, as above; a small one is built straight away |
 | `documentation` | the same, kept to the docs |
 | `question` | answers it in a comment: no plan, no pull request. Reply to follow up, or ask for a change to have it built |
 | `duplicate` | a comment linking the issue it duplicates; no pull request |

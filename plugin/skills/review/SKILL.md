@@ -30,7 +30,9 @@ nothing to review: say so when you report, and go on.
 ## 2. Gather what they review against
 
 - **The plan:** the latest `plan` comment on the issue (`<!-- nightshift:plan -->`), in
-  full, plus any reply of the user's after it that changed it.
+  full, plus any reply of the user's after it that changed it. A small issue (no `plan`
+  comment: the issue skill built it straight away) has the issue and the user's replies as
+  its plan: each thing the issue asks for is met, partial, or missing.
 - **The standards:** every file in the repo that says how code here is written:
   `CLAUDE.md` files, `CONTRIBUTING.md`, `CODING_STANDARDS.md`, a README's section on
   development or tests, and the commit and pull request conventions and the `CLAUDE.md`

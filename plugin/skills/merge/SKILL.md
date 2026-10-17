@@ -51,7 +51,9 @@ needs a human; otherwise tell the user exactly what does, and let them say **mer
    (the PR body's open findings), the PR body's Merge Danger
    (its door and blast radius), the commits and the diff
    (`git log -p origin/<default branch>..<head>`). The author graded its own Merge Danger:
-   judge the blast radius from the diff yourself, and take the wider call. Any of these is
+   judge the blast radius from the diff yourself, and take the wider call. A small issue
+   has no plan: the issue and its thread stand in for it, so a decision they didn't settle
+   is one the plan didn't cover; being small isn't a look item by itself. Any of these is
    a look item:
    - a decision made in the build that the approved plan didn't cover;
    - a review finding left unfixed, or a check that couldn't be run;
