@@ -70,7 +70,7 @@ world() {
   # The pull requests checked on every poll, not every 30 s.
   export NIGHTSHIFT_PR_INTERVAL=0
   # git and jq from wherever they are; nothing else of this machine's own
-  # (no real gh, claude or signalbox).
+  # (no real gh or claude).
   for t in git jq; do ln -s "$(command -v "$t")" "$W/bin/$t"; done
   export PATH="$FAKES:$W/bin:/usr/bin:/bin:/usr/sbin:/sbin"
   echo alice >"$GH_FAKE/user"
@@ -163,6 +163,15 @@ poll() { "$ROOT/nightshift" once; }
 
 # A setting in the config.
 set_config() { echo "$1=$2" >>"$NS/config"; }
+
+# Plugin $1 (an id, name@marketplace) installed in $W/<name>, enabled unless $2 is false.
+plugin() {
+  mkdir -p "$W/${1%@*}"
+  [ -f "$CLAUDE_FAKE/plugins.json" ] || echo '[]' >"$CLAUDE_FAKE/plugins.json"
+  # shellcheck disable=SC2016 # a jq program: $ is jq's
+  jq -c --arg id "$1" --arg p "$W/${1%@*}" --argjson e "${2:-true}" '. + [{id: $id, enabled: $e, installPath: $p}]' \
+    "$CLAUDE_FAKE/plugins.json" >"$W/plugins.json" && mv "$W/plugins.json" "$CLAUDE_FAKE/plugins.json"
+}
 
 # What the next runs do: their script (see scripts/fake/claude).
 runs_do() { printf '%s\n' "$1" >"$CLAUDE_FAKE/script"; }

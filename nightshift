@@ -8,7 +8,7 @@
 #   nightshift stop                      stop the service (until `nightshift start`)
 #   nightshift stop <owner/repo>#<n>     stop an issue's running agent
 #   nightshift logs [<owner/repo>#<n>] [-f] [-v…]  what every issue (or one) does, at a level
-#   nightshift add <owner/repo> <clone> [instructions=<path>] [auto_merge=false]  watch a repo, using this clone of it (and these instructions for its runs; auto_merge=false: its PRs wait for you)
+#   nightshift add <owner/repo> <clone> [instructions=<path>] [auto_merge=false] [plugins=<name>,…]  watch a repo, using this clone of it (and these instructions and plugins for its runs; auto_merge=false: its PRs wait for you)
 #   nightshift label <status>            (in a run) set its issue's status label
 #   nightshift build                     (in a run) build the approved plan, in a fresh session if it's the planning one
 #   nightshift doctor                    check the tools and setup it needs on this machine
@@ -365,14 +365,14 @@ write_instructions() {
 
 # Tools a run may use without asking, on top of the permission mode: the ones
 # that reach GitHub, which an automatic reviewer might otherwise hold back.
-ALLOWED_TOOLS='Bash(gh issue *) Bash(gh pr *) Bash(gh repo view *) Bash(gh api *) Bash(git *) Bash(signalbox *) Bash(boop *) Bash(nightshift label *)'
+ALLOWED_TOOLS='Bash(gh issue *) Bash(gh pr *) Bash(gh repo view *) Bash(gh api *) Bash(git *) Bash(nightshift label *)'
 
 # Runs are isolated from the machine's own Claude setup:
 # no user-level skills, settings, plugins or hooks, only the repo's own and
-# nightshift's plugin (its copy in $NS/plugin, which install.sh keeps), plus
-# rn-agent when it's installed. Attribution in commits and pull requests is
-# off; the plugin's instructions.md, in the worktree's CLAUDE.local.md, says
-# what else to do (see write_instructions).
+# nightshift's plugin (its copy in $NS/plugin, which install.sh keeps). Every
+# run also gets the plugins its repo line names (plugins=). Attribution in
+# commits and pull requests is off; the plugin's instructions.md, in the
+# worktree's CLAUDE.local.md, says what else to do (see write_instructions).
 # A settings JSON member, joined into the run's --settings.
 ATTRIBUTION_OFF='"attribution":{"commit":"","pr":""}'
 
@@ -381,10 +381,20 @@ ATTRIBUTION_OFF='"attribution":{"commit":"","pr":""}'
 # clone's personal notes shouldn't change runs. A settings JSON member.
 md_excludes() { printf '"claudeMdExcludes":["%s/CLAUDE.md","%s/.claude/CLAUDE.md","%s/CLAUDE.local.md"]' "$1" "$1" "$1"; }
 
-# rn-agent's plugin directory, if it's installed and enabled.
-rn_agent_dir() {
-  d=$(claude plugin list --json 2>/dev/null | jq -r 'first(.[] | select((.id | startswith("rn-agent@")) and .enabled) | .installPath) // empty' 2>/dev/null)
-  [ -n "$d" ] && [ -d "$d" ] && printf '%s' "$d"
+# Plugin $1's directory (`name`: from any marketplace; `name@marketplace`:
+# that one), if it's installed and enabled. Else 1 if it isn't installed, 2
+# (and its id) if it isn't enabled.
+plugin_dir() {
+  # shellcheck disable=SC2016 # a jq program: $ is jq's
+  m='.[] | select(.id == $n or (.id | startswith($n + "@")))'
+  l=$(claude plugin list --json 2>/dev/null)
+  d=$(printf '%s' "$l" | jq -r --arg n "$1" "first($m | select(.enabled) | .installPath) // empty" 2>/dev/null)
+  if [ -n "$d" ] && [ -d "$d" ]; then printf '%s' "$d"
+  elif [ -z "$d" ] && i=$(printf '%s' "$l" | jq -er --arg n "$1" "first($m | .id)" 2>/dev/null); then
+    printf '%s' "$i"
+    return 2
+  else return 1
+  fi
 }
 
 # Claude, for a run of $repo#$n with $resume, in the current
@@ -407,8 +417,14 @@ run_claude() {
   else
     settings="$ATTRIBUTION_OFF,$settings"
     set -- "$@" --setting-sources project,local --plugin-dir "$NS/plugin"
-    rn=$(rn_agent_dir) && set -- "$@" --plugin-dir "$rn"
   fi
+  # The plugins the repo line names; one that isn't there: without it.
+  for p in $(repo_option "$repo" plugins | tr ',' ' '); do
+    if pd=$(plugin_dir "$p"); then set -- "$@" --plugin-dir "$pd"
+    elif [ $? = 2 ]; then printf "0\t=== plugin %s isn't enabled: this run goes without it\n" "$p" >>"$dir/log"
+    else printf "0\t=== plugin %s isn't installed: this run goes without it\n" "$p" >>"$dir/log"
+    fi
+  done
   set -- "$@" --settings "{$settings}"
   exec claude "$@" </dev/null
 }
@@ -606,7 +622,6 @@ $intro"
     [ "$(cat "$dir/pr" 2>/dev/null)" = "$pr" ] || log "$repo#$n: pull request $pr"
     echo "$pr" >"$dir/pr"
     if [ -z "$(git -C "$wt" status --porcelain 2>/dev/null)" ]; then
-      (cd "$wt" && signalbox down --detached-only >/dev/null 2>&1) || true
       git -C "$clone" worktree remove --force "$wt" 2>>"$dir/log" && rm -f "$dir/worktree"
     fi
   fi
@@ -866,7 +881,6 @@ retire() {
   wt="$3/.claude/worktrees/issue-$2"
   branch="nightshift/issue-$2"
   if [ -d "$wt" ] && [ -z "$(git -C "$wt" status --porcelain 2>/dev/null)" ]; then
-    (cd "$wt" && signalbox down --detached-only >/dev/null 2>&1) || true
     git -C "$3" worktree remove --force "$wt" 2>>"$4/log"
   fi
   if [ "$5" = "PR merged" ] && [ ! -d "$wt" ] && git -C "$3" rev-parse -q --verify "refs/heads/$branch" >/dev/null; then
@@ -1418,7 +1432,6 @@ see nightshift logs --help"
 # gh for `pr create --attach`, jq for `strflocaltime`, and claude the version
 # its run flags were checked on.
 MIN_GIT=2.31 MIN_GH=2.99 MIN_JQ=1.6 MIN_CLAUDE=2.1.286
-RN_INSTALL='curl -fsSL https://raw.githubusercontent.com/hvalec427/rn-agent/master/install.sh | sh'
 
 # Whether version $1 is at least $2 (dot-separated numbers; 2.1.0-dev is 2.1.0).
 version_ge() {
@@ -1428,12 +1441,11 @@ version_ge() {
   }'
 }
 
-# A doctor line: ok, or what's wrong and how to fix it (counted while
-# $required is 1).
+# A doctor line: ok, or what's wrong and how to fix it (counted).
 pass() { printf '  ok      %s\n' "$1"; }
 fail() {
   printf '  %-7s %s: %s\n' "$1" "$2" "$3"
-  [ "$required" -eq 1 ] && problems=$((problems + 1))
+  problems=$((problems + 1))
   return 0
 }
 
@@ -1498,13 +1510,21 @@ runs_line() {
   pass "runs: $m, $e${unset:+ (set $unset in $CONFIG to choose)}"
 }
 
-# A clone whose app is React Native.
-is_rn() { grep -q '"react-native" *:' "$1/package.json" 2>/dev/null; }
+# doctor's lines for the plugins repo $1's line names (plugins=).
+repo_plugins() {
+  for p in $(repo_option "$1" plugins | tr ',' ' '); do
+    if [ -z "$cv" ] || ! command -v jq >/dev/null; then fail "?" "$1: plugin $p" "needs claude and jq to check"
+    elif id=$(plugin_dir "$p"); then pass "$1: plugin $p"
+    elif [ $? = 2 ]; then fail missing "$1: plugin $p" "enable it: claude plugin enable $id"
+    else fail missing "$1: plugin $p" "claude plugin install $p"
+    fi
+  done
+}
 
 # `doctor`: everything nightshift needs on this machine, what's missing and how
 # to get it. Fails when something required is.
 cmd_doctor() {
-  problems=0 required=1
+  problems=0
   version_line
   echo "always needed"
   tool git "$(git --version 2>/dev/null | awk '{print $3}')" $MIN_GIT \
@@ -1543,17 +1563,13 @@ cmd_doctor() {
     printf '  %-7s %s\n' note "$NS/instructions.md is ignored now: runs use nightshift's defaults"
 
   echo "repos"
-  rn=""
   r=$(repos)
   [ -n "$r" ] || echo "  none watched yet: nightshift add <owner/repo> <clone>"
   while read -r repo clone; do
     [ -n "$repo" ] || continue
     if ! git -C "$clone" rev-parse --git-dir >/dev/null 2>&1; then
       fail missing "$repo: its clone ($clone)" "clone it there, or fix its repo line in $CONFIG"
-      continue
-    fi
-    is_rn "$clone" && rn="${rn:+$rn, }$repo"
-    if [ -z "$ghv" ]; then fail "?" "$repo: its \`$LABEL\` label" "needs gh to check"
+    elif [ -z "$ghv" ]; then fail "?" "$repo: its \`$LABEL\` label" "needs gh to check"
     elif gh api "repos/$repo/labels/$LABEL" >/dev/null 2>&1; then
       if auto_merges "$repo"; then pass "$repo: clone $clone, \`$LABEL\` label, PRs merge on their own"
       else pass "$repo: clone $clone, \`$LABEL\` label, PRs wait for you (auto_merge=false)"
@@ -1567,6 +1583,7 @@ cmd_doctor() {
     fi
     tracks_local_md "$clone" &&
       fail tracked "$repo: CLAUDE.local.md, so runs don't get nightshift's instructions" "untrack it: git -C $clone rm --cached CLAUDE.local.md"
+    repo_plugins "$repo"
     # A hint, not a problem: nightshift deletes its own merged branches.
     [ -n "$ghv" ] && [ "$(gh api "repos/$repo" -q .delete_branch_on_merge 2>/dev/null)" = false ] &&
       printf '  %-7s %s\n' hint "$repo: GitHub keeps merged branches (\"Automatically delete head branches\" is off); nightshift deletes its own, and for the rest: gh repo edit $repo --delete-branch-on-merge"
@@ -1574,28 +1591,17 @@ cmd_doctor() {
 $r
 EOF
 
-  if [ -n "$rn" ]; then echo "React Native (needed: $rn)"
-  else echo "React Native (optional: no watched repo is React Native)"; required=0
-  fi
-  plugin rn-agent "rn-agent plugin" "$RN_INSTALL"
-  tool signalbox "$(signalbox --version 2>/dev/null | awk '{print $2}')" "" "$RN_INSTALL" ""
-  tool boop "$(boop --version 2>/dev/null | awk '{print $2}')" "" "$RN_INSTALL" ""
-  tool tmux "$(tmux -V 2>/dev/null | awk '{print $2}')" "" "brew install tmux" ""
-  if xv=$(xcodebuild -version 2>/dev/null | awk 'NR == 1 {print $2}') && [ -n "$xv" ]; then pass "Xcode $xv"
-  elif [ -d /Applications/Xcode.app ]; then fail "not set" "Xcode" "sudo xcode-select -s /Applications/Xcode.app"
-  else fail missing "Xcode" "install it from the App Store, then sudo xcode-select -s /Applications/Xcode.app"
-  fi
-
   echo
   if [ $problems -eq 0 ]; then echo "all good"
   else echo "$problems to fix, then run nightshift doctor again"; return 1
   fi
 }
 
-# `add <owner/repo> <clone path> [instructions=<path>] [auto_merge=false]`: the repo line, with
-# the clone's and the instructions file's absolute paths (`~/` is home).
+# `add <owner/repo> <clone path> [instructions=<path>] [auto_merge=false] [plugins=<name>,…]`:
+# the repo line, with the clone's and the instructions file's absolute paths
+# (`~/` is home), and the other options as given.
 cmd_add() {
-  use="usage: nightshift add <owner/repo> <clone path> [instructions=<path>] [auto_merge=false]"
+  use="usage: nightshift add <owner/repo> <clone path> [instructions=<path>] [auto_merge=false] [plugins=<name>,…]"
   [ $# -ge 2 ] || die "$use"
   repo=$1 clone=$(cd "$2" 2>/dev/null && pwd -P) || die "$2 doesn't exist"
   shift 2
@@ -1610,8 +1616,10 @@ cmd_add() {
       case "$f" in *" "*) die "$f: the instructions file's path can't have spaces" ;; esac
       opts="$opts instructions=$f"
       ;;
-    auto_merge=false) opts="$opts $o" ;;
-    *) die "$use" ;;
+    auto_merge=false | plugins=?*) opts="$opts $o" ;;
+    *=) die "$use (${o%=} needs a value)" ;;
+    *=*) die "$use (${o%%=*} isn't an option)" ;;
+    *) die "$use ($o isn't key=value)" ;;
     esac
   done
   git -C "$clone" rev-parse --git-dir >/dev/null 2>&1 || die "$clone isn't a git checkout"

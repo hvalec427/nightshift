@@ -13,8 +13,8 @@ Pocock's `tdd` skill (see `THIRD_PARTY.md` in the plugin).
 Build the tickets in order, one at a time, in this worktree:
 
 - Each ticket test-first where it has logic to test (**test first**, below), checked the
-  way the repo is checked: in a React Native app, on its own simulator with the run-app
-  skill; elsewhere with the project's build, typecheck, lint and tests. Run them in the
+  way the repo is checked: with the project's build, typecheck, lint and tests, and in
+  the running app the way the project's instructions say to check it. Run them in the
   foreground and wait for them, however long they take: a run ends when you stop.
 - Commit each ticket on its own, in the repo's and the user's commit style, and post a
   short `progress` comment: what the ticket delivered and how it was checked.
@@ -105,4 +105,4 @@ fetcher.
   each cycle inform the next.
 - **Refactor after,** with the tests green, not inside the loop.
 - A repo without tests at that seam: check the ticket the way the repo is checked (build,
-  typecheck, lint, a scratch run, the simulator), and say so in the `progress` comment.
+  typecheck, lint, a scratch run, the running app), and say so in the `progress` comment.

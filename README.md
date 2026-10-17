@@ -6,10 +6,10 @@ its tickets), builds the tickets in order once you say **go**, and opens a pull
 request. You only ever reply on the issue.
 
 It runs on a machine of yours (your Mac, a Mac mini, a macOS VM), polling GitHub,
-so nothing is added to your repos and no admin rights are needed. In a React
-Native repo, with [rn-agent](https://github.com/hvalec427/rn-agent) installed,
-each change is checked on a simulator of its own and the pull request gets
-screenshots and a recording.
+so nothing is added to your repos and no admin rights are needed. A repo's runs
+load the Claude Code plugins its line names, and follow its own instructions on
+how to check and show a change, so a pull request can come with screenshots and
+a recording (see [Plugins](#plugins)).
 
 ## Install
 
@@ -42,8 +42,9 @@ Then:
 2. `gh auth login` (gh 2.99 or newer, for screenshots in pull requests).
 3. For each repo: a clone of it on the machine, then
    `nightshift add <owner/repo> <path to the clone>`, with
-   `instructions=<file>` for the project's own rules (see below). That also
-   creates its `agent` label and the status labels.
+   `instructions=<file>` for the project's own rules (see below) and
+   `plugins=<name>,…` for the plugins its runs need (see [Plugins](#plugins)).
+   That also creates its `agent` label and the status labels.
    nightshift merges the repo's pull requests itself; to merge them yourself,
    add `auto_merge=false` (see [Config](#config)).
 
@@ -53,7 +54,9 @@ Then:
 nightshift version that runs (and, on a release, whether a newer one is out):
 what's installed and its version, gh's login, a Claude token, nightshift's
 plugin, and each watched repo's clone and `agent` label (with a hint when GitHub
-keeps merged branches there). It says what's missing and how to get it, and
+keeps merged branches there), then a line for each plugin its repo line names:
+`ok`, or `missing` with how to install it (`claude plugin install <name>`) or
+enable it (`claude plugin enable <id>`). It says what's missing and how to get it, and
 fails when something required is; `nightshift start` won't start the service until
 nothing is.
 
@@ -66,17 +69,8 @@ Always:
 | [Claude Code](https://claude.com/claude-code) (`claude`), with a token in `~/.nightshift/token` (or logged in) | the runs | 2.1.286 (the version its run flags were checked on) |
 | jq | reading GitHub's and Claude's JSON, and the logs | 1.6 |
 
-For React Native repos (required once a watched repo's `package.json` has
-`react-native`; optional otherwise), all from
-[rn-agent's installer](https://github.com/hvalec427/rn-agent) except tmux and Xcode:
-
-| Tool | For |
-|---|---|
-| the rn-agent plugin | the run-app skill and its session hooks |
-| signalbox | Metro, builds and a simulator per run |
-| boop | screenshots, taps and recordings |
-| tmux | signalbox's sessions (`brew install tmux`) |
-| Xcode, selected (`sudo xcode-select -s /Applications/Xcode.app`) | building and simulating the app |
+What a repo's runs need beyond that comes with the plugins its line names
+(see [Plugins](#plugins)).
 
 ## Working an issue
 
@@ -234,7 +228,7 @@ that goes after another waits for it, then merges after that update run.
 
 ```
 repo hvalec427/nightshift /Users/me/dev/nightshift
-repo me/app /Users/me/dev/app instructions=/Users/me/notes/app.md
+repo me/app /Users/me/dev/app instructions=/Users/me/notes/app.md plugins=web-tools
 repo hvalec427/other /Users/me/dev/other auto_merge=false
 allowed_users=hvalec427
 max_parallel=2
@@ -243,15 +237,21 @@ model=opus
 effort=high
 ```
 
-- `repo <owner/repo> <clone> [key=value …]`: a watched repo, its clone, then
-  its options in any order. `instructions=` names a file of the project's own
-  rules for runs (below); `nightshift doctor` says when it's missing.
-  `auto_merge=false` makes its pull requests wait for you to merge; without
-  it, nightshift merges them on its own. It's on by default, so repos added
-  before it start merging on their own after an upgrade. `status` and `doctor`
-  say which repos have it off.
+- `repo <owner/repo> <clone path> [key=value …]`: a watched repo and its clone
+  (spaces in the path are fine), then its options, in any order:
+  - `instructions`: a file of the project's own rules for runs (below);
+    `nightshift doctor` says when it's missing.
+  - `auto_merge=false` makes its pull requests wait for you to merge; without
+    it, nightshift merges them on its own. It's on by default, so repos added
+    before it start merging on their own after an upgrade. `status` and
+    `doctor` say which repos have it off.
+  - `plugins`: the Claude Code plugins its runs load, comma-separated:
+    `plugins=web-tools,other@marketplace`. A name matches that plugin from any
+    marketplace; `name@marketplace`, that one. Each must be installed and
+    enabled (`claude plugin install …`); one that isn't, the run goes without,
+    and its log says so. Without `plugins=`, runs get only nightshift's plugin.
 - `allowed_users`: whose labels and comments count (default: your gh account).
-- `max_parallel`: issues worked at once (each may run a simulator).
+- `max_parallel`: issues worked at once (each may run its app).
 - `interval`: seconds between polls (default 5). A poll that finds nothing new
   costs no rate limit: the issues list is asked with the ETag of its last
   answer, and GitHub's `304 Not Modified` doesn't count. The pull requests are
@@ -273,13 +273,14 @@ effort=high
   `nightshift doctor` shows both, and flags an effort that isn't one of these.
 
 Runs use Claude Code's `auto` permission mode. Commands that reach GitHub (`gh`,
-`git`) and signalbox and boop are always allowed. Runs are isolated from the
+`git`) are always allowed; what else a repo's runs may do goes in its committed
+`.claude/settings.json`. Runs are isolated from the
 machine's own user-level setup, so every machine works an issue the same way: no
 skills from `~/.claude/skills`, no `~/.claude/settings.json`,
 `~/.claude/CLAUDE.md`, plugins, hooks or MCP servers of yours. A run loads the
 repo's own `.claude` setup, nightshift's plugin (its copy in
-`~/.nightshift/plugin`, which the install keeps up to date) and, when it's
-installed, rn-agent; commits and pull requests get no Claude attribution.
+`~/.nightshift/plugin`, which the install keeps up to date) and the plugins
+its repo line names; commits and pull requests get no Claude attribution.
 `isolated=` and `permission_mode=` lines from older versions are ignored
 (`nightshift doctor` notes them).
 
@@ -303,12 +304,40 @@ learn about a project belongs in its committed `CLAUDE.md`. A
 `~/.nightshift/instructions.md` from an older version is ignored (`nightshift
 doctor` notes it).
 
+## Plugins
+
+A repo's runs load nightshift's plugin and the ones its line names
+(`plugins=`, see [Config](#config)), nothing else. The rest of what its runs
+need is in the repo's own committed setup: the tools they may use in its
+`.claude/settings.json`, and how to check and show a change (screenshots, a
+recording) in its `CLAUDE.md` (or its `instructions=` file). Installing the
+plugins and the tools they drive is up to each machine; the repo's `CLAUDE.md`
+lists them, and `nightshift doctor` says which named plugins are missing.
+
+A React Native repo that relied on [rn-agent](https://github.com/hvalec427/rn-agent)
+being loaded in every run gets it back with:
+
+- `plugins=rn-agent` on its line: `nightshift add me/app ~/dev/app plugins=rn-agent`.
+- signalbox and boop allowed in its committed `.claude/settings.json`:
+
+  ```json
+  {
+    "permissions": {
+      "allow": ["Bash(signalbox *)", "Bash(boop *)"]
+    }
+  }
+  ```
+
+- In its `CLAUDE.md` (or `instructions=` file), how to show a change: e.g. run the app on its own
+  simulator, take screenshots and a recording with boop into a git-excluded
+  folder, and stop the app with `signalbox down --detached-only` when done.
+
 ## A dedicated machine
 
 A Mac mini, or a macOS VM on Apple silicon (Tart, UTM): iOS simulators need macOS,
 so a Linux VM only works for non-mobile repos. Set it up to stay logged in:
-automatic login, `sudo pmset -a sleep 0`, Xcode selected
-(`sudo xcode-select -s /Applications/Xcode.app`), then the install above. For a
+automatic login, `sudo pmset -a sleep 0`, and what your repos' tools need (for
+iOS, Xcode), then the install above. For a
 separate identity, log `gh` in as a second GitHub account (invite it to your repos;
 in an organisation, an admin adds it).
 
@@ -316,8 +345,8 @@ in an organisation, an admin adds it).
 
 The plugin's `finish` skill works in any Claude Code session too: in a
 `claude --worktree <name>` session, say **finish** and it commits, pushes, opens
-the pull request (with screenshots and a recording when the app is running there)
-and removes the worktree.
+the pull request (showing the change as the project's instructions say) and
+removes the worktree.
 
 ## Releases
 

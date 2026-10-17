@@ -74,8 +74,8 @@ them with the plan.
 **Testing decisions**
 - The seams under test, each with what it catches and misses
 - Prior art: similar tests in the codebase
-- How the change is checked beyond tests (the project's build, typecheck, lint; a
-  simulator in a React Native app)
+- How the change is checked beyond tests (the project's build, typecheck, lint; the
+  running app, the way the project's instructions say)
 
 **Out of scope:** what this doesn't do.
 ```

@@ -65,6 +65,9 @@ expect_line "comments name the skill that wrote them" "$(cat "$ISSUE")" \
 expect "no skill sets the status label: the watcher does, from the skill" \
   "$(grep -l 'nightshift label' "$SKILLS"/*/SKILL.md | sed "s|^$SKILLS/||")" ""
 
+expect "no skill names a project's own plugin or its tools" \
+  "$(grep -liE 'rn-agent|run-app|signalbox|boop' "$SKILLS"/*/SKILL.md | sed "s|^$SKILLS/||")" ""
+
 expect "the issue skill is its SKILL.md alone, the stages' guidance in their skills" \
   "$(cd "$SKILLS/issue" && find . -type f)" "./SKILL.md"
 
