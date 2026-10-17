@@ -1148,10 +1148,11 @@ definition_effort() {
 # subagents it started, in the order they ran, and a Total row ($total, the
 # issue's dollars; tokens and seconds of the runs, tools of all rows).
 # Tokens, dollars, seconds and tools are numbers, `-` where unknown. A
-# subagent's dollars are an estimate, `~` and its `spent` tokens (its turns')
-# at the rate of its model in the run (the run's `byModel`: dollars over
-# tokens); a run's are its own less those, at least 0, so the rows add up to
-# the total unless the estimates overshoot the run's dollars.
+# subagent's tokens are its `spent` (its turns', its result's on an older
+# line), and its dollars an estimate, `~` and those tokens at the rate of its
+# model in the run (the run's `byModel`: dollars over tokens); a run's are its
+# own less those, at least 0, so the rows add up to the total unless the
+# estimates overshoot the run's dollars.
 # shellcheck disable=SC2016 # a jq program: $ is jq's
 AGENT_ROWS='[inputs | fromjson? | objects | select(.kind == "session" or .kind == "agent")] as $all
   | ($eff | split("\n") | map(split("\t") | select(length == 3))) as $efforts
@@ -1171,7 +1172,7 @@ AGENT_ROWS='[inputs | fromjson? | objects | select(.kind == "session" or .kind =
         $r.tokens // "-", (if $r.usd == null then "-" else [$r.usd - ([$subs[].est // 0] | add), 0] | max end), $r.secs // "-", $r.tools // "-"],
        ($subs[]
         | ["↳ \(.type | own) · \(.description // "" | text)", .model // "–", (.type | effort("agent")) // "default",
-           (.skills | map(skill) | cell), .tokens // "-", (if .est == null then "-" else "~\(.est)" end), .secs // "-", .tools // "-"])] as $rows
+           (.skills | map(skill) | cell), .spent // .tokens // "-", (if .est == null then "-" else "~\(.est)" end), .secs // "-", .tools // "-"])] as $rows
   | $rows[],
     (select($runs != []) | ["**Total**", "–", "–", "–", ([$runs[].tokens // 0] | add), $total, ([$runs[].secs // 0] | add), ([$rows[][7] | numbers] | add)])
   | map(tostring) | join("\t")'

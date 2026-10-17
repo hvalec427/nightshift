@@ -306,7 +306,7 @@ finish() { gh_state o/r "$1" closed; poll; }
   own_plugin
   gh_issue o/r 7 alice agent
   runs_do "costs 1 $OPUS 1000 2000 3000 4000; turn $OPUS 5 100 0; skill nightshift:issue; skill nightshift:questions
-    agent toolu_1 Explore 'Find the cost code'; turn $HAIKU 5 10 0 toolu_1; agent_result toolu_1 $HAIKU 30000 61000 12
+    agent toolu_1 Explore 'Find the cost code'; turn $HAIKU 0 29999 0 toolu_1; agent_result toolu_1 $HAIKU 30000 61000 12
     comment questions"
   poll
   gh_comment o/r 7 alice "1 yes" >/dev/null
@@ -330,7 +330,7 @@ finish() { gh_state o/r "$1" closed; poll; }
 | ↳ Explore · Find the cost code | haiku-4-5 | default | – | 30k | – | 1m | 12 |
 | plan run | opus-5-5 | per skill | issue (low), plan (high) | 2k | $1.00 | S | 3 |
 | build run | opus-5-5, sonnet-4-5 | per skill | issue (low), build (high) | 480k | $1.65 | S | 5 |
-| ↳ ticket · Build T1 | sonnet-4-5 | high | tdd | 60k | ~$0.60 | 7m | 16 |
+| ↳ ticket · Build T1 | sonnet-4-5 | high | tdd | 120k | ~$0.60 | 7m | 16 |
 | ↳ spec-review · Review the spec | opus-5-5 | default | – | 40k | ~$0.25 | 2m | 9 |
 | **Total** | – | – | – | 492k | $4.50 | S | 49 |'
   expect_line "three runs: a time line" "$(gh_comments o/r 7)" \
@@ -341,7 +341,7 @@ finish() { gh_state o/r "$1" closed; poll; }
   expect_no_unexpected)
 
 # Efforts come from a repo plugin's agents and skills too; a subagent that
-# hadn't finished has no numbers; an unnamed stage is a plain session.
+# hadn't finished has only the tokens of its turns so far; an unnamed stage is a plain session.
 (world
   own_plugin
   plugin other@m
@@ -355,7 +355,7 @@ finish() { gh_state o/r "$1" closed; poll; }
   finish 7
   expect "a repo plugin's agent and skill: their efforts, its prefix kept" "$(table 7 | tail -3)" \
 '| run | – | per skill | issue (low), other:lint (low), other:nothing | 4 | $1.00 | S | 4 |
-| ↳ other:helper · Help \| out | haiku-4-5 | max | tdd | – | – | – | 1 |
+| ↳ other:helper · Help \| out | haiku-4-5 | max | tdd | 106 | – | – | 1 |
 | **Total** | – | – | – | 4 | $1.00 | S | 5 |'
   expect_no_unexpected)
 
@@ -419,7 +419,7 @@ finish() { gh_state o/r "$1" closed; poll; }
     '**Time:** 5m: 3m working · 30s waiting on you · 1m other waits'
   expect "under the table, after a blank line" "$(gh_comments o/r 7 | grep -B2 '^\*\*Time' | sed -n '1p;2p' | tr '\n' '~')" '| **Total** | – | – | – | 600 | $7.50 | 3m | 13 |~~')
 
-# A subagent's cost is the tokens of its turns (`spent`, not its result's
+# A subagent's tokens and cost are the tokens of its turns (`spent`, not its result's
 # last-turn `tokens`; a message streamed as several events counted once) at
 # the rate of its model in that run (the run's dollars over its tokens), `~`-marked as an estimate; its run's row is
 # the run's dollars less those, never below 0. No split, an unfinished
@@ -445,8 +445,8 @@ finish() { gh_state o/r "$1" closed; poll; }
   finish 7
   expect "estimates from the run's split; the run's row is the rest, at least 0" "$(table 7 | sed 1,2d | sed 's/| [0-9][0-9]*m |/| T |/;s/| [0-9][0-9]*s |/| T |/')" \
 '| plan run | opus-5-5 | per skill | plan (high) | 1k | $0.50 | T | 2 |
-| ↳ Explore · Two | haiku-4-5 | default | – | 20 | ~$0.05 | T | 1 |
-| ↳ Explore · Three | opus-5-5 | default | – | 30 | ~$0.45 | T | 1 |
+| ↳ Explore · Two | haiku-4-5 | default | – | 200 | ~$0.05 | T | 1 |
+| ↳ Explore · Three | opus-5-5 | default | – | 300 | ~$0.45 | T | 1 |
 | ↳ Explore · Not done | haiku-4-5 | default | – | – | – | – | 1 |
 | ↳ Explore · Other model | sonnet-4-5 | default | – | 100 | – | T | 1 |
 | build run | opus-5-5 | per skill | build (high) | 1k | $0.00 | T | 2 |
