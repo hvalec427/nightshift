@@ -374,20 +374,19 @@ write_instructions() {
     return
   fi
   rm -f "$1/CLAUDE.local.md"
-  wi_first=1
+  [ -f "$NS/plugin/instructions.md" ] && cp "$NS/plugin/instructions.md" "$1/CLAUDE.local.md"
+  wi_more=""
   for wi_f in "$1"/.nightshift/instructions/*.md; do
     [ -f "$wi_f" ] || continue
-    if [ -n "$wi_first" ] && [ -f "$NS/plugin/instructions.md" ]; then
-      cp "$NS/plugin/instructions.md" "$1/CLAUDE.local.md"
+    # Before the first, the heading (under nightshift's); then a blank line
+    # between files, so they don't run together.
+    if [ -n "$wi_more" ]; then printf '\n' >>"$1/CLAUDE.local.md"
+    elif [ -f "$1/CLAUDE.local.md" ]; then
       printf "\n# This project's instructions\n\nThese come after nightshift's and win where the two disagree.\n\n" >>"$1/CLAUDE.local.md"
     fi
-    # A blank line between files, so they don't run together.
-    [ -n "$wi_first" ] || printf '\n' >>"$1/CLAUDE.local.md"
     cat "$wi_f" >>"$1/CLAUDE.local.md"
-    wi_first=""
+    wi_more=1
   done
-  # None: nightshift's alone.
-  [ -n "$wi_first" ] && [ -f "$NS/plugin/instructions.md" ] && cp "$NS/plugin/instructions.md" "$1/CLAUDE.local.md"
   return 0
 }
 
@@ -595,7 +594,7 @@ $intro"
   log "$repo#$n: run starting"
   t0=$(date +%s)
   printf '\n0\t=== %s run\n' "$(date '+%Y-%m-%d %H:%M:%S')" >>"$dir/log"
-  write_instructions "$wt" "$dir" "$repo"
+  write_instructions "$wt" "$dir"
   # The events go to out.jsonl as they come, and readably into the log and,
   # tagged with the issue, into watch.log (closed after each line, which
   # trimming replaces).

@@ -277,8 +277,10 @@ interval=5
   it's merged. `status` and `doctor` use the last fetch. Without the file or a
   key, the defaults apply.
   - `auto_merge=false` makes its pull requests wait for you to merge; without
-    it, nightshift merges them on its own. `status` and `doctor` say which
-    repos have it off.
+    it, nightshift merges them on its own. An `auto_merge=false` left on a
+    repo line from an older version is ignored, so that repo merges on its own
+    after an upgrade until the file has it (`doctor` notes it). `status` and
+    `doctor` say which repos have it off.
   - `plugins`: the Claude Code plugins its runs load, comma-separated:
     `plugins=web-tools,other@marketplace`. A name matches that plugin from any
     marketplace; `name@marketplace`, that one. Each must be installed and
