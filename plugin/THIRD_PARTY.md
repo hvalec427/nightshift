@@ -2,9 +2,11 @@
 
 The guidance in the `questions`, `plan`, `diagnose`, `build`, `tdd`, `finish` and `review` skills is
 adapted from Matt Pocock's skills (`grilling` in `questions`, `to-spec` and `to-tickets` in
-`plan`, `diagnosing-bugs` in `diagnose`, `implement-spec` in `build`, `tdd` in `tdd`, `pr` in `finish`, `code-review` in
-`review`),
-https://github.com/mattpocock/skills, under the MIT License:
+`plan`, `diagnosing-bugs` in `diagnose`, `implement-spec` in `build`, `tdd` in `tdd`,
+`pr` in `finish`, `code-review` in `review`), and every skill and agent is written by his
+`writing-for-agents` (leading words, positive wording, a completion check per step,
+reference in sibling files, no-ops pruned), https://github.com/mattpocock/skills, under the
+MIT License:
 
 ```
 MIT License

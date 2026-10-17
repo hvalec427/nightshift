@@ -1,6 +1,6 @@
 ---
 name: issue
-description: Work a GitHub issue end to end, unattended, talking to the user only through the issue: clarify it, plan it as a spec and tickets, build the tickets in order, open a pull request. Use when nightshift starts you on an issue.
+description: Work a GitHub issue end to end, unattended, through the issue's comments alone. Use when nightshift starts you on an issue.
 user-invocable: false
 model: sonnet
 effort: low
@@ -8,10 +8,10 @@ effort: low
 
 # Work an issue
 
-You run unattended, one run at a time: each run ends when you've done what you can until
-the user replies, and their next comment on the issue starts the next run, in this same
-session. The issue thread is your only channel, so every question, plan and report goes
-there as a comment; nobody reads the terminal.
+You run unattended, one run at a time. A run ends when you've done what you can until the
+user replies; their next comment on the issue starts the next run, in this same session.
+The issue thread is your only channel: every question, plan and report goes there as a
+comment, because nobody reads the terminal.
 
 ## Comments
 
@@ -25,64 +25,64 @@ Write every comment with `gh issue comment <n> --body-file <file>`, as:
 <!-- nightshift --> <!-- nightshift:<stage> -->
 ```
 
-`<!-- nightshift -->` is how the watcher tells your comments from the user's; keep it in
-every one. The stages are `questions`, `answer`, `plan`, `progress`, `done`, `blocked`
-and `look`.
-`<skill>` is the skill you're in as you write it (`plan`, `build`, …, or `issue` for a
-comment of this skill's own), so the user can see which guidance wrote it.
+`<!-- nightshift -->` is how the watcher tells your comments from the user's: every one
+carries it. The stages are `questions`, `answer`, `plan`, `progress`, `done`, `blocked`
+and `look`. `<skill>` is the skill you're in as you write it (`plan`, `build`, …, or
+`issue` for a comment of this skill's own), so the user can see which guidance wrote it.
 
-Keep every comment as short as it can be: the user reads them between other things. Lead
-with what they need to know or decide, cut what they already know (the issue, earlier
-comments, what the diff shows), and fold detail they may want into a collapsed
-`<details>` block. Lengths to aim for:
+Write for a reader between other things: **lead** with what they need to know or decide,
+fold detail into a collapsed `<details>` block, and leave out what they already have (the
+issue, earlier comments, what the diff shows). Lengths to aim for:
 
 - `questions`: one line per question or option (the questions skill);
 - `plan`: a minute to read, the full spec collapsed (the plan skill);
 - `progress`, `done`, `blocked`: one or two lines, e.g. "T2 done: short comments in the
   issue skill. Tests and shellcheck pass.";
-- `answer`: the answer first, in a few lines, then where it comes from.
+- `answer`: the answer first, in a few lines, then where it comes from;
 - `look`: a line per thing the user needs to see before it merges (the merge skill).
+
+Done when the comment has the header, the marker and the stage's length.
 
 ## Status label
 
-The issue carries a `nightshift: <status>` label the user can see from the issue list. The
-watcher sets it when a run starts and ends, and from the stage skill the run invokes
-(`nightshift:plan` sets `planning`, `nightshift:build` sets `building`, …), so you never
-set it yourself.
+The issue carries a `nightshift: <status>` label the user sees in the issue list. The
+watcher sets it, when a run starts and ends and from the stage skill the run invokes
+(`nightshift:plan` sets `planning`, `nightshift:build` sets `building`, …). Leave it to the
+watcher.
 
 ## The issue's type
 
 The user gives an issue its type with one of GitHub's default labels next to `agent`; the
-prompt names it ("Its type label: `bug`") or says it has none. It changes how you work it:
+prompt names it ("Its type label: `bug`") or says it has none. The type sets how you work:
 
-- **`bug`**: find the cause before anything else: with no plan yet, the
-  `nightshift:diagnose` skill builds a check that fails the way the bug does and proves the
-  cause, then hands on to `nightshift:plan` (step 2 below). The plan is short: the cause,
-  the red check and the hypotheses, the fix and the test, with the tickets. The first
-  ticket turns the minimised repro into a failing test; the fix makes it pass.
+- **`bug`**: cause first. With no plan yet, the `nightshift:diagnose` skill builds a check
+  that fails the way the bug does and proves the cause, then hands on to `nightshift:plan`
+  (step 2 below). The plan is short: the cause, the red check and the hypotheses, the fix
+  and the test, with the tickets. The first ticket turns the minimised repro into a failing
+  test; the fix makes it pass.
 - **`enhancement`**: the steps below, as they are.
 - **`documentation`**: the steps below, kept to the docs; a change to code it needs is a
   question for the user.
 - **`question`**, **`duplicate`**: invoke the `nightshift:answer` skill instead of the
   steps below: it answers the question, or finds the issue this one duplicates, with no
   plan and no pull request.
-- **`invalid`, `wontfix`**: the watcher doesn't run you while either is on the issue, and
-  you never add them yourself.
+- **`invalid`, `wontfix`**: the watcher doesn't run you while either is on the issue; the
+  user alone adds them.
 
-With **no type label**, pick one of these from the issue and the code, add its label
+With **no type label**, pick the type from the issue and the code, add its label
 (`gh issue edit <n> --add-label <type>`), and say in that run's comment which you took
 and why. When the type turns out wrong (the issue, or the user's reply, says it's another
-kind), swap it (`--remove-label <old> --add-label <new>`) and say why. Use only labels
-the repo has (`gh label list`); if it lacks one, work it as that type anyway and say the
-label is missing. Never set a label the prompt says the user changed since your last run:
-theirs stands. Leave labels other than the type and status ones alone.
+kind), swap it (`--remove-label <old> --add-label <new>`) and say why. Use the labels the
+repo has (`gh label list`); when it lacks one, work the issue as that type anyway and say
+the label is missing. A label the prompt says the user changed since your last run stands
+as theirs. Labels other than the type and status ones are the user's.
 
 ## Where the issue stands
 
-Read the thread first (`gh issue view <n> --comments`), then do the first of these that
-applies, and end the run after its comment. Most are a stage with a skill of its own:
-invoke it by name with the Skill tool, and follow it with the rules above; the stage's
-guidance is in that skill, not here.
+Read the thread first (`gh issue view <n> --comments`), take the first case below that
+applies, and end the run after its comment. Most cases are a stage with a skill of its own:
+invoke it by name with the Skill tool and follow it, with the rules above. The stage's
+guidance lives in that skill, not here.
 
 1. **No plan yet, open decisions.** Decisions that are the user's and that the issue and
    the code don't settle: invoke the `nightshift:questions` skill, which asks them.
@@ -111,10 +111,12 @@ guidance is in that skill, not here.
    with the push. Then, when the run prompt says "This repo auto-merges", invoke the
    `nightshift:merge` skill: it checks the updated pull request again.
 
+Done when the run's comment is posted, or the run ended as case 4 says.
+
 ## Overlap with other nightshift work
 
-Other issues are worked on `nightshift/issue-<n>` branches of this same clone, so the
-ones still in progress are local branches, and the finished ones are open pull requests
+Other issues are worked on `nightshift/issue-<n>` branches of this same clone: the ones
+still in progress are local branches, the finished ones open pull requests
 (`gh pr list --state open --json number,headRefName,url`). For each, other than this
 issue's, the files it changes are `git diff --name-only <default branch>...<branch>`
 (fetch first; use `origin/<branch>` when there's no local one). Read its diff where it
@@ -132,29 +134,28 @@ request's, when it has one):
 - `Overlaps with #10: both change nightshift's status. <!-- nightshift:overlaps #10 -->`,
   when this one goes first.
 
-No overlap, nothing to say.
+Done when every other branch and pull request has been compared; no overlap, no lines.
 
 ## Defects you find
 
 A real defect outside this issue that you run into (a bug, broken docs, a failing check)
-gets an issue of its own; an improvement or an idea doesn't. Don't fix it on this branch:
-stay on your issue. File at most three a run, and for each:
+gets an issue of its own; an improvement or an idea stays out. Leave the fix to that issue
+and stay on yours. File at most three a run, and for each:
 
 - look for a duplicate first, open or closed (`gh issue list --state all --search ...`);
   one there, file nothing;
 - file it with `gh issue create`, labelled `agent`, its type (`bug`, `documentation`, …)
-  and `nightshift: proposed`, so it waits for the user (a type the repo lacks, leave
-  off). The body is short: what's wrong
-  and the evidence, ending "Found while working #<n>.";
-- do it yourself, or through a `general-purpose` subagent in the foreground
-  (`run_in_background: false`): the run ends when you stop, and cuts off what's still
+  and `nightshift: proposed`, so it waits for the user (leave off a type the repo lacks).
+  The body is short: what's wrong and the evidence, ending "Found while working #<n>.";
+- file it yourself, or through a `general-purpose` subagent in the foreground
+  (`run_in_background: false`): a run ends when you stop, and cuts off what's still
   running.
 
 Your next comment on this issue names the ones you filed, in one line. Ticket and review
-subagents don't file: they report what they find to you.
+subagents report what they find to you; you file.
 
 ## Bounds
 
-- Stay inside this worktree and this issue; other issues and branches are other runs.
-- Ask through a `questions` or `blocked` comment instead of guessing at the user's
-  decisions; anything else, decide and say what you decided.
+- Work inside this worktree and this issue; other issues and branches are other runs.
+- Ask through a `questions` or `blocked` comment for the user's decisions; decide anything
+  else and say what you decided.
