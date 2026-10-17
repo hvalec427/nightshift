@@ -12,6 +12,9 @@ nightshift's runs read this file and keep it up to date.
 - **stage**: where an issue is (questions, plan, build, update, merge…), shown by its
   `nightshift: …` label and the `<!-- nightshift:<stage> -->` marker on each comment.
 - **ticket**: one vertical slice of an approved plan, built and committed on its own.
+- **small issue**: one the issue skill builds straight from the issue, with no plan or **go**:
+  about 20 lines in one or two files, nothing for the user to decide, no merge look trigger,
+  and on a bug a plain cause. A **full process** reply gets it a plan.
 - **overlap markers**: `<!-- nightshift:after #N -->` and `<!-- nightshift:overlaps #N -->` in
   a PR body, the order PRs should merge in.
 - **world**: a test's throwaway machine from `world()` in `scripts/test-lib.sh`, with the
@@ -19,6 +22,8 @@ nightshift's runs read this file and keep it up to date.
 - **full_suite**: the `.nightshift/config` option for where a repo's whole test suite runs:
   `local` (before each push), `nothing` (never by nightshift), or unset (on CI; locally only
   without CI). An unknown value counts as unset.
+- **test_command**: the `.nightshift/config` option naming the command that runs a repo's whole
+  test suite. The prompt's whole-suite line names it, except under `full_suite=nothing`.
 - **has CI**: a workflow in `.github/workflows/` triggers on `pull_request`, or the repo's latest
   merged pull request lists checks (`gh pr checks`), so external CI counts. It matters only when
   `full_suite` is unset.

@@ -117,6 +117,47 @@ SUITE_NOTHING="^nightshift runs no whole test suite in this repo (full_suite=not
   poll
   expect_line "full_suite only on the issue's branch: the default line" "$(run_prompt)" "$SUITE_CI")
 
+# test_command in .nightshift/config names the command on the suite line: the
+# line's pattern with RUN_IT in place of its closing `$`.
+RUN_IT=" Run it with \`npm test\`\.$"
+
+(world
+  origin_config "test_command=npm test"
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  expect_line "test_command: the default line names it" "$(run_prompt)" "${SUITE_CI%\$}$RUN_IT")
+
+(world
+  origin_config "full_suite=local
+test_command=npm test"
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  expect_line "test_command with full_suite=local: the local line names it" "$(run_prompt)" "${SUITE_LOCAL%\$}$RUN_IT")
+
+(world
+  origin_config "full_suite=nothing
+test_command=npm test"
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  expect_line "test_command with full_suite=nothing: the nothing line, as it is" "$(run_prompt)" "$SUITE_NOTHING")
+
+(world
+  origin_config "test_command="
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  expect_line "an empty test_command: the default line, as it is" "$(run_prompt)" "$SUITE_CI")
+
+(world
+  origin_file .nightshift/config "test_command=npm test" nightshift/issue-7
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  expect_line "test_command only on the issue's branch: the default line, as it is" "$(run_prompt)" "$SUITE_CI")
+
 # A branch can't change its own settings: only the default branch counts.
 (world
   origin_file .nightshift/config "auto_merge=false" nightshift/issue-7

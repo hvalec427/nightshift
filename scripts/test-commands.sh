@@ -96,7 +96,10 @@ $SCAFFOLD"
 #
 # full_suite: where the whole test suite runs. Unset (the default): on CI, and locally only if the
 # repo has no CI checks on its pull requests. local: before each push. nothing: never by nightshift.
-# full_suite=local"
+# full_suite=local
+#
+# test_command: the command that runs the whole test suite (default: runs work it out from the repo's instructions).
+# test_command=npm test"
   expect "add: CONTEXT.md is scaffolded with a heading and what goes in it" "$(cat "$W/other/.nightshift/CONTEXT.md")" \
     "# Context
 
