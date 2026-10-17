@@ -290,6 +290,9 @@ interval=5
     push, `nothing` never has nightshift run it. Unset (or any other value), the
     default: CI runs it, and a run runs it itself only in a repo with no CI checks on
     its pull requests. Every run's prompt carries the setting.
+  - `test_command`: the command that runs the whole test suite (`test_command=npm test`).
+    Where a run may run the suite, its prompt names the command; unset, the run works it
+    out from the repo's instructions.
 - `allowed_users`: whose labels and comments count (default: your gh account).
 - `max_parallel`: issues worked at once (each may run its app).
 - `interval`: seconds between polls (default 5). A poll that finds nothing new

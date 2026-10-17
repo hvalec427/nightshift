@@ -52,6 +52,9 @@ Build the tickets in order, one at a time, in this worktree. The sequence:
      tickets' and the review's checks are all you run;
    - the nothing line, "nightshift runs no whole test suite": they don't run.
 
+   Run the whole suite with the command the line names ("Run it with ..."), when it names
+   one; otherwise work it out from the repo's instructions.
+
    A repo **has CI** when a workflow in `.github/workflows/` triggers on `pull_request`, or
    the repo's latest merged pull request lists checks (`gh pr checks <number>`), so external
    CI counts too. It matters only under the default line.
