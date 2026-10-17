@@ -23,7 +23,7 @@ expect() {
 # Whether $2 has a line matching the grep pattern $3 (with $4 = no, hasn't).
 expect_line() {
   local has=no
-  printf '%s\n' "$2" | grep -q -- "$3" && has=yes
+  grep -q -- "$3" <<<"$2" && has=yes
   if [ "$has" = "${4:-yes}" ]; then echo "ok   $1"
   else
     printf 'FAIL %s\n  expected a line %s: %s\n  in:\n%s\n' "$1" "$([ "${4:-yes}" = yes ] && echo matching || echo "not matching")" "$3" "$(printf '%s\n' "$2" | sed 's/^/    /')"

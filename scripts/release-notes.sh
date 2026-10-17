@@ -15,7 +15,8 @@ for sha in $(git log ${FROM:+"$FROM..HEAD"} --reverse --no-merges --format='%H')
   [[ "$subject" =~ $RE ]] || continue
   type="${BASH_REMATCH[1]}" scope="${BASH_REMATCH[3]}" bang="${BASH_REMATCH[4]}" line="${BASH_REMATCH[5]}"
   [ -n "$scope" ] && line="**$scope:** $line"
-  if [ -n "$bang" ] || git log -1 --format='%b' "$sha" | grep -qE '^BREAKING[ -]CHANGE: '; then breaking+=("$line")
+  body=$(git log -1 --format='%b' "$sha")
+  if [ -n "$bang" ] || grep -qE '^BREAKING[ -]CHANGE: ' <<<"$body"; then breaking+=("$line")
   elif [ "$type" = feat ]; then features+=("$line")
   elif [ "$type" = fix ] || [ "$type" = perf ]; then fixes+=("$line")
   fi
