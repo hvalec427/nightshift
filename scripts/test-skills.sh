@@ -45,6 +45,11 @@ expect_line "with auto_merge=false, a merge reply doesn't merge" "$(flat "$ISSUE
   '`auto_merge=false`[^.]*you don.t merge'
 expect_line "the issue skill lists the look stage" "$(flat "$ISSUE")" 'The stages are [^.]*`look`'
 
+for s in build update; do
+  expect_line "the $s skill says to wait for the checks" \
+    "$(cat "$SKILLS/$s/SKILL.md")" "a run ends when you stop"
+done
+
 # Every relative link to a markdown file in a skill, as "<file>: <target>", that doesn't resolve.
 dangling=""
 while IFS= read -r f; do
@@ -82,6 +87,8 @@ expect "the hook prints nothing in a run" \
   "$(NIGHTSHIFT_ISSUE=7 CLAUDE_PLUGIN_ROOT="$ROOT/plugin" sh -c "$hook")" ""
 expect "the defaults have the CLAUDE.md rules, with the root's budget" \
   "$(grep -c -e '^# CLAUDE.md$' -e '200 lines' "$ROOT/plugin/instructions.md")" 2
+expect "the defaults say a run ends when you stop" \
+  "$(tr '\n' ' ' <"$ROOT/plugin/instructions.md" | grep -c 'A run ends when you stop')" 1
 
 # A run files a real defect it finds outside its issue, held as proposed until the user comments.
 issue=$(cat "$ISSUE")

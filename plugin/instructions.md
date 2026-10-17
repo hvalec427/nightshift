@@ -35,3 +35,12 @@ it alone.
 - **Where.** Keep the root `CLAUDE.md` a short map, under about 200 lines. Knowledge about one
   area goes in a `CLAUDE.md` in that directory, loaded only when a run works there; decisions
   and their reasons go in `docs/adr/`.
+
+# Runs
+
+When nightshift runs you on an issue, the run is one headless turn. A run ends when you
+stop: nothing wakes you when a background task finishes, so whatever you left waiting
+stays undone. Run checks (tests, builds, linters) in the foreground and wait for them,
+even when they're slow. When one outlasts the tool's timeout and moves to the background,
+wait on it in the same turn (a loop that polls its output until it ends). Never end a run
+to wait for something.
