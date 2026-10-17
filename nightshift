@@ -1096,6 +1096,8 @@ check_prs() {
 # goes after, and the cycle's edges in words.
 check_cycles() {
   printf '%s\n' "$3" | awk '
+    # Breadth-first from s: seen is what s reaches, par the way there, and back
+    # the first node found going after s (the end of a shortest loop to s).
     function bfs(s,   h, t, u, k, v) {
       split("", seen); split("", par); split("", q)
       h = 1; t = 1; q[1] = s
@@ -1150,6 +1152,13 @@ check_cycles() {
           else text = text (k == 0 ? " and " : ", ") "#" from "\047s after #" to
           from = to
         }
+        # Members off that loop are named too, so the run turns every after
+        # marker on the cycle.
+        split("", onpath); onpath[low] = 1
+        for (k = 1; k <= len; k++) onpath[path[k]] = 1
+        m = split(members, mem, ","); rest = ""
+        for (k = 1; k <= m; k++) if (!(mem[k] in onpath)) rest = rest (rest == "" ? "" : ", ") "#" mem[k]
+        if (rest != "") text = text " (the cycle takes in " rest " too)"
         print members "|" low "|" path[len] "|" text
       }
     }' | while IFS='|' read -r members low next edges; do

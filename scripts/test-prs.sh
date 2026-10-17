@@ -177,6 +177,13 @@ cycle_world() {
   expect "a pull request that goes after a cycle isn't in it" "$(state 5 cycle)" "5,7"
   expect "and one update run" "$(runs)" 4)
 
+(world
+  cycle_world 5:7,9 7:5 9:7
+  poll
+  expect "a cycle wider than its shortest loop: all its members" "$(state 5 cycle)" "5,7,9"
+  expect_line "each named for the run" "$(run_prompt)" "#7's after #5 (the cycle takes in #9 too), a cycle: this one goes first"
+  expect "and one update run" "$(runs)" 4)
+
 # Retired.
 (world
   built

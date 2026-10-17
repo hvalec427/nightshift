@@ -230,7 +230,10 @@ apply. It runs the checks again, force-pushes (`--force-with-lease`), and says w
 conflict fixes. A conflict that needs your decision gets a question on the issue
 instead. Meanwhile `status` shows `conflicts, rebasing` or `updating after #10`. So
 the pull requests can be merged in any order. With auto-merge on, a pull request
-that goes after another waits for it, then merges after that update run.
+that goes after another waits for it, then merges after that update run. When open
+pull requests go after each other in a loop, so none could merge first, the lowest
+issue's goes first: its run turns its after markers on the loop into overlaps
+markers, merges, and says so on its issue; the others update on top of it.
 
 ## Models
 

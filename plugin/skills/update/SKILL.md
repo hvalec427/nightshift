@@ -33,9 +33,10 @@ the pull requests can merge in any order.
    merged work and add any new ones. Done when the body's lines match the work still open.
    When the run prompt says the pull requests go after each other in a cycle, this one goes
    first: rewrite its `Merge after #N: … <!-- nightshift:after #N -->` lines for the cycle's
-   issues as `Overlaps with #N: … <!-- nightshift:overlaps #N -->`, keeping the reason. The
-   others keep their after markers; they update on top of this one once it merges. Done when
-   none of this body's after markers lead back into the cycle.
+   issues (every one the run prompt names) as
+   `Overlaps with #N: … <!-- nightshift:overlaps #N -->`, keeping the reason. The others
+   keep their after markers; they update on top of this one once it merges. Done when none
+   of this body's after markers lead back into the cycle.
 5. **Report.** When the run prompt says a cycle, lead with it and the order: "#57 and #59
    were each marked to merge after the other; #57 goes first (lowest issue), #59 updates on
    top of it." Then what conflicted and how you fixed it, then what changed beyond the

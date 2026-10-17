@@ -32,9 +32,9 @@ needs a human; otherwise tell the user exactly what does, and let them say **mer
      `Overlaps with #N: … <!-- nightshift:overlaps #N -->` lines (`gh pr edit --body-file`),
      say so in the closing comment, and carry on with the gates. Not the lowest: wait as
      below, with the closing line "#M goes first in a cycle of after markers (#M, #N, this
-     one); then I'll rebase on it." Not in a cycle, and not merged yet: post the report with a `progress` closing line
-     ("Waiting for #N's PR to merge first; then I'll rebase and check it again.") and end
-     the run.
+     one); then I'll rebase on it." Not in a cycle, and not merged yet: post the report
+     with a `progress` closing line ("Waiting for #N's PR to merge first; then I'll rebase
+     and check it again.") and end the run.
      When #N merges, the watcher's update run rebases this one and comes back here.
      Closed without merging: a look item.
    - **Conflicts** (`mergeable` is `CONFLICTING`): a look item.
