@@ -305,4 +305,50 @@ stuck() {
   expect_ok "no longer interrupted" test ! -f "$(idir 7)/interrupted"
   expect "no status label left" "$(status_label 7)" "")
 
+# Off (its label removed, or held), then closed: done once a poll sees it.
+(world
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  gh_label_remove o/r 7 alice agent
+  poll
+  gh_state o/r 7 closed
+  poll
+  expect "off, then closed: done" "$(state 7 "done")" "issue closed"
+  expect_line "status --all: done" "$(ns status --all)" "^o/r#7  *done · issue closed ")
+
+(world
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  gh_label_add o/r 7 alice wontfix
+  poll
+  expect "wontfix added: off" "$(state 7 off)" "wontfix label added"
+  gh_state o/r 7 closed
+  poll
+  expect "wontfix, then closed: done" "$(state 7 "done")" "issue closed")
+
+(world
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  gh_label_remove o/r 7 alice agent
+  poll
+  logged=$(grep -c "o/r#7" "$NS/watch.log") edits=$(gh_calls "issue edit 7" | wc -l)
+  poll
+  poll
+  expect "off and still open: stays off" "$(state 7 off)" "label removed"
+  expect "no watch log line for it per poll" "$(grep -c "o/r#7" "$NS/watch.log")" "$logged"
+  expect "its status label isn't set again" "$(gh_calls "issue edit 7" | wc -l)" "$edits"
+  # Within the pull request interval, its state isn't looked up.
+  export NIGHTSHIFT_PR_INTERVAL=3600
+  gh_state o/r 7 closed
+  : >"$GH_FAKE/calls"
+  poll
+  expect_ok "closed within the interval: not looked up" test -z "$(gh_calls "repos/o/r/issues/7 ")"
+  expect_ok "not done yet" test ! -f "$(idir 7)/done"
+  export NIGHTSHIFT_PR_INTERVAL=0
+  poll
+  expect "after the interval: done" "$(state 7 "done")" "issue closed")
+
 report
