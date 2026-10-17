@@ -20,7 +20,8 @@
 # `build` (the approval, while a fresh build session waits to start),
 # `seen` (the last comment handed to the agent), `pid` while it runs,
 # `finished` once a run ended, `pr` once it opened one, `off` (why) while it has
-# no label or is closed, `interrupted` if that stopped a run, `after` (the issues
+# no label or is closed, `interrupted` (why) if that or the watcher stopping
+# stopped a run, `stop` while a run stopped by hand ends, `after` (the issues
 # its open pull request goes after), `update` while an update run waits and
 # `updating` while it runs (its status, then why), `conflict` (the default
 # branch's commit its pull request was last updated for), `log` (readable,
@@ -392,6 +393,7 @@ run_agent() {
   }
   echo "$wt" >"$dir/worktree"
   why=$(cat "$dir/interrupted" 2>/dev/null) && rm -f "$dir/interrupted"
+  rm -f "$dir/stop"
   build=0
   if [ -f "$dir/build" ]; then
     build=1
@@ -411,10 +413,17 @@ $news}"
     intro="New on the issue since your last run:
 
 $news"
-    # A run the label's removal (or closing the issue) stopped, now resumed.
-    [ -n "$why" ] && intro="Your last run was stopped partway because the $(echo "$why" | sed 's/^label/agent label was/; s/^issue/issue was/; s/ label added$/ label was added/'); that's undone now, so carry on from where it stopped.${news:+
+    # A run the label's removal (or closing the issue) stopped, now resumed;
+    # or one the watcher's stopping did.
+    if [ "$why" = "watch stopped" ]; then
+      intro="Your last run was stopped partway because nightshift stopped (it was restarted or upgraded); carry on from where it stopped.${news:+
 
 $intro}"
+    elif [ -n "$why" ]; then
+      intro="Your last run was stopped partway because the $(echo "$why" | sed 's/^label/agent label was/; s/^issue/issue was/; s/ label added$/ label was added/'); that's undone now, so carry on from where it stopped.${news:+
+
+$intro}"
+    fi
     resume="--resume $(cat "$dir/session")"
   fi
   prompt="You are nightshift, working GitHub issue #$n in $repo, unattended: nobody is at a terminal, and you talk to the user only through the issue. Use the issue skill.
@@ -473,7 +482,10 @@ $intro"
   if [ $stopped -eq 1 ]; then
     run_end "stopped after $took$note"
     log "$repo#$n: stopped after $took$note"
-    set_status "$repo" "$n" stopped
+    # Stopped with the watcher: the next one resumes it.
+    if [ "$(cat "$dir/interrupted" 2>/dev/null)" = "watch stopped" ]; then set_status "$repo" "$n" queued
+    else set_status "$repo" "$n" stopped
+    fi
     return
   fi
   if [ $status -ne 0 ] || grep '"type" *: *"result"' "$dir/out.jsonl" | grep -q '"is_error" *: *true'; then
@@ -875,7 +887,7 @@ poll_repo() {
     count=$((count + 1))
     d=$(issue_dir "$repo" "$n")
     running "$d" && { did="$did, #$n running"; continue; }
-    [ ! -f "$d/update" ] && [ ! -f "$d/build" ] && [ -f "$d/updated" ] && [ "$(cat "$d/updated")" = "$updated" ] && continue
+    [ ! -f "$d/update" ] && [ ! -f "$d/build" ] && [ ! -f "$d/interrupted" ] && [ -f "$d/updated" ] && [ "$(cat "$d/updated")" = "$updated" ] && continue
     if [ ! -d "$d" ]; then
       # Only a label added by an allowed user starts work.
       by=$(gh api --paginate "repos/$repo/issues/$n/events" \
@@ -1031,7 +1043,8 @@ cmd_watch() {
 }
 
 # The watcher stopping (the service stopped, a logout, Ctrl-C): stop the runs in
-# flight as `nightshift stop <issue>` does, wait for them, and log the issues.
+# flight, marked interrupted so the next watcher resumes them, wait for them,
+# and log the issues.
 stop_watch() {
   trap '' TERM INT
   kill "${spid:-}" 2>/dev/null
@@ -1039,6 +1052,8 @@ stop_watch() {
   for d in "$NS"/issues/*/; do
     d=${d%/}
     running "$d" || continue
+    # Not one stopped by hand and still ending: that one stays stopped.
+    [ -f "$d/interrupted" ] || [ -f "$d/stop" ] || echo "watch stopped" >"$d/interrupted"
     kill -TERM "$(cat "$d/pid")" 2>/dev/null
     name=$(basename "$d")
     names="$names, $(echo "${name%_*}" | sed 's/_/\//')#${name##*_}"
@@ -1184,6 +1199,7 @@ cmd_stop() {
   case "$1" in */*#*) ;; *) die "usage: nightshift stop [<owner/repo>#<n>]" ;; esac
   d=$(issue_dir "${1%#*}" "${1##*#}")
   running "$d" || die "$1 isn't running"
+  touch "$d/stop"
   kill -TERM "$(cat "$d/pid")" && echo "stopped $1"
 }
 
