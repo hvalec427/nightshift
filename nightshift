@@ -8,7 +8,7 @@
 #   nightshift stop                      stop the service (until `nightshift start`)
 #   nightshift stop <owner/repo>#<n>     stop an issue's running agent
 #   nightshift logs [<owner/repo>#<n>] [-f] [-v…]  what every issue (or one) does, at a level
-#   nightshift add <owner/repo> <clone> [instructions=<path>] [auto_merge=false] [plugins=<name>,…]  watch a repo, using this clone of it (and these instructions and plugins for its runs; auto_merge=false: its PRs wait for you)
+#   nightshift add <owner/repo> <clone>  watch a repo, using this clone of it, and set up its .nightshift/ (config, CONTEXT.md) to commit
 #   nightshift label <status>            (in a run) set its issue's status label
 #   nightshift build                     (in a run) build the approved plan, in a fresh session if it's the planning one
 #   nightshift doctor                    check the tools and setup it needs on this machine
@@ -1910,50 +1910,67 @@ EOF
   fi
 }
 
-# `add <owner/repo> <clone path> [instructions=<path>] [auto_merge=false] [plugins=<name>,…]`:
-# the repo line, with the clone's and the instructions file's absolute paths
-# (`~/` is home), and the other options as given.
+# `add <owner/repo> <clone path>`: the repo line, with the clone's absolute
+# path, and the clone's `.nightshift/config` and `CONTEXT.md` where missing,
+# for the user to commit. The options it once took live in the repo now.
 cmd_add() {
-  use="usage: nightshift add <owner/repo> <clone path> [instructions=<path>] [auto_merge=false] [plugins=<name>,…]"
+  use="usage: nightshift add <owner/repo> <clone path>"
   [ $# -ge 2 ] || die "$use"
+  if [ $# -gt 2 ]; then
+    case "$3" in
+    instructions=*) die "instructions= isn't an option of add any more: put the file in the repo's .nightshift/instructions/" ;;
+    auto_merge=* | plugins=*) die "${3%%=*}= isn't an option of add any more: put it in the repo's .nightshift/config" ;;
+    *) die "$use ($3 isn't an option)" ;;
+    esac
+  fi
   repo=$1 clone=$(cd "$2" 2>/dev/null && pwd -P) || die "$2 doesn't exist"
   # repos would read such a word as an option.
   printf '%s\n' "$clone" | grep -q ' [a-z_][a-z_]*=[^ ]*$' && die "$clone: a clone path can't end in a word like key=value"
-  shift 2
-  opts="" seen=" "
-  for o in "$@"; do
-    k=${o%%=*}
-    case "$o" in instructions=?* | auto_merge=false | plugins=?*)
-      case "$seen" in *" $k "*) die "$k= given twice" ;; esac
-      seen="$seen$k "
-      ;;
-    esac
-    case "$o" in
-    instructions=?*)
-      f=${o#instructions=}
-      case "$f" in \~/*) f="$HOME/${f#\~/}" ;; esac
-      [ -f "$f" ] || die "$f doesn't exist"
-      f="$(cd "$(dirname "$f")" && pwd -P)/$(basename "$f")"
-      case "$f" in *" "*) die "$f: the instructions file's path can't have spaces" ;; esac
-      opts="$opts instructions=$f"
-      ;;
-    auto_merge=false | plugins=?*) opts="$opts $o" ;;
-    *=) die "$use (${o%=} needs a value)" ;;
-    *=*) die "$use (${o%%=*} isn't an option)" ;;
-    *) die "$use ($o isn't key=value)" ;;
-    esac
-  done
   git -C "$clone" rev-parse --git-dir >/dev/null 2>&1 || die "$clone isn't a git checkout"
   mkdir -p "$NS"
   touch "$CONFIG"
   grep -q "^repo $repo " "$CONFIG" && die "$repo is already watched"
-  echo "repo $repo $clone$opts" >>"$CONFIG"
+  echo "repo $repo $clone" >>"$CONFIG"
   gh label create "$LABEL" --repo "$repo" --color 5319E7 --description "nightshift works this issue" >/dev/null 2>&1 || true
   ensure_labels "$repo" || true
   if auto_merges "$repo"; then merging="PRs merge on their own (auto_merge=false in .nightshift/config turns it off)"
   else merging="PRs wait for you (auto_merge=false in .nightshift/config)"
   fi
   echo "watching $repo (clone: $clone); $merging; add the \`$LABEL\` label to an issue to start"
+  scaffold_repo "$clone"
+}
+
+# `scaffold_repo <clone>`: the clone's `.nightshift/config` (the defaults,
+# commented) and `CONTEXT.md` (a stub), each where missing and never
+# overwritten, left uncommitted; says what it made and to commit it.
+scaffold_repo() {
+  sr_dir=$1/.nightshift sr_made=""
+  mkdir -p "$sr_dir"
+  if [ ! -e "$sr_dir/config" ]; then
+    cat >"$sr_dir/config" <<'EOS'
+# nightshift's settings for this repo. It reads this file from the default branch on origin,
+# so a change applies once it's merged. Uncomment a line to change it.
+#
+# auto_merge=false: its pull requests wait for you to merge (default true: nightshift merges them).
+# auto_merge=false
+#
+# plugins: the Claude Code plugins its runs load, comma-separated (default none).
+# plugins=name,other@marketplace
+EOS
+    sr_made=".nightshift/config"
+  fi
+  if [ ! -e "$sr_dir/CONTEXT.md" ]; then
+    cat >"$sr_dir/CONTEXT.md" <<'EOS'
+# Context
+
+The project's glossary: the terms it uses and what each means here, one entry per term.
+nightshift's runs read this file and keep it up to date.
+EOS
+    sr_made="${sr_made:+$sr_made and }.nightshift/CONTEXT.md"
+  fi
+  [ -z "$sr_made" ] && return 0
+  case "$sr_made" in *" and "*) sr_them=them ;; *) sr_them=it ;; esac
+  echo "created $sr_made in the clone: commit $sr_them to the default branch"
 }
 
 # `label <status>`: a run setting its issue's status label.

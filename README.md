@@ -43,11 +43,15 @@ Then:
 2. `gh auth login` (gh 2.99 or newer, for screenshots in pull requests).
 3. For each repo: a clone of it on the machine, then
    `nightshift add <owner/repo> <path to the clone>`.
-   That also creates its `agent` label and the status labels.
+   That also creates its `agent` label and the status labels, and leaves
+   `.nightshift/config` (the defaults, commented) and `.nightshift/CONTEXT.md`
+   (a stub for the project's glossary) in the clone, where they're missing and
+   uncommitted: commit them to the repo's default branch. `add` takes no
+   options; they live in the repo's `.nightshift/` (see [Config](#config)).
    The project's own rules go in its `.nightshift/instructions/` (see below).
    nightshift merges the repo's pull requests itself; to merge them yourself,
    or to load plugins in its runs, put `auto_merge=false` or `plugins=…` in the
-   repo's `.nightshift/config` (see [Config](#config)).
+   repo's `.nightshift/config`.
 
 ## What it needs
 
@@ -250,7 +254,7 @@ Each run's line in `nightshift logs` shows the models it used, the main one firs
 
 ## Config
 
-`~/.nightshift/config`, written by `nightshift add`:
+`~/.nightshift/config`, whose `repo` lines `nightshift add` writes:
 
 ```
 repo hvalec427/nightshift /Users/me/dev/nightshift
