@@ -79,7 +79,8 @@ setting() {
 }
 
 # `repo <owner/repo> <clone path> [key=value …]` lines: the repo and its clone
-# path (spaces and all), without the trailing options.
+# path (spaces and all), without the trailing options. `add` refuses a clone
+# path that ends in a word like one.
 repos() {
   sed -n -e 's/  *$//' -e ':a' -e 's/^\(repo  *[^ ]*  *[^ ].*\) [a-z_][a-z_]*=[^ ]*$/\1/' -e 's/  *$//' -e 'ta' \
     -e 's/^repo  *\([^ ]*\)  *\(.*\)$/\1 \2/p' "$CONFIG" 2>/dev/null
@@ -1607,9 +1608,10 @@ cmd_add() {
   shift 2
   opts="" seen=" "
   for o in "$@"; do
-    case "$o" in ?*=?*)
-      case "$seen" in *" ${o%%=*} "*) die "${o%%=*}= given twice" ;; esac
-      seen="$seen${o%%=*} "
+    k=${o%%=*}
+    case "$o" in instructions=?* | auto_merge=false | plugins=?*)
+      case "$seen" in *" $k "*) die "$k= given twice" ;; esac
+      seen="$seen$k "
       ;;
     esac
     case "$o" in

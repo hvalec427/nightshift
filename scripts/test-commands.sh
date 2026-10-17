@@ -70,6 +70,8 @@ try() {
   try ns add o/d "$W/third" plugins=rn-agent plugins=web
   expect "add plugins= twice: fails" "$ST $OUT" "1 nightshift: plugins= given twice"
   expect "add plugins= twice: nothing written" "$(cat "$NS/config")" "$before"
+  try ns add o/d "$W/third" colour=red colour=red
+  expect "add an unknown option twice: the usage" "$ST $OUT" "1 nightshift: usage: nightshift add <owner/repo> <clone path> [instructions=<path>] [auto_merge=false] [plugins=<name>,…] (colour isn't an option)"
   expect_no_unexpected)
 
 (world
