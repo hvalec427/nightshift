@@ -776,9 +776,9 @@ suite_note() {
   sn_run=""
   [ -z "$sn_cmd" ] || sn_run=" Run it with \`$sn_cmd\`."
   case "$(repo_option "$1" full_suite)" in
-    local) echo "This repo runs its whole test suite locally (full_suite=local in .nightshift/config): run it before you push.$sn_run" ;;
+    local) printf '%s\n' "This repo runs its whole test suite locally (full_suite=local in .nightshift/config): run it before you push.$sn_run" ;;
     nothing) echo "nightshift runs no whole test suite in this repo (full_suite=nothing in .nightshift/config): check what you touched, then push." ;;
-    *) echo "This repo leaves its whole test suite to CI: check what you touched, then push; run the whole suite yourself only if the repo has no CI checks on its pull requests.$sn_run" ;;
+    *) printf '%s\n' "This repo leaves its whole test suite to CI: check what you touched, then push; run the whole suite yourself only if the repo has no CI checks on its pull requests.$sn_run" ;;
   esac
 }
 

@@ -26,7 +26,8 @@ the pull requests can merge in any order.
    the build, typecheck and lint, in the foreground, and wait for them:
    a run ends when you stop. Run the whole test suite too, as after the build's review, only
    under the local line, or the default line in a repo with no CI (see "has CI" in the build
-   skill), and never under the nothing line, with the command the line names, if any. Then `git push --force-with-lease origin HEAD`.
+   skill), and never under the nothing line: with the command the line names, or else as the
+   repo's instructions say. Then `git push --force-with-lease origin HEAD`.
    Done when the checks pass and the push succeeds.
 4. **Overlap lines.** In the PR body (`gh pr edit --body-file`), drop the lines about the
    merged work and add any new ones. Done when the body's lines match the work still open.

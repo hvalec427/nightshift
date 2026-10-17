@@ -116,7 +116,8 @@ SUITE_NOTHING="^nightshift runs no whole test suite in this repo (full_suite=not
   poll
   expect_line "full_suite only on the issue's branch: the default line" "$(run_prompt)" "$SUITE_CI")
 
-# test_command in .nightshift/config names the command on the suite line.
+# test_command in .nightshift/config names the command on the suite line: the
+# line's pattern with RUN_IT in place of its closing `$`.
 RUN_IT=" Run it with \`npm test\`\.$"
 
 (world
