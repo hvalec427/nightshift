@@ -55,8 +55,8 @@ nightshift version that runs (and, on a release, whether a newer one is out):
 what's installed and its version, gh's login, a Claude token, nightshift's
 plugin, and each watched repo's clone and `agent` label (with a hint when GitHub
 keeps merged branches there), then a line for each plugin its repo line names:
-`ok`, or `missing` with how to install it (`claude plugin install <name>`), or
-`disabled` with how to enable it (`claude plugin enable <id>`). It says what's missing and how to get it, and
+`ok`, or `missing` with how to install it (`claude plugin install <name>`) or
+enable it (`claude plugin enable <id>`). It says what's missing and how to get it, and
 fails when something required is; `nightshift start` won't start the service until
 nothing is.
 

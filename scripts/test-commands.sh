@@ -48,6 +48,8 @@ try() {
   try ns add o/w "$W/plain" colour=red
   expect "add with an unknown option: the usage" "$ST $OUT" "1 nightshift: usage: nightshift add <owner/repo> <clone path> [instructions=<path>] [auto_merge=false] [plugins=<name>,…] (colour isn't an option)"
   expect_line "add with an unknown option: no line" "$(cat "$NS/config")" "o/w" no
+  try ns add o/w "$W/plain" rn-agent
+  expect "add with a word that isn't key=value: the usage" "$ST $OUT" "1 nightshift: usage: nightshift add <owner/repo> <clone path> [plugins=<name>,…] (rn-agent isn't key=value)"
   expect_no_unexpected)
 
 (world
@@ -380,7 +382,7 @@ without() {
   expect "doctor: a missing or disabled plugin: fails" "$ST" 1
   expect_line "doctor: an installed plugin" "$OUT" "^  ok      o/r: plugin rn-agent$"
   expect_line "doctor: after the repo's label line" "$(grep -A1 '^  ok      o/r: clone' <<<"$OUT")" "^  ok      o/r: plugin rn-agent$"
-  expect_line "doctor: a disabled plugin" "$OUT" "^  disabled o/r: plugin web: enable it: claude plugin enable web@other$"
+  expect_line "doctor: a disabled plugin" "$OUT" "^  missing o/r: plugin web: enable it: claude plugin enable web@other$"
   expect_line "doctor: a missing plugin" "$OUT" "^  missing o/r: plugin nope: claude plugin install nope$"
   expect_line "doctor: counts both" "$OUT" "^2 to fix")
 

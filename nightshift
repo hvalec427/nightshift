@@ -1515,7 +1515,7 @@ repo_plugins() {
   for p in $(repo_option "$1" plugins | tr ',' ' '); do
     if [ -z "$cv" ] || ! command -v jq >/dev/null; then fail "?" "$1: plugin $p" "needs claude and jq to check"
     elif id=$(plugin_dir "$p"); then pass "$1: plugin $p"
-    elif [ $? = 2 ]; then fail disabled "$1: plugin $p" "enable it: claude plugin enable $id"
+    elif [ $? = 2 ]; then fail missing "$1: plugin $p" "enable it: claude plugin enable $id"
     else fail missing "$1: plugin $p" "claude plugin install $p"
     fi
   done
