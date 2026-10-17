@@ -443,10 +443,10 @@ a ref's tarball.
 `scripts/test-service.sh` is the exception: it starts and stops a real
 LaunchAgent, one of `com.nightshift.test.1` … `.8`, claimed for the run so suites
 can run at once (skipped where there's no GUI session), and runs `install.sh` into
-a throwaway `HOME`. `scripts/test-skills.sh` and
-`scripts/test-review.sh` check the skills' wiring in the skill files themselves,
-since the fake `claude` can't see a run invoke a skill; `test-skills.sh` also runs
-the plugin's `SessionStart` hook.
+a throwaway `HOME`. `scripts/test-skills.sh` checks the skills' structure
+(frontmatter, links, the skills and agents they name) and runs the plugin's
+`SessionStart` hook; `scripts/test-review.sh` checks the wiring in the review
+skill's files themselves. The fake `claude` can't see a run invoke a skill.
 
 A suite run cleans up after itself: each test world is deleted when it ends, and
 `test.sh` runs in its own temp directory under `$TMPDIR` and removes it on exit.
