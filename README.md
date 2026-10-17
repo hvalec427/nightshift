@@ -424,8 +424,8 @@ changes it); each one's results print when it ends, with how long it took. The
 order comes from a seed, printed first as `seed <n>` and again after a failure,
 with the command that repeats it: `NIGHTSHIFT_TEST_SEED=<n> bash scripts/test.sh`.
 `NIGHTSHIFT_TEST_SHARD=1/3` runs every third file of the list by size, as CI's
-three test jobs do; they share one seed, so a failed job's seed repeats its order
-anywhere.
+three test jobs do; they share one seed, and a failed job's repeat command names its
+shard too, so it runs the same files in the same order anywhere.
 
 A test file passes alone, in any order and in any split across machines. Tests that
 rely on each other (a shared setup, an order) live in the same file; nothing relies

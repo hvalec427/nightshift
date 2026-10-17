@@ -6,8 +6,6 @@
 set -euo pipefail
 . "$(dirname "$0")/test-lib.sh"
 
-OPUS=claude-opus-5-5
-
 # A first run that ends with a context of $1 tokens, in a window of $2.
 first() {
   gh_issue o/r 7 alice agent enhancement

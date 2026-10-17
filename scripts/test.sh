@@ -93,7 +93,7 @@ done
 pids=""
 if [ -n "$failed" ]; then
   echo "FAILED:$failed"
-  echo "NIGHTSHIFT_TEST_SEED=$seed bash scripts/test.sh"
+  echo "${NIGHTSHIFT_TEST_SHARD:+NIGHTSHIFT_TEST_SHARD=$NIGHTSHIFT_TEST_SHARD }NIGHTSHIFT_TEST_SEED=$seed bash scripts/test.sh"
   exit 1
 fi
 echo "All tests pass."
