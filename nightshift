@@ -962,9 +962,85 @@ retire() {
   log "$1#$2: done ($5)$gone"
 }
 
+# The frontmatter's effort of plugin definition $2 (`plugin:name`): the agent
+# (kind agent, agents/<name>.md) or skill (kind skill, skills/<name>/SKILL.md)
+# of nightshift's own plugin or of another one installed. `default` without
+# one, and for a name that isn't a plugin's (a built-in agent).
+definition_effort() {
+  case $2 in
+  *:*/* | */*) ;;
+  *:*)
+    if [ "${2%%:*}" = nightshift ]; then pd=$NS/plugin
+    else pd=$(plugin_dir "${2%%:*}") || pd=""
+    fi
+    if [ "$1" = agent ]; then f="$pd/agents/${2#*:}.md"; else f="$pd/skills/${2#*:}/SKILL.md"; fi
+    [ -n "$pd" ] && [ -f "$f" ] && e=$(awk '/^---[ \t]*$/ { n++; next } n == 1 && /^effort:/ { sub(/^effort:[ \t]*/, ""); sub(/[ \t]*$/, ""); print; exit } n > 1 { exit }' "$f") && [ -n "$e" ] && { printf '%s' "$e"; return 0; }
+    ;;
+  esac
+  printf default
+}
+
+# The rows of an agents table (a tab between a row's cells), from an issue's
+# `agents` (input, one JSON object a line) and $eff, the efforts of its
+# agent types and skills, a line `agent|skill<tab>name<tab>effort` each. A
+# session is a row with its runs merged, named by the stage it began in; a
+# subagent under it, in the order they ran. Tokens, seconds and tools are
+# numbers, `-` where unknown.
+# shellcheck disable=SC2016 # a jq program: $ is jq's
+AGENT_ROWS='[inputs | fromjson? | objects] as $all
+  | ($eff | split("\n") | map(split("\t") | select(length == 3))) as $efforts
+  | def firsts: reduce .[] as $x ([]; if index([$x]) then . else . + [$x] end);
+  def own: sub("^nightshift:"; "");
+  def effort($k): . as $n | ([$efforts[] | select(.[0] == $k and .[1] == $n) | .[2]] | first) // null;
+  def skill: . as $s | ($s | effort("skill")) as $e | ($s | own) + (if $e and $e != "default" then " (\($e))" else "" end);
+  def cell: if length == 0 then "–" else join(", ") end;
+  def text: gsub("[\t\n\r]+"; " ") | gsub("\\|"; "\\|");
+  def stage: [.[] | select(startswith("nightshift:") and . != "nightshift:issue") | own][0]
+    | if . == null then "session" elif . == "questions" or . == "plan" then "planning session" else "\(.) session" end;
+  ([$all[] | .session] | firsts)[] as $id
+  | [$all[] | select(.session == $id and .kind == "session")] as $runs
+  | ([$runs[].skills[]] | firsts) as $skills
+  | [($runs | length) as $n | "\($skills | stage) (\($n) run\(if $n == 1 then "" else "s" end))",
+     ([$runs[].models[]] | firsts | cell), "per skill", ($skills | map(skill) | cell),
+     ([$runs[].tokens] | add // 0), ([$runs[].secs] | add // 0), ([$runs[].tools] | add // 0)]
+  , ($all[] | select(.session == $id and .kind == "agent")
+      | ["↳ \(.type | own) · \(.description // "" | text)", .model // "–", (.type | effort("agent")) // "default",
+         (.skills | map(skill) | cell), .tokens // "-", .secs // "-", .tools // "-"])
+  | map(tostring) | join("\t")'
+
+# The agents of a done issue (its dir $1, its runs counted $2) as a table: a
+# row a session (its runs merged) and under it a row each of its subagents,
+# their models, efforts, skills, tokens, time and tool calls. Nothing without
+# `agents`. A note if it starts after the issue's first run.
+agents_table() {
+  [ -s "$1/agents" ] || return 0
+  eff=$(
+    jq -R -r 'fromjson? | objects | select(.kind == "agent") | "agent\t\(.type)"' "$1/agents" | sort -u
+    jq -R -r 'fromjson? | objects | .skills[]? | "skill\t\(.)"' "$1/agents" | sort -u
+  )
+  eff=$(printf '%s\n' "$eff" | while IFS="$(printf '\t')" read -r kind name; do
+    [ -n "$name" ] && printf '%s\t%s\t%s\n' "$kind" "$name" "$(definition_effort "$kind" "$name")"
+  done)
+  rows=$(jq -n -R -r --arg eff "$eff" "$AGENT_ROWS" "$1/agents" 2>/dev/null) && [ -n "$rows" ] || return 0
+  printf '| Agent | Model | Effort | Skills | Tokens | Time | Tools |\n|---|---|---|---|---|---|---|\n'
+  printf '%s\n' "$rows" | while IFS="$(printf '\t')" read -r agent model effort skills tokens secs tools; do
+    if [ "$tokens" = - ]; then tokens=–; else tokens=$(awk -v n="$tokens" "$TOK"' BEGIN { printf "%s", tok(n) }'); fi
+    if [ "$secs" = - ]; then secs=–; else secs=$(duration "$secs"); fi
+    printf '| %s | %s | %s | %s | %s | %s | %s |\n' "$agent" "$model" "$effort" "$skills" "$tokens" "$secs" "$tools"
+  done
+  # A run with agents is a session line; one without events has none.
+  recorded=$(jq -R -r 'fromjson? | objects | select(.kind == "session") | 1' "$1/agents" | wc -l)
+  [ "$recorded" -ge "$2" ] || printf '\n_The table starts from the first recorded run: earlier runs have no agent records._\n'
+}
+
 # What a done issue's runs cost, as a comment on it, if they were counted.
 comment_cost() {
   words=$(cost_words "$3") || return 0
+  # The agents table, if it has agents: after a blank line.
+  table=$(agents_table "$3" "$(awk '{ print $6 }' "$3/cost")")
+  [ -z "$table" ] || table="
+$table
+"
   # shellcheck disable=SC2086 # a word each
   set -- "$1" "$2" $words
   runs="$9 runs"
@@ -973,7 +1049,7 @@ comment_cost() {
   gh issue comment "$2" --repo "$1" --body "🤖 **nightshift** · cost
 
 **$3** at API prices · **$4 tokens** ($5 in, $6 out, $7 cache) · **$(duration "$8")** over $runs
-
+$table
 $MARKER <!-- nightshift:cost -->" >/dev/null 2>&1 || log "$1#$2: couldn't comment the cost"
 }
 
