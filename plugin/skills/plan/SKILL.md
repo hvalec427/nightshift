@@ -24,7 +24,8 @@ decisions, the constraints you found.
   the **overlap** (in the issue skill) with other nightshift work, if any.
 - **Collapsed,** in one `<details><summary>Full spec</summary>` block: the **spec**
   (below), and each ticket's blockers and acceptance criteria (the **tickets**, below).
-  All tickets are in this comment (no new issues).
+  The tickets live in this comment; on **go**, the build makes each one a sub-issue of
+  the issue (with no `agent` label), so you write no issues.
 - It ends with "Reply **go** to build it, or tell me what to change."
 
 ```
@@ -89,7 +90,8 @@ to the decision.
 ## The tickets
 
 They're in the `plan` comment, numbered `T1`, `T2`, … in build order: one line each on
-top, and in full (below) in its collapsed block. The user approves them with the plan.
+top, and in full (below) in its collapsed block. The user approves them with the plan. On go, each becomes a sub-issue titled `T<n>: <title>`, so keep the titles short and
+unique.
 
 Look for prefactoring first: make the change easy, then make the easy change. Then break
 the work into **tracer bullets**:

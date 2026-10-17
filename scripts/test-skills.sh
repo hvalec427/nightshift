@@ -142,6 +142,24 @@ expect_line "the brief gives the worktree's absolute path" "$brief" "worktree's 
 expect_line "the brief gives the commits so far" "$brief" "commits so far"
 expect_line "the brief says to pass the issue number, not paste the ticket" "$brief" "not pasted"
 
+# On go, each ticket becomes a sub-issue (no agent label) that the brief and the PR body name.
+expect_line "the build makes a sub-issue per ticket with --parent" "$brief" "one sub-issue per ticket[^.]*gh issue create --parent"
+expect_line "the build falls back to the sub_issues API" "$brief" "sub_issues"
+expect_line "the fallback adds the new issue's id, not its number" "$brief" "new issue.s \`id\` field.*not its number"
+expect_line "a sub-issue is titled by its ticket ID" "$brief" "\`T1: <ticket title>\`"
+expect_line "a sub-issue carries the ticket's text, blockers and criteria" "$brief" "blockers and acceptance criteria"
+expect_line "a sub-issue has no agent label" "$brief" "No \`agent\` label"
+expect_line "the build reuses sub-issues found by title under the parent" "$brief" "reuses[^.]*by title"
+expect_line "the build makes the sub-issues before the first ticket" "$brief" "Before the first ticket"
+expect_line "the brief names the ticket's sub-issue" "$brief" "its sub-issue[^.]*number"
+expect_line "the build hands the sub-issue numbers to the finish skill" "$brief" "nightshift:finish[^.]*sub-issue numbers"
+finish=$(flat "$SKILLS/finish/SKILL.md")
+expect_line "the PR body closes the issue" "$finish" "Closes #<issue>"
+expect_line "the PR body closes each sub-issue" "$finish" "Closes #<sub>"
+expect_line "the closing lines end the PR body" "$finish" "ends with[^.]*Closes #"
+expect_line "the plan says tickets become sub-issues on go" "$(flat "$SKILLS/plan/SKILL.md")" "on \*\*go\*\*[^.]*sub-issue"
+expect_line "the plan no longer says tickets are only in the comment" "$(flat "$SKILLS/plan/SKILL.md")" "All tickets are in this comment" no
+
 # The plugin's SessionStart hook, as Claude Code runs it: your own sessions get
 # nightshift's defaults, a run (which has them in its system prompt) nothing.
 hook=$(jq -r '.hooks.SessionStart[0].hooks[0].command' "$ROOT/plugin/hooks/hooks.json")

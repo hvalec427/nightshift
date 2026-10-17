@@ -14,6 +14,8 @@ overlap, bounds) hold throughout. The ticket brief below is adapted from Matt Po
 
 Build the tickets in order, one at a time, in this worktree:
 
+- Before the first ticket, give each ticket a sub-issue of the issue (**Sub-issues**,
+  below): it is where the ticket's text lives, for you, the subagent and the user.
 - Each ticket test-first where it has logic to test (by the `nightshift:tdd` skill), checked
   the way the repo is checked: with the project's build, typecheck, lint and tests, and in
   the running app the way the project's instructions say to check it. Run them in the
@@ -30,8 +32,9 @@ Build the tickets in order, one at a time, in this worktree:
   with the Skill tool): one review, one fix pass.
 - Then check the **overlap** (in the issue skill) again, since other work may have
   started or merged since the plan, and invoke the `nightshift:finish` skill to open the
-  pull request, with the overlap lines in its body. The review's findings left open go in
-  the pull request body too, as what's left open. Then a `done` comment with its link and
+  pull request, with the overlap lines and the sub-issue numbers (it closes them) in its
+  body. The review's findings left open go in the pull request body too, as what's left
+  open. Then a `done` comment with its link and
   what's in it, and the review: a line counting it, then each finding in a `<details>`
   block, a line each (its axis, what it found, and fixed, or dismissed and why, or left
   open):
@@ -45,6 +48,30 @@ Build the tickets in order, one at a time, in this worktree:
   or posts a `look` comment saying what needs the user. The watcher removes the worktree
   after this run.
 
+## Sub-issues
+
+Make one sub-issue per ticket, with `gh issue create --parent <issue> --title … --body …`
+where gh supports `--parent` (`gh issue create --help` lists it), so the user can follow
+the build in GitHub's UI.
+
+- **Title** it `T1: <ticket title>`, so it can be found again. **Body:** the ticket's text,
+  its blockers and acceptance criteria as the plan has them, and `Part of #<issue>`.
+- **No `agent` label,** and no other: the watcher works issues labelled `agent`, and a
+  sub-issue is not one to work.
+- **Without `--parent`,** create the issue, then attach it through the REST API:
+  `gh api repos/{owner}/{repo}/issues/<issue>/sub_issues -f sub_issue_id=<id>`. The id is
+  the new issue's `id` field (`gh api repos/{owner}/{repo}/issues/<n> --jq .id`), not its
+  number.
+- **Reuse before creating.** A resumed or fresh build reuses the sub-issues already under
+  the issue, found by title: `gh issue view <issue> --json subIssues`, or `gh api
+  repos/{owner}/{repo}/issues/<issue>/sub_issues`. It creates only the tickets with none,
+  so no ticket gets two.
+- A change the user's reply made to a ticket goes in its sub-issue's body too, so the
+  sub-issue and the plan agree.
+
+Done when `gh issue view <issue> --json subIssues` lists one sub-issue per ticket. Keep
+each one's number for its brief and for the pull request body.
+
 ## Ticket subagents
 
 Start each with the Agent tool (`nightshift:ticket`), without a `model`, so it runs on the
@@ -52,11 +79,12 @@ model its agent sets; the agent loads the `nightshift:tdd` skill itself. Its bri
 nothing of this conversation, so it works by pointers: it says where to read, and doesn't
 paste what the subagent can read itself.
 
-- the ticket's ID (T2, say) and where the plan comment is: the issue number and the repo,
-  and that it reads the latest `plan` comment (`<!-- nightshift:plan -->`) with `gh`, plus
-  any reply of the user's after it that changed it. The ticket, its blockers, its
-  acceptance criteria and the spec's decisions are there, not pasted. When it's a retry
-  after a `blocked` comment, the user's answer and what the last attempt left in the
+- the ticket's ID (T2, say), its sub-issue (the number, where the ticket's text lives), and
+  where the plan comment is: the issue number and the repo, and that it reads its
+  sub-issue and the latest `plan` comment (`<!-- nightshift:plan -->`) with `gh`, plus any
+  reply of the user's after it that changed it. The ticket, its blockers, its acceptance
+  criteria and the spec's decisions are there, not pasted. When it's a retry after a
+  `blocked` comment, the user's answer and what the last attempt left in the
   worktree;
 - this worktree's absolute path, and the commits so far (the tickets already committed in
   it: `git log --oneline` against the default branch shows them);

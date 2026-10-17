@@ -27,10 +27,12 @@ own check; stop and say so at the first one that fails, leaving everything in pl
    (`gh repo view --json defaultBranchRef -q .defaultBranchRef.name`), following the user's
    PR conventions. The title says the change; the body is a few lines: what changed (not
    a summary of the diff), how it was verified (screens seen, checks run), and anything
-   left open. Place each media file
-   where it belongs in the body by its path (`![Price list](<path>/price-list.jpg)`)
-   and pass each with `--attach <path>`: gh uploads them and swaps in their URLs, so they
-   show inline and videos play. An existing PR for this branch (`gh pr view`) gets the push,
+   left open. Place each media file where it belongs in the body by its path
+   (`![Price list](<path>/price-list.jpg)`) and pass each with `--attach <path>`: gh uploads
+   them and swaps in their URLs, so they show inline and videos play. Under nightshift the
+   body ends with a closing line per issue, one on each line: `Closes #<issue>` for the
+   issue the run works, and `Closes #<sub>` for each sub-issue number the build passes, so
+   the merge closes them all. An existing PR for this branch (`gh pr view`) gets the push,
    and new media through `gh pr edit --body … --attach …`. With gh older than 2.99 (no
    `--attach`), open it without the media and say `brew upgrade gh`. Done when you have
    its URL.
