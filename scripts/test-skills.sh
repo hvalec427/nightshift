@@ -252,6 +252,14 @@ expect "the defaults have the CLAUDE.md rules, with the root's budget" \
 expect "the defaults say a run ends when you stop" \
   "$(tr '\n' ' ' <"$ROOT/plugin/instructions.md" | grep -c 'A run ends when you stop')" 1
 
+# The project's glossary is .nightshift/CONTEXT.md: read before asking, planning and diagnosing, kept current by every run.
+for s in questions plan diagnose; do
+  expect_line "the $s skill reads .nightshift/CONTEXT.md" "$(flat "$SKILLS/$s/SKILL.md")" '\.nightshift/CONTEXT\.md'
+  expect_line "the $s skill no longer points at a GLOSSARY.md" "$(flat "$SKILLS/$s/SKILL.md")" "GLOSSARY" no
+done
+expect_line "the defaults have each run keep .nightshift/CONTEXT.md current, in its pull request" \
+  "$(flat "$ROOT/plugin/instructions.md")" 'term[^.]*\.nightshift/CONTEXT\.md[^.]*same pull request'
+
 # A run files a real defect it finds outside its issue, held as proposed until the user comments.
 issue=$(cat "$ISSUE")
 expect_line "a run files a defect it finds as a proposed issue" "$issue" "\`nightshift: proposed\`"

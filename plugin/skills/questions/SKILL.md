@@ -19,7 +19,9 @@ decisions that hang off it. The **frontier** is every decision whose prerequisit
 already settled: the questions you can ask now without guessing at answers you haven't
 heard yet.
 
-1. **Read** the issue and the code. Done when you can name each decision the work turns on.
+1. **Read** the issue and the code, and the project's vocabulary in `.nightshift/CONTEXT.md`
+   if it has one, so you ask in its terms. Done when you can name each decision the work
+   turns on.
 2. **Sort** the decisions. Facts are yours: look up what the code, the tools or the docs
    can tell you (a wide search goes to a subagent, in the foreground) and settle it
    yourself, so the user is never asked a fact. Decisions are the user's (behaviour, scope,

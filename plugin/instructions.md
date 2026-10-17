@@ -36,6 +36,12 @@ it alone.
   area goes in a `CLAUDE.md` in that directory, loaded only when a run works there; decisions
   and their reasons go in `docs/adr/`.
 
+# CONTEXT.md
+
+A project's `.nightshift/CONTEXT.md` is its glossary, and runs read it. A term your work
+introduces, or finds used wrongly, gets its entry in `.nightshift/CONTEXT.md` in the same
+pull request: the term and what it means here, in a line or two.
+
 # Runs
 
 When nightshift runs you on an issue, the run is one headless turn. A run ends when you

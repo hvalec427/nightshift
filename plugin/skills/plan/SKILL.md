@@ -18,9 +18,9 @@ holds everything the build needs: the answers, the decisions, the constraints yo
 Synthesise from what you have; the interview was the questions skill's.
 
 1. **Explore.** Read the code to know its current state. Use the project's own vocabulary
-   (a `GLOSSARY.md` if it has one) and respect its ADRs in the area you touch. On a `bug`,
-   read [BUG.md](BUG.md) now: it shapes the comment, the spec and the tickets. Done when
-   you can say where the change lands.
+   (`.nightshift/CONTEXT.md`, if it has one) and respect its ADRs in the area you touch.
+   On a `bug`, read [BUG.md](BUG.md) now: it shapes the comment, the spec and the tickets.
+   Done when you can say where the change lands.
 2. **Choose the seams.** A **seam** is the public boundary a test observes behaviour at.
    Prefer an existing seam to a new one and the highest seam you can; the fewer, the
    better, and one is ideal. They go under Testing decisions, where the user approves them
