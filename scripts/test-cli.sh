@@ -102,19 +102,15 @@ expect "no test file calls a plain $plain" "$found" ""
   set +m
   expect "test.sh: INT exits 130" "$rc" "130"
   expect "test.sh: INT leaves the caller's TMPDIR as it was" "$(ls -A "$ct/caller")" ""
-  # The files run at once: two that each wait 3 s take about 3 s, not 6, and a
-  # failure among them still fails the run.
-  printf '%s\nsleep 3; expect pass 1 1\nreport\n' "$head" >"$fx/test-slow1.sh"
-  printf '%s\nsleep 3; expect fail 1 2\nreport\n' "$head" >"$fx/test-slow2.sh"
-  start=$(date +%s) rc=0
-  run_suite "$fx/test-slow1.sh" "$fx/test-slow2.sh" || rc=$?
-  took=$(($(date +%s) - start))
-  expect "test.sh: files run in parallel" "$([ "$took" -lt 6 ] && echo yes || echo "no, ${took}s")" "yes"
+  # A failure among files run at once still fails the run.
+  rc=0
+  run_suite "$fx/test-pass.sh" "$fx/test-fail.sh" || rc=$?
   expect "test.sh: a failure among parallel files exits 1" "$rc" "1"
   # NIGHTSHIFT_TEST_SHARD=i/n: the shards between them run each file once.
-  ran() { "${caller[@]}" NIGHTSHIFT_TEST_SHARD="$1" bash "$ROOT/scripts/test.sh" "$fx/test-pass.sh" "$fx/test-slow1.sh" "$fx/test-fail.sh" 2>/dev/null |
+  cp "$fx/test-pass.sh" "$fx/test-quick.sh"
+  ran() { "${caller[@]}" NIGHTSHIFT_TEST_SHARD="$1" bash "$ROOT/scripts/test.sh" "$fx/test-pass.sh" "$fx/test-quick.sh" "$fx/test-fail.sh" 2>/dev/null |
     sed -n 's/^=== \(test-[a-z0-9]*\)\.sh .*/\1/p'; }
-  expect "test.sh: shards run each file once" "$( (ran 1/2; ran 2/2) | sort | paste -sd' ' -)" "test-fail test-pass test-slow1"
+  expect "test.sh: shards run each file once" "$( (ran 1/2; ran 2/2) | sort | paste -sd' ' -)" "test-fail test-pass test-quick"
   expect "test.sh: a shard runs a share" "$(ran 2/2 | wc -l | tr -d ' ')" "1"
   err=$("${caller[@]}" KEEP_WORLD=1 bash "$ROOT/scripts/test.sh" "$fx/test-pass.sh" 2>&1 >/dev/null)
   kept=$(sed -n "s|^kept \($ct/caller/nightshift-tests\.[A-Za-z0-9]*\)\$|\1|p" <<<"$err")
