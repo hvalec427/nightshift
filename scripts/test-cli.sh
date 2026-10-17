@@ -78,7 +78,7 @@ expect "no test file calls a plain $plain" "$found" ""
   printf '%s\n(world; temp -d >/dev/null; : >"$ct/started"; sleep 30)\n' "$head" >"$fx/test-int.sh"
   # What a fresh caller's TMPDIR holds after test.sh ran on the files $1…
   # A fresh caller's environment, with $ct/caller as its TMPDIR.
-  caller=(env -u NIGHTSHIFT_TEST_LABELS -u KEEP_WORLD ROOT="$ROOT" ct="$ct" TMPDIR="$ct/caller")
+  caller=(env -u NIGHTSHIFT_TEST_LABELS -u NIGHTSHIFT_TEST_SHARD -u KEEP_WORLD ROOT="$ROOT" ct="$ct" TMPDIR="$ct/caller")
   run_suite() {
     "${caller[@]}" bash "$ROOT/scripts/test.sh" "$@" >/dev/null 2>&1
   }
