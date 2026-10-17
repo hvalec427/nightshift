@@ -188,7 +188,7 @@ agents() { state "$1" agents | jq -S -c '.run = "R" | if .kind == "session" then
   gh_issue o/r 7 alice agent
   touch "$CLAUDE_FAKE/silent"
   poll
-  expect "a run with no events: nothing recorded" "$([ -e "$(idir 7)/agents" ] && echo yes || echo no)" no)
+  expect "a run with no events: nothing recorded" "$(wc -c <"$(idir 7)/agents" | tr -d ' ')" 0)
 
 # Shown by status.
 (world
@@ -355,6 +355,18 @@ finish() { gh_state o/r "$1" closed; poll; }
   expect "records from the second run on: only that run's agents" "$(table 7 | tail -1)" \
 '| planning session (1 run) | – | per skill | issue (low), plan (high) | 4 | S | 3 |'
   expect_line "and a note under the table" "$(gh_comments o/r 7)" '^_The table starts from the first recorded run: earlier runs have no agent records\._$')
+
+(world
+  own_plugin
+  gh_issue o/r 7 alice agent
+  touch "$CLAUDE_FAKE/silent"
+  poll
+  rm "$CLAUDE_FAKE/silent"
+  gh_comment o/r 7 alice "again" >/dev/null
+  runs_do "costs 1 $OPUS 1 1 1 1; skill nightshift:issue; comment questions"
+  poll
+  finish 7
+  expect "a first run with no events: no partial note" "$(gh_comments o/r 7 | grep -c 'starts from the first recorded run' || true)" 0)
 
 # The cost comment's second line: the dollars of each model, and the pull
 # request's size, each left out when unknown.

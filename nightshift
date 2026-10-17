@@ -33,7 +33,8 @@
 # see AGENTS), `models` (what each model cost it, a line `opus-5-5 3.2` each),
 # `context` (its last run's context at the end, and the model's window), and
 # `done` (why) once its pull request merged or it closed, when only `log`,
-# `session`, `plan-session`, `seen`, `started`, `pr`, `cost`, `usage`, `agents` and `models` stay
+# `session`, `plan-session`, `seen`, `started`, `pr`, `cost`, `usage`,
+# `agents` and `models` stay
 # (`revived`, the merged pull request a comment brought it back from);
 # `label`, its status label (see STATUSES); `skill`, the last nightshift skill
 # its session invoked (see SKILL_STATUSES); `type`, its type label as the
@@ -691,6 +692,12 @@ save_usage() {
   [ -z "$u" ] || printf '%s\n' "$u" >"$1/usage"
 }
 
+# Model names shortened (claude-opus-5-5-20260101 → opus-5-5), and a list's
+# values first-seen first without repeats: jq, for the programs below.
+# shellcheck disable=SC2016 # a jq program: $ is jq's
+JQ_DEFS='def short: sub("^claude-"; "") | sub("-[0-9]{8}$"; "");
+  def firsts: reduce .[] as $x ([]; if index([$x]) then . else . + [$x] end);'
+
 # What a run spent: the session's totals $now less the ones before it, $prev
 # (null: none), as dollars, tokens in, out and cache, and the models it used
 # (comma-separated, shortened, the main one $main first; - if none) and what
@@ -704,7 +711,6 @@ SPENT='def fields: ["costUSD", "inputTokens", "outputTokens", "cacheReadInputTok
   | (if $same then $prev else {total_cost_usd: 0, modelUsage: {}} end) as $was
   | ($now.modelUsage | with_entries(.key as $m | .value |= with_entries(.value -= ($was.modelUsage[$m][.key] // 0)))) as $run
   | def sum(f): [$run[] | f] | add // 0;
-  def short: sub("^claude-"; "") | sub("-[0-9]{8}$"; "");
   [$now.modelUsage | keys_unsorted[] as $m | {m: $m, u: $run[$m]} | select(.u.costUSD > 0 or .u.inputTokens > 0 or .u.outputTokens > 0)
     | {m: (.m | short), usd: .u.costUSD, main: (.m == $main)}] | sort_by(.main | not) as $used
   | ($used | map(.m)) as $models
@@ -732,13 +738,12 @@ SPENT='def fields: ["costUSD", "inputTokens", "outputTokens", "cacheReadInputTok
 #   skills   its Skill calls, in order
 #   tokens, secs, tools  its own, from its result; null (tools: counted) while
 #            it hadn't finished when the run ended
-# Nothing without events.
+# Nothing without events. Its first line is {"kind":"partial"} when its
+# first run wasn't the issue's (runs before this was recorded).
 # shellcheck disable=SC2016 # a jq program: $ is jq's
 AGENTS='[inputs | fromjson? | objects] as $e
   | select($e != [])
-  | def short: sub("^claude-"; "") | sub("-[0-9]{8}$"; "");
-  def uses: .message.content? | arrays | .[] | select(.type? == "tool_use");
-  def firsts: reduce .[] as $x ([]; if index([$x]) then . else . + [$x] end);
+  | def uses: .message.content? | arrays | .[] | select(.type? == "tool_use");
   [$e[] | select(.type? == "assistant")] as $turns
   | [$turns[] | select(.parent_tool_use_id == null)] as $main
   | ([$e[] | .session_id? | strings] | first // "") as $sid
@@ -762,8 +767,10 @@ AGENTS='[inputs | fromjson? | objects] as $e
 # took $3 seconds, and spent what add_cost left in $run.
 add_agents() {
   tokens=$(echo "${run:-0 0 0 0}" | awk '{ printf "%d", $2 + $3 + $4 }')
-  out=$(jq -n -R -c --argjson start "$2" --argjson secs "$3" --argjson tokens "$tokens" "$AGENTS" "$1/out.jsonl" 2>/dev/null)
+  out=$(jq -n -R -c --argjson start "$2" --argjson secs "$3" --argjson tokens "$tokens" "$JQ_DEFS $AGENTS" "$1/out.jsonl" 2>/dev/null)
+  [ -f "$1/agents" ] || [ "$(awk '{ print $6 }' "$1/cost")" -le 1 ] || echo '{"kind":"partial"}' >"$1/agents"
   [ -z "$out" ] || printf '%s\n' "$out" >>"$1/agents"
+  touch "$1/agents"
 }
 
 # The context at the end of a run (its out.jsonl, input), from its last
@@ -805,8 +812,8 @@ add_cost() {
   ctx=$(jq -n -R -r "$CONTEXT" "$1/out.jsonl" 2>/dev/null)
   [ -z "$ctx" ] || echo "${ctx#* }" >"$1/context"
   if [ -n "$now" ] && [ "$now" != "$prev" ]; then
-    run=$(jq -n -r --argjson now "$now" --argjson prev "${prev:-null}" --arg main "${ctx%% *}" "$SPENT" 2>/dev/null) ||
-      run=$(jq -n -r --argjson now "$now" --argjson prev null --arg main "${ctx%% *}" "$SPENT" 2>/dev/null)
+    run=$(jq -n -r --argjson now "$now" --argjson prev "${prev:-null}" --arg main "${ctx%% *}" "$JQ_DEFS $SPENT" 2>/dev/null) ||
+      run=$(jq -n -r --argjson now "$now" --argjson prev null --arg main "${ctx%% *}" "$JQ_DEFS $SPENT" 2>/dev/null)
   fi
   note=""
   models=$(echo "${run:-0 0 0 0 -}" | awk '{ print $5 }')
@@ -983,7 +990,10 @@ definition_effort() {
     else pd=$(plugin_dir "${2%%:*}") || pd=""
     fi
     if [ "$1" = agent ]; then f="$pd/agents/${2#*:}.md"; else f="$pd/skills/${2#*:}/SKILL.md"; fi
-    [ -n "$pd" ] && [ -f "$f" ] && e=$(awk '/^---[ \t]*$/ { n++; next } n == 1 && /^effort:/ { sub(/^effort:[ \t]*/, ""); sub(/[ \t]*$/, ""); print; exit } n > 1 { exit }' "$f") && [ -n "$e" ] && { printf '%s' "$e"; return 0; }
+    e=""
+    [ -n "$pd" ] && [ -f "$f" ] &&
+      e=$(awk '/^---[ \t]*$/ { n++; next } n == 1 && /^effort:/ { sub(/^effort:[ \t]*/, ""); sub(/[ \t]*$/, ""); print; exit } n > 1 { exit }' "$f")
+    [ -z "$e" ] || { printf '%s' "$e"; return 0; }
     ;;
   esac
   printf default
@@ -996,10 +1006,9 @@ definition_effort() {
 # subagent under it, in the order they ran. Tokens, seconds and tools are
 # numbers, `-` where unknown.
 # shellcheck disable=SC2016 # a jq program: $ is jq's
-AGENT_ROWS='[inputs | fromjson? | objects] as $all
+AGENT_ROWS='[inputs | fromjson? | objects | select(.kind == "session" or .kind == "agent")] as $all
   | ($eff | split("\n") | map(split("\t") | select(length == 3))) as $efforts
-  | def firsts: reduce .[] as $x ([]; if index([$x]) then . else . + [$x] end);
-  def own: sub("^nightshift:"; "");
+  | def own: sub("^nightshift:"; "");
   def effort($k): . as $n | ([$efforts[] | select(.[0] == $k and .[1] == $n) | .[2]] | first) // null;
   def skill: . as $s | ($s | effort("skill")) as $e | ($s | own) + (if $e and $e != "default" then " (\($e))" else "" end);
   def cell: if length == 0 then "–" else join(", ") end;
@@ -1017,7 +1026,7 @@ AGENT_ROWS='[inputs | fromjson? | objects] as $all
          (.skills | map(skill) | cell), .tokens // "-", .secs // "-", .tools // "-"])
   | map(tostring) | join("\t")'
 
-# The agents of a done issue (its dir $1, its runs counted $2) as a table: a
+# The agents of a done issue (its dir $1) as a table: a
 # row a session (its runs merged) and under it a row each of its subagents,
 # their models, efforts, skills, tokens, time and tool calls. Nothing without
 # `agents`. A note if it starts after the issue's first run.
@@ -1030,16 +1039,14 @@ agents_table() {
   eff=$(printf '%s\n' "$eff" | while IFS="$(printf '\t')" read -r kind name; do
     [ -n "$name" ] && printf '%s\t%s\t%s\n' "$kind" "$name" "$(definition_effort "$kind" "$name")"
   done)
-  rows=$(jq -n -R -r --arg eff "$eff" "$AGENT_ROWS" "$1/agents" 2>/dev/null) && [ -n "$rows" ] || return 0
+  rows=$(jq -n -R -r --arg eff "$eff" "$JQ_DEFS $AGENT_ROWS" "$1/agents" 2>/dev/null) && [ -n "$rows" ] || return 0
   printf '| Agent | Model | Effort | Skills | Tokens | Time | Tools |\n|---|---|---|---|---|---|---|\n'
   printf '%s\n' "$rows" | while IFS="$(printf '\t')" read -r agent model effort skills tokens secs tools; do
     if [ "$tokens" = - ]; then tokens=–; else tokens=$(awk -v n="$tokens" "$TOK"' BEGIN { printf "%s", tok(n) }'); fi
     if [ "$secs" = - ]; then secs=–; else secs=$(duration "$secs"); fi
     printf '| %s | %s | %s | %s | %s | %s | %s |\n' "$agent" "$model" "$effort" "$skills" "$tokens" "$secs" "$tools"
   done
-  # A run with agents is a session line; one without events has none.
-  recorded=$(jq -R -r 'fromjson? | objects | select(.kind == "session") | 1' "$1/agents" | wc -l)
-  [ "$recorded" -ge "$2" ] || printf '\n_The table starts from the first recorded run: earlier runs have no agent records._\n'
+  grep -q '"kind":"partial"' "$1/agents" && printf '\n_The table starts from the first recorded run: earlier runs have no agent records._\n'
 }
 
 # The second line of a done issue's cost comment (its repo $1, its dir $2): the
@@ -1066,7 +1073,7 @@ comment_cost() {
   [ -z "$details" ] || details="
 $details"
   # The agents table, if it has agents: after a blank line.
-  table=$(agents_table "$3" "$(awk '{ print $6 }' "$3/cost")")
+  table=$(agents_table "$3")
   [ -z "$table" ] || table="
 $table
 "
