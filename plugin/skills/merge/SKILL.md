@@ -26,7 +26,13 @@ needs a human; otherwise tell the user exactly what does, and let them say **mer
    after a push: ask again). A failing gate means no merge:
    - **Goes after another.** For each `<!-- nightshift:after #N -->` in the body, find
      #N's pull request (`gh pr list --state all --head nightshift/issue-N --json
-     number,state`). Not merged yet: post the report with a `progress` closing line
+     number,state,body`). Open: follow its after markers, and theirs in turn. If they lead
+     back to this issue, that's a cycle, and no one in it can merge first. This issue the
+     lowest in the cycle: rewrite its after markers on the cycle as
+     `Overlaps with #N: … <!-- nightshift:overlaps #N -->` lines (`gh pr edit --body-file`),
+     say so in the closing comment, and carry on with the gates. Not the lowest: wait as
+     below, with the closing line "#M goes first in a cycle of after markers (#M, #N, this
+     one); then I'll rebase on it." Not in a cycle, and not merged yet: post the report with a `progress` closing line
      ("Waiting for #N's PR to merge first; then I'll rebase and check it again.") and end
      the run.
      When #N merges, the watcher's update run rebases this one and comes back here.

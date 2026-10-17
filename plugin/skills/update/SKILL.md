@@ -31,7 +31,14 @@ the pull requests can merge in any order.
    Done when the checks pass and the push succeeds.
 4. **Overlap lines.** In the PR body (`gh pr edit --body-file`), drop the lines about the
    merged work and add any new ones. Done when the body's lines match the work still open.
-5. **Report.** What conflicted and how you fixed it, then what changed beyond the
+   When the run prompt says the pull requests go after each other in a cycle, this one goes
+   first: rewrite its `Merge after #N: … <!-- nightshift:after #N -->` lines for the cycle's
+   issues as `Overlaps with #N: … <!-- nightshift:overlaps #N -->`, keeping the reason. The
+   others keep their after markers; they update on top of this one once it merges. Done when
+   none of this body's after markers lead back into the cycle.
+5. **Report.** When the run prompt says a cycle, lead with it and the order: "#57 and #59
+   were each marked to merge after the other; #57 goes first (lowest issue), #59 updates on
+   top of it." Then what conflicted and how you fixed it, then what changed beyond the
    conflict fixes, and the checks you ran. Post it as a `progress` comment, the run's one
    comment, only when the repo doesn't auto-merge. When the run prompt says "This repo
    auto-merges", post nothing and hand that report to the `nightshift:merge` skill,
