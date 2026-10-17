@@ -649,14 +649,33 @@ stalled_run() {
 }
 
 # What a build session's first run is told, for $1#$2 (its dir $3): the issue,
-# the approved plan (the last nightshift `plan` comment) and the approval.
+# the approved plan (the last nightshift `plan` comment), the comments since
+# the plan that the approval doesn't hold (allowed users' and nightshift's, as
+# the news gives them) and the approval.
 build_intro() {
   issue=$(gh api "repos/$1/issues/$2" --jq '.title + "\n\n" + (.body // "")' 2>/dev/null)
   plan=$(gh api --paginate "repos/$1/issues/$2/comments?per_page=100" \
     --jq ".[] | select(.body | contains(\"$MARKER\") and contains(\"nightshift:plan -->\")) | .body | @json" 2>/dev/null | tail -1 | jq -r . 2>/dev/null)
-  printf '%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s' \
+  planid=$(gh api --paginate "repos/$1/issues/$2/comments?per_page=100" \
+    --jq ".[] | select(.body | contains(\"$MARKER\") and contains(\"nightshift:plan -->\")) | .id" 2>/dev/null | tail -1)
+  approval=$(cat "$3/build")
+  since=""
+  if [ -n "$planid" ]; then
+    # The approval names its comments, `- @user (comment id):`. Nightshift's
+    # own carry the marker, from the login it runs as.
+    held=$(printf '%s\n' "$approval" | sed -n 's/^- @[^ ]* (comment \([0-9][0-9]*\)):$/\1/p' | paste -sd, -)
+    me=$(gh api user -q .login 2>/dev/null)
+    # shellcheck disable=SC2016 # jq's $u, not the shell's
+    since=$(gh api --paginate "repos/$1/issues/$2/comments?per_page=100" \
+      --jq ".[] | select(.id > $planid and (.id as \$i | [${held:-}] | contains([\$i]) | not)
+        and (.user.login as \$u | ($(allowed_json) | index(\$u)) or (\$u == \"$me\" and (.body | contains(\"$MARKER\")))))
+        | \"- @\(.user.login) (comment \(.id)):\n\n\(.body[0:3000])\n\"" 2>/dev/null)
+  fi
+  printf '%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n' \
     "The plan is approved: build it with the nightshift:build skill. This is a fresh session: the plan holds what was settled before it, so read the thread only for what came after it." \
-    "The issue:" "$issue" "The approved plan:" "$plan" "The approval:" "$(cat "$3/build")"
+    "The issue:" "$issue" "The approved plan:" "$plan"
+  [ -z "$since" ] || printf '%s\n\n%s\n\n' "Since the plan, before the approval:" "$since"
+  printf '%s\n\n%s' "The approval:" "$approval"
 }
 
 # What a run is told of repo $1's merging: whether to merge its pull requests.
