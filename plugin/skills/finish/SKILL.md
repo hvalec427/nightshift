@@ -14,9 +14,9 @@ own check; stop and say so at the first one that fails, leaving everything in pl
    the description. Done when you can say which.
 2. **Show it,** only when the project's instructions (its `CLAUDE.md`, rules, skills or
    nightshift instructions) say how to show a change: follow them, so a reviewer sees the
-   change without running it (screenshots, a recording, as they say). Keep the media out of the commit: under
-   a git-ignored or git-excluded path. No such instructions, or nothing to show: skip
-   it. Done when each file they ask for is made, or there's nothing to show.
+   change without running it (screenshots, a recording, as they say). Keep the media out
+   of the commit: under a git-ignored or git-excluded path. No such instructions, or
+   nothing to show: skip it. Done when each file they ask for is made, or there's nothing to show.
 3. **Commit.** `git status` shows what's left: commit it in the repo's style and the
    user's commit conventions; the media stay out. Done when `git status --porcelain`
    prints nothing.

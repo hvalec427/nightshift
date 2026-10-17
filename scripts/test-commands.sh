@@ -49,7 +49,7 @@ try() {
   expect "add with an unknown option: the usage" "$ST $OUT" "1 nightshift: usage: nightshift add <owner/repo> <clone path> [instructions=<path>] [auto_merge=false] [plugins=<name>,…] (colour isn't an option)"
   expect_line "add with an unknown option: no line" "$(cat "$NS/config")" "o/w" no
   try ns add o/w "$W/plain" rn-agent
-  expect "add with a word that isn't key=value: the usage" "$ST $OUT" "1 nightshift: usage: nightshift add <owner/repo> <clone path> [instructions=<path>] [plugins=<name>,…] (rn-agent isn't key=value)"
+  expect "add with a word that isn't key=value: the usage" "$ST $OUT" "1 nightshift: usage: nightshift add <owner/repo> <clone path> [instructions=<path>] [auto_merge=false] [plugins=<name>,…] (rn-agent isn't key=value)"
   expect_no_unexpected)
 
 (world
