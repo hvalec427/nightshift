@@ -492,6 +492,9 @@ run_agent() {
   repo=$1 n=$2 clone=$3
   dir=$(issue_dir "$repo" "$n")
   news=$(cat "$dir/news" 2>/dev/null)
+  # What started the run, for its `reply` (see AGENTS): its news, or a fresh
+  # build session's approval.
+  said=$news
   wt=$(worktree "$repo" "$n" "$clone") || {
     comment_failure "$repo" "$n" "couldn't create the worktree: see $dir/log"
     set_status "$repo" "$n" "needs you"
@@ -505,6 +508,7 @@ run_agent() {
     build=1
     # The plan is approved: built in a fresh session, the planning one kept.
     intro=$(build_intro "$repo" "$n" "$dir")
+    said=$(cat "$dir/build")
     mv "$dir/session" "$dir/plan-session"
     rm -f "$dir/build"
     resume=""
@@ -605,7 +609,11 @@ $intro"
   secs=$(($(date +%s) - t0))
   took=$(duration $secs)
   add_cost "$dir" $secs "$resume"
-  add_agents "$dir" $t0 $secs
+  # A reply: what started it has a comment of the user's (the watcher's own
+  # lines of an update run don't make one).
+  reply=false
+  printf '%s\n' "$said" | grep -q '^- @[^ ]* (comment [0-9]*):$' && reply=true
+  add_agents "$dir" $t0 $secs $reply
   if [ $stopped -eq 1 ]; then
     run_end "stopped after $took$note"
     log "$repo#$n: stopped after $took$note"
@@ -753,11 +761,14 @@ save_usage() {
   [ -z "$u" ] || printf '%s\n' "$u" >"$1/usage"
 }
 
-# Model names shortened (claude-opus-5-5-20260101 → opus-5-5), and a list's
-# values first-seen first without repeats: jq, for the programs below.
+# Model names shortened (claude-opus-5-5-20260101 → opus-5-5), a list's
+# values first-seen first without repeats, and an issue's run lines in the
+# order they ran (lines of the same second in list order): jq, for the
+# programs below.
 # shellcheck disable=SC2016 # a jq program: $ is jq's
 JQ_DEFS='def short: sub("^claude-"; "") | sub("-[0-9]{8}$"; "");
-  def firsts: reduce .[] as $x ([]; if index([$x]) then . else . + [$x] end);'
+  def firsts: reduce .[] as $x ([]; if index([$x]) then . else . + [$x] end);
+  def by_run: to_entries | sort_by([.value.run, .key]) | map(.value);'
 
 # What a run spent: the session's totals $now less the ones before it, $prev
 # (null: none), as dollars, tokens in, out and cache, and the models it used
@@ -793,6 +804,11 @@ SPENT='def fields: ["costUSD", "inputTokens", "outputTokens", "cacheReadInputTok
 #   secs     the run's seconds
 #   tokens   what the run added to the session's tokens (in, out and cache),
 #            its subagents' too (add_cost's, 0 without a result)
+#   usd      the run's dollars, its subagents' included (add_cost's, 0
+#            without a result)
+#   reply    whether a comment of the user's started the run (in its news,
+#            or a fresh build session's approval): false for an update run or
+#            a resume the watcher started
 # and an agent line (a subagent) has
 #   type, description  its Agent call's subagent_type and description
 #   model    the model that ran it, shortened
@@ -813,7 +829,8 @@ AGENTS='[inputs | fromjson? | objects] as $e
   | {kind: "session", run: $start, session: $sid,
      models: ([$main[].message.model? | strings | short] | firsts),
      skills: [$main[] | uses | select(.name == "Skill") | .input.skill],
-     tools: ([$main[] | uses] | length), secs: $secs, tokens: $tokens},
+     tools: ([$main[] | uses] | length), secs: $secs, tokens: $tokens,
+     usd: $usd, reply: $reply},
     ($turns[] | uses | select(.name == "Agent" or .name == "Task") | . as $a
        | ($results[$a.id] // {}) as $r
        | [$turns[] | select(.parent_tool_use_id == $a.id)] as $sub
@@ -825,10 +842,12 @@ AGENTS='[inputs | fromjson? | objects] as $e
           tools: ($r.totalToolUseCount // ([$sub[] | uses] | length))})'
 
 # Appends a run's agents to the issue's `agents`: the run started at $2 and
-# took $3 seconds, and spent what add_cost left in $run.
+# took $3 seconds, and spent what add_cost left in $run. $4 is whether the
+# user's comment started it (true or false).
 add_agents() {
   tokens=$(echo "${run:-0 0 0 0}" | awk '{ printf "%d", $2 + $3 + $4 }')
-  out=$(jq -n -R -c --argjson start "$2" --argjson secs "$3" --argjson tokens "$tokens" "$JQ_DEFS $AGENTS" "$1/out.jsonl" 2>/dev/null)
+  usd=$(echo "${run:-0}" | awk '{ print $1 + 0 }')
+  out=$(jq -n -R -c --argjson start "$2" --argjson secs "$3" --argjson tokens "$tokens" --argjson usd "$usd" --argjson reply "${4:-false}" "$JQ_DEFS $AGENTS" "$1/out.jsonl" 2>/dev/null)
   [ -f "$1/agents" ] || [ "$(awk '{ print $6 }' "$1/cost")" -le 1 ] || echo '{"kind":"partial"}' >"$1/agents"
   [ -z "$out" ] || printf '%s\n' "$out" >>"$1/agents"
   touch "$1/agents"
@@ -1063,9 +1082,11 @@ definition_effort() {
 # The rows of an agents table (a tab between a row's cells), from an issue's
 # `agents` (input, one JSON object a line) and $eff, the efforts of its
 # agent types and skills, a line `agent|skill<tab>name<tab>effort` each. A
-# session is a row with its runs merged, named by the stage it began in; a
-# subagent under it, in the order they ran. Tokens, seconds and tools are
-# numbers, `-` where unknown.
+# row a run, in the order they ran (lines of the same second in file order),
+# named by its stage skill (`plan run`), and under it a row each of the
+# subagents it started, in the order they ran, and a Total row ($total, the
+# issue's dollars; tokens and seconds of the runs, tools of all rows). Tokens,
+# dollars (a run's only), seconds and tools are numbers, `-` where unknown.
 # shellcheck disable=SC2016 # a jq program: $ is jq's
 AGENT_ROWS='[inputs | fromjson? | objects | select(.kind == "session" or .kind == "agent")] as $all
   | ($eff | split("\n") | map(split("\t") | select(length == 3))) as $efforts
@@ -1075,22 +1096,50 @@ AGENT_ROWS='[inputs | fromjson? | objects | select(.kind == "session" or .kind =
   def cell: if length == 0 then "–" else join(", ") end;
   def text: gsub("[\t\n\r]+"; " ") | gsub("\\|"; "\\|");
   def stage: [.[] | select(startswith("nightshift:") and . != "nightshift:issue") | own][0]
-    | if . == null then "session" elif . == "questions" or . == "plan" then "planning session" else "\(.) session" end;
-  ([$all[] | .session] | firsts)[] as $id
-  | [$all[] | select(.session == $id and .kind == "session")] as $runs
-  | ([$runs[].skills[]] | firsts) as $skills
-  | [($runs | length) as $n | "\($skills | stage) (\($n) run\(if $n == 1 then "" else "s" end))",
-     ([$runs[].models[]] | firsts | cell), "per skill", ($skills | map(skill) | cell),
-     ([$runs[].tokens] | add // 0), ([$runs[].secs] | add // 0), ([$runs[].tools] | add // 0)]
-  , ($all[] | select(.session == $id and .kind == "agent")
-      | ["↳ \(.type | own) · \(.description // "" | text)", .model // "–", (.type | effort("agent")) // "default",
-         (.skills | map(skill) | cell), .tokens // "-", .secs // "-", .tools // "-"])
+    | if . == null then "run" else "\(.) run" end;
+  [$all[] | select(.kind == "session")] | by_run as $runs
+  | [$runs[] as $r
+     | [($r.skills | stage), ($r.models | firsts | cell), "per skill", ($r.skills | map(skill) | cell),
+        $r.tokens // "-", $r.usd // "-", $r.secs // "-", $r.tools // "-"],
+       ($all[] | select(.kind == "agent" and .run == $r.run and .session == $r.session)
+        | ["↳ \(.type | own) · \(.description // "" | text)", .model // "–", (.type | effort("agent")) // "default",
+           (.skills | map(skill) | cell), .tokens // "-", "-", .secs // "-", .tools // "-"])] as $rows
+  | $rows[],
+    (select($runs != []) | ["**Total**", "–", "–", "–", ([$runs[].tokens // 0] | add), $total, ([$runs[].secs // 0] | add), ([$rows[][7] | numbers] | add)])
   | map(tostring) | join("\t")'
 
+# How the time of an issue's runs (its `agents`, input) splits, in seconds: the
+# first run's start to the last one's end, the runs' own seconds (working),
+# and the gaps between a run's end and the next one's start (floored at 0),
+# those before a run the user's comment started (waiting on you) and the rest
+# (other waits). A line of the four; nothing with fewer than two runs.
+# shellcheck disable=SC2016 # a jq program: $ is jq's
+RUN_TIMES='[inputs | fromjson? | objects | select(.kind == "session" and (.run | type) == "number")]
+  | by_run as $runs
+  | select($runs | length > 1)
+  | [range(1; $runs | length) | {gap: ([$runs[.].run - ($runs[. - 1].run + ($runs[. - 1].secs // 0)), 0] | max), reply: ($runs[.].reply == true)}] as $gaps
+  | [$runs[-1].run + ($runs[-1].secs // 0) - $runs[0].run, ([$runs[].secs // 0] | add),
+     ([$gaps[] | select(.reply) | .gap] | add // 0), ([$gaps[] | select(.reply | not) | .gap] | add // 0)]
+  | map(tostring) | join(" ")'
+
+# The line under a done issue's agents table (its dir $1): when the runs
+# spanned and how it split (see RUN_TIMES), the parts that are zero left out
+# but the working time. Nothing with one run.
+time_line() {
+  # shellcheck disable=SC2046 # a number each
+  set -- $(jq -n -R -r "$JQ_DEFS $RUN_TIMES" "$1/agents" 2>/dev/null)
+  [ $# -eq 4 ] || return 0
+  line="**Time:** $(duration "$1"): $(duration "$2") working"
+  [ "$3" -eq 0 ] || line="$line · $(duration "$3") waiting on you"
+  [ "$4" -eq 0 ] || line="$line · $(duration "$4") other waits"
+  printf '\n%s\n' "$line"
+}
+
 # The agents of a done issue (its dir $1) as a table: a
-# row a session (its runs merged) and under it a row each of its subagents,
-# their models, efforts, skills, tokens, time and tool calls. Nothing without
-# `agents`. A note if it starts after the issue's first run.
+# row a run and under it a row each of its subagents,
+# their models, efforts, skills, tokens, cost, time and tool calls, then a total
+# row and the time line. Nothing without `agents`. A note if it starts after
+# the issue's first run.
 agents_table() {
   [ -s "$1/agents" ] || return 0
   eff=$(
@@ -1100,13 +1149,15 @@ agents_table() {
   eff=$(printf '%s\n' "$eff" | while IFS="$(printf '\t')" read -r kind name; do
     [ -n "$name" ] && printf '%s\t%s\t%s\n' "$kind" "$name" "$(definition_effort "$kind" "$name")"
   done)
-  rows=$(jq -n -R -r --arg eff "$eff" "$JQ_DEFS $AGENT_ROWS" "$1/agents" 2>/dev/null) && [ -n "$rows" ] || return 0
-  printf '| Agent | Model | Effort | Skills | Tokens | Time | Tools |\n|---|---|---|---|---|---|---|\n'
-  printf '%s\n' "$rows" | while IFS="$(printf '\t')" read -r agent model effort skills tokens secs tools; do
+  rows=$(jq -n -R -r --arg eff "$eff" --argjson total "$(awk '{ print $1 + 0 }' "$1/cost" 2>/dev/null || echo 0)" "$JQ_DEFS $AGENT_ROWS" "$1/agents" 2>/dev/null) && [ -n "$rows" ] || return 0
+  printf '| Agent | Model | Effort | Skills | Tokens | Cost | Time | Tools |\n|---|---|---|---|---|---|---|---|\n'
+  printf '%s\n' "$rows" | while IFS="$(printf '\t')" read -r agent model effort skills tokens usd secs tools; do
     if [ "$tokens" = - ]; then tokens=–; else tokens=$(awk -v n="$tokens" "$TOK"' BEGIN { printf "%s", tok(n) }'); fi
+    if [ "$usd" = - ]; then usd=–; else usd=$(awk -v n="$usd" 'BEGIN { printf "$%.2f", n }'); fi
     if [ "$secs" = - ]; then secs=–; else secs=$(duration "$secs"); fi
-    printf '| %s | %s | %s | %s | %s | %s | %s |\n' "$agent" "$model" "$effort" "$skills" "$tokens" "$secs" "$tools"
+    printf '| %s | %s | %s | %s | %s | %s | %s | %s |\n' "$agent" "$model" "$effort" "$skills" "$tokens" "$usd" "$secs" "$tools"
   done
+  time_line "$1"
   grep -q '"kind":"partial"' "$1/agents" && printf '\n_The table starts from the first recorded run: earlier runs have no agent records._\n'
 }
 
