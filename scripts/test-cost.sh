@@ -125,6 +125,71 @@ SONNET=claude-sonnet-4-5-20250929
   expect_line "its log: the main model, then its subagents'" "$(cat "$(idir 7)/log")" \
     "^0	=== [0-9:]* run done in [0-9]*s · opus-5-5, sonnet-4-5, haiku-4-5 · context 50k$")
 
+# The agents a run had: its session's line, then a line for each subagent, in
+# the order they ran. Their keys sorted, the session's seconds as S and the
+# run marker (when the run started) as R.
+agents() { state "$1" agents | jq -S -c '.run = "R" | if .kind == "session" then .secs = "S" else . end'; }
+
+(world
+  gh_issue o/r 7 alice agent
+  runs_do "costs 1 $OPUS 100 200 300 400; turn $OPUS 5 1000 0; skill nightshift:issue; skill nightshift:questions
+    agent toolu_1 nightshift:ticket 'Build T1'; skill nightshift:build toolu_1; turn $HAIKU 5 100 0 toolu_1
+    agent_result toolu_1 $HAIKU 5000 12400 7
+    agent toolu_2 Explore 'Find the cost code' Task; agent_result toolu_2 $SONNET 900 2000 3
+    comment questions"
+  poll
+  expect "a run: its session, then each subagent" "$(agents 7)" \
+'{"kind":"session","models":["opus-5-5"],"run":"R","secs":"S","session":"session-1","skills":["nightshift:issue","nightshift:questions"],"tokens":1000,"tools":5}
+{"description":"Build T1","kind":"agent","model":"haiku-4-5","run":"R","secs":12,"session":"session-1","skills":["nightshift:build"],"tokens":5000,"tools":7,"type":"nightshift:ticket"}
+{"description":"Find the cost code","kind":"agent","model":"sonnet-4-5","run":"R","secs":2,"session":"session-1","skills":[],"tokens":900,"tools":3,"type":"Explore"}'
+  expect_line "its session ran for the run's seconds" "$(state 7 agents)" '^{"kind":"session",.*"secs":[0-9]*,'
+  expect "a line's run marker: the run's start, the same for all its lines" \
+    "$(state 7 agents | jq -r '.run' | sort -u | wc -l | tr -d ' ')" 1
+  expect_ok "the run marker is a time" jq -e 'select(.run > 1700000000)' "$(idir 7)/agents"
+  gh_comment o/r 7 alice "1 yes" >/dev/null
+  runs_do "costs 0.5 $OPUS 10 10 10 10; skill nightshift:plan; comment plan"
+  poll
+  expect "a resumed run: its own share of the tokens, on the same session" "$(agents 7 | tail -1)" \
+'{"kind":"session","models":[],"run":"R","secs":"S","session":"session-1","skills":["nightshift:plan"],"tokens":40,"tools":2}'
+  expect "its lines are added to the run before's" "$(state 7 agents | wc -l | tr -d ' ')" 4
+  expect "a later run starts later or at the same second" "$(state 7 agents | jq -s '.[3].run >= .[0].run')" true
+  rm "$(idir 7)/session"
+  gh_comment o/r 7 alice "go" >/dev/null
+  runs_do "costs 2 $OPUS 1 2 3 4; skill nightshift:build; comment progress"
+  poll
+  expect "a fresh session: all its tokens, its own id" "$(agents 7 | tail -1)" \
+'{"kind":"session","models":[],"run":"R","secs":"S","session":"session-3","skills":["nightshift:build"],"tokens":10,"tools":2}'
+  gh_state o/r 7 closed
+  poll
+  expect "done: the agents stay" "$(state 7 agents | wc -l | tr -d ' ')" 5
+  expect_no_unexpected)
+
+# A run that failed or was stopped records what its stream holds, a subagent
+# that never finished included.
+(world
+  gh_issue o/r 7 alice agent
+  runs_do "costs 0.5 $OPUS 1 1 1 1; skill nightshift:issue; agent toolu_1 nightshift:ticket 'Build T1'; skill nightshift:build toolu_1
+    turn $HAIKU 5 100 0 toolu_1; fail_result"
+  poll
+  expect "a failed run: its session and its unfinished subagent" "$(agents 7)" \
+'{"kind":"session","models":[],"run":"R","secs":"S","session":"session-1","skills":["nightshift:issue"],"tokens":4,"tools":2}
+{"description":"Build T1","kind":"agent","model":"haiku-4-5","run":"R","secs":null,"session":"session-1","skills":["nightshift:build"],"tokens":null,"tools":1,"type":"nightshift:ticket"}'
+  gh_comment o/r 7 alice "again" >/dev/null
+  runs_do "turn $OPUS 5 1000 0; skill nightshift:plan; hang"
+  "$ROOT/nightshift" once &
+  bg=$!
+  wait_for "$CLAUDE_FAKE/runs/2/waiting"
+  ns stop o/r#7 >/dev/null
+  wait "$bg"
+  expect "a stopped run (no result): its session, no tokens" "$(agents 7 | tail -1)" \
+'{"kind":"session","models":["opus-5-5"],"run":"R","secs":"S","session":"session-1","skills":["nightshift:plan"],"tokens":0,"tools":1}')
+
+(world
+  gh_issue o/r 7 alice agent
+  touch "$CLAUDE_FAKE/silent"
+  poll
+  expect "a run with no events: nothing recorded" "$([ -e "$(idir 7)/agents" ] && echo yes || echo no)" no)
+
 # Shown by status.
 (world
   gh_issue o/r 7 alice agent
