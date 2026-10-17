@@ -35,7 +35,7 @@
 # `session`, `plan-session`, `seen`, `started`, `pr`, `cost` and `usage` stay
 # (`revived`, the merged pull request a comment brought it back from);
 # `label`, its status label (see STATUSES); `skill`, the last nightshift skill
-# its run invoked (see SKILL_STATUSES); `type`, its type label as the
+# its session invoked (see SKILL_STATUSES); `type`, its type label as the
 # last run left it (see TYPES); and per repo, `merged/<owner>_<repo>`, the
 # merged nightshift pull requests seen, and `labels/<owner>_<repo>`, the
 # version of the status labels created there.
@@ -514,12 +514,13 @@ $(type_note "$repo" "$n" "$dir")
 $(merge_note "$repo")
 
 $intro"
-  # The run says when it plans or builds (`nightshift label`); until then
-  # (a resumed session has its last skill loaded already):
+  # The run says when it plans or builds (`nightshift label`); until then, a
+  # resumed session is still in the last skill it invoked:
+  last=""
+  [ -z "$resume" ] || last=$(skill_status "$(cat "$dir/skill" 2>/dev/null)")
   if [ -f "$dir/updating" ]; then set_status "$repo" "$n" updating
   elif [ -f "$dir/pr" ] || [ "$build" = 1 ]; then set_status "$repo" "$n" building
-  elif [ -n "$resume" ] && s=$(skill_status "$(cat "$dir/skill" 2>/dev/null)") && [ -n "$s" ]; then
-    set_status "$repo" "$n" "$s"
+  elif [ -n "$last" ]; then set_status "$repo" "$n" "$last"
   else set_status "$repo" "$n" thinking
   fi
   log "$repo#$n: run starting"

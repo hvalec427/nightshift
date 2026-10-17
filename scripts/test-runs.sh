@@ -113,23 +113,8 @@ AT_LABEL='i=0; until gh api "repos/$NIGHTSHIFT_REPO/issues/$NIGHTSHIFT_ISSUE" --
   expect "a resumed run: the last one's skill is kept" "$(state 7 skill)" "nightshift:build"
   expect_no_unexpected)
 
-# A resumed session has its skill loaded already: it starts at that skill's label.
-(world
-  gh_issue o/r 7 alice agent
-  runs_do 'skill nightshift:build; comment questions'
-  poll
-  runs_do "$LABELS_NOW"'start"'
-  gh_comment o/r 7 alice "1 yes" >/dev/null
-  poll
-  expect "the reply resumes the session" "$(run_opt --resume)" session-1
-  expect "a resumed build run: building from the start" "$(grep '^nightshift: ' "$CLAUDE_FAKE/runs/2/start")" "nightshift: building"
-  gh_comment o/r 7 alice "and?" >/dev/null
-  poll
-  expect "resumed again, with no skill: still building" "$(grep '^nightshift: ' "$CLAUDE_FAKE/runs/3/start")" "nightshift: building"
-  expect "resumed again: the skill is kept" "$(state 7 skill)" "nightshift:build"
-  expect_no_unexpected)
-
-# The label a resumed run starts at, after a first run doing $1.
+# A resumed session has its skill loaded already, so it starts at that skill's
+# label: the label a resumed run starts at, after a first run doing $1.
 resumed_label() {
   gh_issue o/r 7 alice agent
   runs_do "$1; comment questions"
@@ -139,6 +124,14 @@ resumed_label() {
   poll
   grep '^nightshift: ' "$CLAUDE_FAKE/runs/2/start"
 }
+(world
+  expect "a resumed build run: building from the start" "$(resumed_label 'skill nightshift:build')" "nightshift: building"
+  expect "the reply resumes the session" "$(run_opt --resume)" session-1
+  gh_comment o/r 7 alice "and?" >/dev/null
+  poll
+  expect "resumed again, with no skill: still building" "$(grep '^nightshift: ' "$CLAUDE_FAKE/runs/3/start")" "nightshift: building"
+  expect "resumed again: the skill is kept" "$(state 7 skill)" "nightshift:build"
+  expect_no_unexpected)
 (world
   expect "a resumed plan run: planning from the start" "$(resumed_label 'skill nightshift:plan')" "nightshift: planning"
   expect_no_unexpected)
