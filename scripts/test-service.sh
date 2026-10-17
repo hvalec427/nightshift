@@ -44,17 +44,48 @@ healthy() {
   kill "$hand"
   wait "$hand" 2>/dev/null || true)
 
+# --- a label from the pool ---------------------------------------------------------
+
+# A pool of its own (in a temp dir, gone at the end) for claim_label; call it
+# in a subshell.
+labels() {
+  NIGHTSHIFT_TEST_LABELS=$(mktemp -d)
+  export NIGHTSHIFT_TEST_LABELS
+  trap 'rm -rf "$NIGHTSHIFT_TEST_LABELS"' EXIT
+}
+
+(labels
+  # One holds its slot until done (or the pool is gone, if this one failed).
+  (claim_label
+    echo "$NIGHTSHIFT_LABEL" >"$NIGHTSHIFT_TEST_LABELS/a"
+    while [ -d "$NIGHTSHIFT_TEST_LABELS" ] && [ ! -e "$NIGHTSHIFT_TEST_LABELS/done" ]; do sleep 0.1; done) &
+  wait_for "$NIGHTSHIFT_TEST_LABELS/a"
+  b=$(claim_label && echo "$NIGHTSHIFT_LABEL")
+  touch "$NIGHTSHIFT_TEST_LABELS/done"
+  wait
+  expect "two claims at once: different labels" "$(cat "$NIGHTSHIFT_TEST_LABELS/a") $b" "com.nightshift.test.1 com.nightshift.test.2")
+
+(labels
+  claim_label
+  release_label
+  claim_label
+  expect "a released slot: the next claim takes it" "$NIGHTSHIFT_LABEL" com.nightshift.test.1)
+
+(labels
+  (claim_label)
+  claim_label
+  expect "a slot whose holder died: the next claim takes it" "$NIGHTSHIFT_LABEL" com.nightshift.test.1)
+
 if ! launchctl print "gui/$(id -u)" >/dev/null 2>&1; then
   echo "skip the LaunchAgent: no GUI launchd domain here (gui/$(id -u))"
 else
   (healthy
-    # One label for every run of these tests: launchctl remembers each label
-    # disabled or enabled.
-    export NIGHTSHIFT_LABEL=com.nightshift.test
+    # A label from the pool (a previous run may have left it loaded).
+    claim_label
     plist="$HOME/Library/LaunchAgents/$NIGHTSHIFT_LABEL.plist"
     domain="gui/$(id -u)"
     stop_it() { launchctl bootout "$domain/$NIGHTSHIFT_LABEL" 2>/dev/null || true; }
-    trap 'stop_it; end_world' EXIT
+    trap 'stop_it; release_label; end_world' EXIT
     stop_it
     try ns start
     expect "start: starts" "$ST" 0

@@ -99,6 +99,53 @@ end_world() {
   return 0
 }
 
+# --- a LaunchAgent label ------------------------------------------------------------
+
+# The tests that run a real LaunchAgent take its label from a pool of 8,
+# com.nightshift.test.1 … .8: launchd remembers every label it has seen (and
+# `nightshift stop` disables it), so not one per run; and suites run at once
+# (worktrees in parallel), so not one for all. A slot is a lock dir in
+# $NIGHTSHIFT_TEST_LABELS with its holder's pid; a dead holder's is free.
+NIGHTSHIFT_TEST_LABELS=${NIGHTSHIFT_TEST_LABELS:-${TMPDIR:-/tmp}/nightshift-test-labels}
+
+# Claim a free slot for the current (sub)shell, as NIGHTSHIFT_LABEL, waiting
+# for one 10 minutes at most.
+claim_label() {
+  local me slot lock tries=0
+  # This (sub)shell's pid ($$ is the top shell's; bash 3.2 has no BASHPID).
+  me=$(exec sh -c 'echo $PPID')
+  mkdir -p "$NIGHTSHIFT_TEST_LABELS"
+  while [ $tries -lt 600 ]; do
+    for slot in $(seq 8); do
+      lock="$NIGHTSHIFT_TEST_LABELS/$slot"
+      free_dead_label "$lock"
+      if mkdir "$lock" 2>/dev/null; then
+        echo "$me" >"$lock/pid"
+        export NIGHTSHIFT_LABEL="com.nightshift.test.$slot" NIGHTSHIFT_LABEL_LOCK="$lock"
+        return 0
+      fi
+    done
+    sleep 1
+    tries=$((tries + 1))
+  done
+  echo "claim_label: every test label stayed taken for 10 minutes ($NIGHTSHIFT_TEST_LABELS)" >&2
+  return 1
+}
+
+# Free a slot whose holder died (one with no pid yet is mid-claim). Under a
+# lock of its own, with the pid read again inside, so two claims can't both
+# free it, the second removing the first's fresh claim.
+free_dead_label() {
+  local holder
+  mkdir "$1.free" 2>/dev/null || return 0
+  holder=$(cat "$1/pid" 2>/dev/null) || true
+  if [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; then rm -rf "$1"; fi
+  rmdir "$1.free"
+}
+
+# Give back the slot claim_label took.
+release_label() { rm -rf "${NIGHTSHIFT_LABEL_LOCK:?}"; }
+
 # nightshift, as the user runs it.
 ns() { "$ROOT/nightshift" "$@"; }
 
