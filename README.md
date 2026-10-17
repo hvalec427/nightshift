@@ -99,7 +99,7 @@ you approve the plan, the build starts in a fresh one, given the issue, the plan
 your approval, so it doesn't carry (and pay for) the planning conversation: a reply
 of just **go** starts it straight away, and any other approval once the planning
 session has read it. Later runs (your comments, updates) continue the build session.
-A build or update run that ends without commenting (it stopped to wait on
+A build, update or merge run that ends without commenting (it stopped to wait on
 something) is resumed once by itself; a second in a row asks you in a comment.
 Once the pull request is open, the worktree is
 removed; the branch stays. Once it's done (its pull request merged, or the issue

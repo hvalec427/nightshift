@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Tests for a stalled run: one that ends while building or updating without
-# commenting (it stopped to wait on something, but a run ends when it stops)
-# is resumed, told to carry on; a second stall in a row asks the user.
+# Tests for a stalled run: one that ends while building, updating or merging
+# without commenting (it stopped to wait on something, but a run ends when it
+# stops) is resumed, told to carry on; a second stall in a row asks the user.
 #   bash scripts/test-stalls.sh
 set -euo pipefail
 . "$(dirname "$0")/test-lib.sh"
@@ -95,6 +95,18 @@ STALL_LINE="^Your last run ended without finishing (it stopped, maybe to wait on
   expect_line "told to carry on" "$(run_prompt)" "$STALL_LINE"
   poll
   expect "then nothing new: no run" "$(runs)" 3)
+
+# A run that went on to merge its pull request and stopped to wait on its checks.
+(world
+  gh_issue o/r 7 alice agent
+  runs_do 'case $k in
+    1) label building; commit feature.txt; open_pr; label merging ;;
+    *) comment done ;;
+    esac'
+  poll
+  poll
+  expect "a merging run that ends without a comment: resumed" "$(runs)" 2
+  expect_line "told to carry on" "$(run_prompt)" "$STALL_LINE")
 
 # A resumed run that ends any other way: a later stall is a first one again.
 # $1 says how, $2 what run 2 (the resumed one) does.
