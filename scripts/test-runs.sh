@@ -76,6 +76,15 @@ NIGHTSHIFT_REPO=o/r"
   expect_line "the prompt: only auto_merge=false turns it off" "$(run_prompt)" \
     "^This repo auto-merges: once its pull request is open or updated, use the merge skill\.$")
 
+(world
+  echo "Use tabs." >"$W/ours.md"
+  printf 'repo %s %s auto_merge=false instructions=%s\n' "$REPO" "$CLONE" "$W/ours.md" >"$NS/config"
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  expect_line "the prompt: auto_merge=false beside another option" "$(run_prompt)" \
+    "^This repo doesn't auto-merge (auto_merge=false): leave merging to the user\.$")
+
 # The skill a run is in: its status label, its skill file and its log.
 # (The watcher sets the label as the stream goes by, so wait for it.)
 AT_LABEL='i=0; until gh api "repos/$NIGHTSHIFT_REPO/issues/$NIGHTSHIFT_ISSUE" --jq ".labels[].name" | grep -qx "nightshift: $1" || [ $i -ge 50 ]; do sleep 0.1; i=$((i + 1)); done'
