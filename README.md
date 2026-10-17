@@ -282,9 +282,9 @@ interval=5
   checked every 30 s at most.
 - `auto_update`: `true` has the watch install each new release itself (default
   `false`; `install.sh --auto-update` sets it). It checks for one once an hour.
-  Once a new release is out, no new runs start; their issues show `queued`. When
-  the runs in flight finish, it runs the release's `install.sh` and restarts on
-  the new version, then starts the waiting issues. A failed update is logged
+  A new release never holds a run back: issues keep starting. After a poll that
+  leaves no run in flight, it runs the release's `install.sh` and restarts on
+  the new version (a busy machine updates late). A failed update is logged
   (what went wrong is in `~/.nightshift/update.log`), and it stays on its version
   until the next check. Only a release install updates itself, not `--master` or
   a clone's.

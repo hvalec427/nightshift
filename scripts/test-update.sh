@@ -74,19 +74,20 @@ checks() { cat "$CURL_FAKE/calls" 2>/dev/null | grep -c 'releases/latest' || tru
   wait_for "$CLAUDE_FAKE/runs/1/waiting"
   latest 0.6.0
   wait_log "v0.6.0 is out"
-  expect_line "a run in flight: the update waits for it" "$(cat "$NS/watch.log")" "v0.6.0 is out: updating once the runs in flight finish$"
+  expect_line "a run in flight: the update waits for nothing to run" "$(cat "$NS/watch.log")" "v0.6.0 is out: updating once nothing runs$"
   gh_issue o/r 8 alice agent
-  wait_log "#8 waits (updating)"
-  expect_line "a new issue meanwhile: waits" "$(cat "$NS/watch.log")" "#8 waits (updating)"
-  expect "its status: queued" "$(status_label 8)" queued
-  expect "no new run" "$(runs)" 1
+  wait_for "$CLAUDE_FAKE/runs/2/waiting"
+  expect_line "a new issue meanwhile: starts" "$(cat "$CLAUDE_FAKE/runs/2/env")" "^NIGHTSHIFT_ISSUE=8$"
+  expect "no hold in the log" "$(grep -c 'waits (updating)' "$NS/watch.log" || true)" 0
+  expect "both run" "$(runs)" 2
   expect_ok "install.sh: not yet" test ! -e "$W/installed"
   runs_do ''
   touch "$CLAUDE_FAKE/runs/1/go"
+  sleep 2
+  expect_ok "one run still in flight: install.sh waits" test ! -e "$W/installed"
+  touch "$CLAUDE_FAKE/runs/2/go"
   wait_log "watching (nightshift 0.6.0)"
-  expect_line "the run done: it updates" "$(cat "$NS/watch.log")" "updated to v0.6.0: restarting$"
-  wait_for "$CLAUDE_FAKE/runs/2/env"
-  expect_line "then the waiting issue starts" "$(cat "$CLAUDE_FAKE/runs/2/env")" "^NIGHTSHIFT_ISSUE=8$"
+  expect_line "both runs done: it updates" "$(cat "$NS/watch.log")" "updated to v0.6.0: restarting$"
   stop_bg)
 
 (world

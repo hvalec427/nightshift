@@ -1294,11 +1294,6 @@ poll_repo() {
       echo "$updated" >"$d/updated"
       continue
     fi
-    if [ -n "$PENDING" ]; then
-      did="$did, #$n waits (updating)"
-      set_status "$repo" "$n" queued
-      continue # started by the new version
-    fi
     if [ "$(count_running)" -ge "$(setting max_parallel 2)" ]; then
       did="$did, #$n waits (at capacity)"
       set_status "$repo" "$n" queued
@@ -1357,30 +1352,34 @@ poll() {
 
 # --- updating itself --------------------------------------------------------------
 
-# The release a watch updates to once no run is in flight, while one is
-# pending (no runs start meanwhile).
+# The release a watch updates to once a poll leaves no run in flight. Runs
+# start as usual meanwhile.
 PENDING=""
 
 # With auto_update=true, a release install's watch asks for the latest release
 # once an hour (NIGHTSHIFT_UPDATE_INTERVAL is for tests). A newer one is
-# pending until the runs in flight finish; then its install.sh runs in update
-# mode (the service left as it is), and the watch execs the new script. A
-# failed update stays on this version until the next check.
+# pending until apply_update installs it.
 check_update() {
   [ "$(setting auto_update false)" = true ] || return 0
   case "$VERSION" in [0-9]*) ;; *) return 0 ;; esac
-  if [ -z "$PENDING" ]; then
-    f="$NS/poll/update" now=$(date +%s)
-    [ $((now - $(cat "$f" 2>/dev/null || echo 0))) -ge "${NIGHTSHIFT_UPDATE_INTERVAL:-3600}" ] || return 0
-    mkdir -p "$NS/poll" && echo "$now" >"$f"
-    latest=$(latest_release)
-    [ -n "$latest" ] && ! version_ge "$VERSION" "$latest" || return 0
-    PENDING=$latest
-    if [ "$(count_running)" -gt 0 ]; then log "v$PENDING is out: updating once the runs in flight finish"
-    else log "v$PENDING is out: updating to it"
-    fi
+  [ -z "$PENDING" ] || return 0
+  f="$NS/poll/update" now=$(date +%s)
+  [ $((now - $(cat "$f" 2>/dev/null || echo 0))) -ge "${NIGHTSHIFT_UPDATE_INTERVAL:-3600}" ] || return 0
+  mkdir -p "$NS/poll" && echo "$now" >"$f"
+  latest=$(latest_release)
+  [ -n "$latest" ] && ! version_ge "$VERSION" "$latest" || return 0
+  PENDING=$latest
+  if [ "$(count_running)" -gt 0 ]; then log "v$PENDING is out: updating once nothing runs"
+  else log "v$PENDING is out: updating to it"
   fi
-  [ "$(count_running)" -eq 0 ] || return 0
+}
+
+# After a poll, with a release pending and no run in flight (the poll has just
+# started what it would, so nothing is waiting either): its install.sh runs in
+# update mode (the service left as it is), and the watch execs the new script.
+# A failed update stays on this version until the next check.
+apply_update() {
+  [ -n "$PENDING" ] && [ "$(count_running)" -eq 0 ] || return 0
   : >"$NS/update.log"
   # Downloaded first: a failed download piped to sh would look like success.
   if script=$(curl -fsSL --max-time 30 "https://raw.githubusercontent.com/$REPO/v$PENDING/install.sh" 2>>"$NS/update.log") &&
@@ -1408,6 +1407,7 @@ cmd_watch() {
   while :; do
     check_update
     poll
+    apply_update
     trim_log
     sleep "$(setting interval 5)" &
     spid=$!
