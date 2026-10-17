@@ -52,7 +52,7 @@ run's own model. Its brief stands on its own, since it sees nothing of this conv
 - how the repo is checked (as above), and the commit style;
 - what it may do: build, check and commit this one ticket, in this worktree. It never
   comments on the issue, changes labels, pushes, opens a pull request or touches the other
-  tickets.
+  tickets. It files no issues: a defect it finds outside the ticket goes in its reply.
 - what it returns: a short summary of what the ticket delivered and how it was checked;
   or, when it can't finish, a reply starting with `BLOCKED:`, then what's needed, what it
   finished and what it left uncommitted. It commits nothing half done.

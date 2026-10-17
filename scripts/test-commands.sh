@@ -24,6 +24,7 @@ try() {
   expect "add: the repo line" "$(cat "$NS/config")" "repo o/x $W/other"
   expect_line "add: the agent label is created" "$(cat "$(gh_dir o/x)/labels")" "^agent$"
   expect_line "add: the status labels too" "$(cat "$(gh_dir o/x)/labels")" "^nightshift: needs you$"
+  expect_line "add: proposed among them" "$(cat "$(gh_dir o/x)/labels")" "^nightshift: proposed$"
   try ns add o/x "$W/other"
   expect "add again: fails" "$ST $OUT" "1 nightshift: o/x is already watched"
   try ns add o/y "$W/nowhere"
@@ -62,7 +63,10 @@ no issues yet"
   poll
   expect_line "status: an ignored issue" "$(ns status)" "^o/r#8  *ignored (labelled by someone else)$"
   mkdir -p "$(idir 9)"
-  expect_line "status: one never run" "$(ns status)" "^o/r#9  *queued$")
+  expect_line "status: one never run" "$(ns status)" "^o/r#9  *queued$"
+  gh_issue o/r 10 alice agent "nightshift: proposed"
+  poll
+  expect_line "status: a proposed one, held" "$(ns status)" "^o/r#10  *proposed: waiting for your comment$")
 
 (world
   gh_issue o/r 7 alice agent
@@ -151,7 +155,7 @@ an old line"
   export NIGHTSHIFT_REPO=o/r NIGHTSHIFT_ISSUE=7
   try ns label loud
   expect "label, an unknown status: the statuses" "$ST $OUT" \
-    "1 nightshift: usage: nightshift label <status>: one of queued, thinking, planning, building, updating, answering, needs you, PR open, stopped"
+    "1 nightshift: usage: nightshift label <status>: one of proposed, queued, thinking, planning, building, updating, answering, needs you, PR open, stopped"
   ns label building
   expect "label: sets it" "$(status_label 7)" building
   ns label "needs you"

@@ -138,6 +138,7 @@ waiting on you:
 
 | Label | |
 |---|---|
+| `nightshift: proposed` | a defect a run found and filed: held until you comment |
 | `nightshift: queued` | labelled, waiting for its first run (or a free slot) |
 | `nightshift: thinking` | a run is reading the issue and the code |
 | `nightshift: planning` | a run is writing or revising the plan |
@@ -155,7 +156,17 @@ nightshift's skills: `nightshift:questions` sets `thinking`, `plan` `planning`,
 running (and come back with it). `nightshift status` says the same, with the
 skill a run is in (or its last one ended in).
 
-Its comments start with **🤖 nightshift** and carry a hidden `<!-- nightshift -->`
+A run that spots a real defect outside its own issue (a bug, broken docs, a
+failing check; not an idea) files it, after looking for a duplicate, with
+`agent`, its type and `nightshift: proposed`, at most three a run, and names
+them in its next comment; it doesn't fix them on its branch. That's the one
+status a run sets, not the watcher. An issue labelled `nightshift: proposed` is
+held: the watcher doesn't start it until you comment on it, or remove that
+label. Your comment starts its first run, and the run gets your comment.
+Others' comments don't start it. `nightshift status` shows a held one as
+`proposed: waiting for your comment`.
+
+nightshift's comments start with **🤖 nightshift** and carry a hidden `<!-- nightshift -->`
 marker, which is how it tells them from yours: it runs as your GitHub account, so
 on GitHub they're yours. It only acts on the label when you added it, and only on
 comments from you (`allowed_users` below).

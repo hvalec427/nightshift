@@ -36,7 +36,7 @@ when you report, and go on.
 Start both subagents in one message, so they run in parallel, in the foreground
 (`run_in_background: false`), with the general-purpose type. Each prompt stands alone:
 this worktree's path, the diff and log commands, what it reviews against, and its brief
-below. Tell each it only reads: no edits, commits or comments on the issue. Each finding
+below. Tell each it only reads: no edits, commits, comments or new issues. Each finding
 gives `file:line`, quotes the hunk (and the plan or standard it's measured against), and
 says whether it's a hard miss or a judgement call. Under 400 words each.
 

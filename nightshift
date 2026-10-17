@@ -171,7 +171,8 @@ EOF
 
 # The status labels, `nightshift: <status>`, a line each: the status, its colour
 # and description. An issue carries one at a time, the one in its `label`.
-STATUSES='queued|BFBFBF|nightshift will start on this
+STATUSES='proposed|BFBFBF|nightshift found this: comment to start it
+queued|BFBFBF|nightshift will start on this
 thinking|1D76DB|nightshift is reading the issue and the code
 planning|1D76DB|nightshift is writing the plan
 building|1D76DB|nightshift is building it
@@ -400,7 +401,11 @@ run_agent() {
     rm -f "$dir/build"
     resume=""
   elif [ ! -s "$dir/session" ]; then
-    intro="This is your first run for this issue."
+    intro="This is your first run for this issue.${news:+
+
+New on the issue:
+
+$news}"
     resume=""
   else
     intro="New on the issue since your last run:
@@ -821,6 +826,8 @@ poll_repo() {
   all=$(printf '%s\n' "$issues" | jq -r '.[] | select(.pull_request | not) | "\(.number) \(.updated_at) \([.labels[].name | select(. == "invalid" or . == "wontfix")] | first // "-")"')
   open=$(printf '%s\n' "$all" | awk 'NF && $3 == "-" { print $1, $2 }')
   held=$(printf '%s\n' "$all" | awk 'NF && $3 != "-" { print $1, $3 }')
+  # The ones a run filed (`nightshift: proposed`), held until you comment.
+  proposed=$(printf '%s\n' "$issues" | jq -r '.[] | select(any(.labels[]; .name == "nightshift: proposed")) | .number')
 
   # Issues no longer labelled (or closed, or held): note which, once, and stop
   # what's running there. Back in the list, the note goes (and a stopped run
@@ -888,6 +895,12 @@ poll_repo() {
     last=$(gh api --paginate "repos/$repo/issues/$n/comments?per_page=100" --jq "$filter | .id" 2>/dev/null | tail -1)
     first_run=0
     [ -s "$d/session" ] || [ -f "$d/started" ] || first_run=1
+    # Proposed, never run and not commented on: held, its status kept.
+    if [ $first_run -eq 1 ] && [ -z "$news" ] && printf '%s\n' "$proposed" | grep -qx "$n"; then
+      echo "$updated" >"$d/updated"
+      echo proposed >"$d/label"
+      continue
+    fi
     # A plain "go" to the plan: build it in a fresh session (see run_agent).
     if [ -n "$news" ] && handoff_ok "$d" && approves "$repo" "$n" "$filter"; then
       printf '%s' "$news" >"$d/build"
@@ -1086,6 +1099,7 @@ cmd_status() {
     elif [ -f "$d/pr" ] && [ "$(label_or "$d" "PR open")" = "PR open" ]; then what="PR $(cat "$d/pr")$(after_note "$d")$(skill_note "$d")$(waited "$d" " · waiting ")"
     elif [ -f "$d/pr" ]; then what="PR $(cat "$d/pr")$(after_note "$d") · $(cat "$d/label")$(skill_note "$d")$(waited "$d" " · ")"
     elif [ -s "$d/session" ]; then what="$(label_or "$d" "waiting for a reply")$(skill_note "$d")$(waited "$d" " · ")"
+    elif [ "$(label_or "$d" queued)" = proposed ]; then what="proposed: waiting for your comment"
     else what="queued"
     fi
     what="$what$(cost_note "$d")"
