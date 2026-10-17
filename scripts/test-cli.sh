@@ -121,10 +121,25 @@ expect "no test file calls a plain $plain" "$found" ""
   order() { "${caller[@]}" NIGHTSHIFT_TEST_JOBS=1 NIGHTSHIFT_TEST_SEED="$1" bash "$ROOT/scripts/test.sh" "$ct"/many/*.sh 2>/dev/null | names | paste -sd' ' -; }
   expect "test.sh: the same seed runs the files in the same order" "$(order 7)" "$(order 7)"
   expect "test.sh: another seed runs them in another order" "$([ "$(order 7)" != "$(order 8)" ] && echo differ)" "differ"
-  # sed, not head: test.sh must not write to a closed pipe (where SIGPIPE is
-  # ignored, as on CI, bash 3.2 then never ends).
+  # sed, not head: where SIGPIPE is ignored (as on CI), a reader that leaves
+  # early ends test.sh with 141 (see below).
   expect "test.sh: a seed prints before the results" "$("${caller[@]}" NIGHTSHIFT_TEST_SEED=7 bash "$ROOT/scripts/test.sh" "$fx/test-pass.sh" 2>/dev/null | sed -n 1p)" "seed 7"
   expect "test.sh: with no seed given, one is printed" "$("${caller[@]}" bash "$ROOT/scripts/test.sh" "$fx/test-pass.sh" 2>/dev/null | sed -n '1s/^seed [0-9][0-9]*$/seed/p')" "seed"
+  # Its reader gone, with SIGPIPE ignored: it still ends, as SIGPIPE would
+  # have ended it, and cleans up. Two files, so a result prints after head
+  # left; killed after 20s, so a hang fails here instead of hanging the file.
+  mkfifo "$ct/pipe"
+  head -1 <"$ct/pipe" >/dev/null &
+  perl -e '$SIG{PIPE} = "IGNORE"; exec @ARGV' "${caller[@]}" bash "$ROOT/scripts/test.sh" "$fx/test-pass.sh" "$fx/test-quick.sh" >"$ct/pipe" 2>/dev/null &
+  pid=$!
+  i=0
+  while kill -0 "$pid" 2>/dev/null && [ $i -lt 100 ]; do sleep 0.2; i=$((i + 1)); done
+  kill "$pid" 2>/dev/null || true
+  rc=0
+  { wait "$pid" || rc=$?; } 2>/dev/null
+  wait
+  expect "test.sh: a closed output pipe ends it with 141" "$rc" "141"
+  expect "test.sh: a closed output pipe leaves the caller's TMPDIR as it was" "$(ls -A "$ct/caller")" ""
   shards() { for s in 1/3 2/3 3/3; do "${caller[@]}" NIGHTSHIFT_TEST_SHARD="$s" NIGHTSHIFT_TEST_SEED="$1" bash "$ROOT/scripts/test.sh" "$ct"/many/*.sh 2>/dev/null | names; done | sort | paste -sd' ' -; }
   expect "test.sh: shards cover every file once, under seed 7" "$(shards 7)" "test-a test-b test-c test-d test-e test-f test-g test-h test-i test-j"
   expect "test.sh: shards cover every file once, under seed 99" "$(shards 99)" "test-a test-b test-c test-d test-e test-f test-g test-h test-i test-j"

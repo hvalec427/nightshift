@@ -55,13 +55,18 @@ files=$(for f in $files; do
 done | sort -n | awk '{print $2}')
 
 # File $1's results: printed, and its name added to the failed ones if it failed.
+# A failed write (the reader gone, SIGPIPE ignored, as on CI) exits as SIGPIPE
+# would have: bash 3.2 would flush the unwritten text into the next builtin
+# $(...), $running among them, and the loop below would never end.
 failed=""
 report() {
   local name
   name=$(basename "$1")
-  echo "=== $name ($(($(date +%s) - $(cat "$SUITE/$name.start")))s)"
-  cat "$SUITE/$name.out"
-  echo
+  {
+    echo "=== $name ($(($(date +%s) - $(cat "$SUITE/$name.start")))s)"
+    cat "$SUITE/$name.out"
+    echo
+  } || exit 141
   [ "$(cat "$SUITE/$name.status")" = 0 ] || failed="$failed $name"
 }
 
