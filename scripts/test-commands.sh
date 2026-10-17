@@ -361,6 +361,13 @@ without() {
   expect_line "doctor: counts both" "$OUT" "^2 to fix")
 
 (healthy
+  plugin rn-agent@hvalec427
+  rmdir "$W/rn-agent"
+  sed -i.bak 's|^repo o/r .*|& plugins=rn-agent|' "$NS/config"
+  try ns doctor
+  expect_line "doctor: a plugin whose folder is gone" "$OUT" "^  missing o/r: plugin rn-agent's folder $W/rn-agent: reinstall it: claude plugin install rn-agent$")
+
+(healthy
   expect_line "doctor: no instructions=, no line for it" "$(ns doctor)" "o/r: .*instructions" no)
 
 (healthy

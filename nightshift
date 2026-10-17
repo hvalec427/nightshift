@@ -383,14 +383,18 @@ md_excludes() { printf '"claudeMdExcludes":["%s/CLAUDE.md","%s/.claude/CLAUDE.md
 
 # Plugin $1's directory (`name`: from any marketplace; `name@marketplace`:
 # that one), if it's installed and enabled. Else 1 if it isn't installed, 2
-# (and its id) if it isn't enabled.
+# (and its id) if it isn't enabled, 3 (and its install path) if it's enabled
+# but that folder is gone.
 plugin_dir() {
   # shellcheck disable=SC2016 # a jq program: $ is jq's
   m='.[] | select(.id == $n or (.id | startswith($n + "@")))'
   l=$(claude plugin list --json 2>/dev/null)
   d=$(printf '%s' "$l" | jq -r --arg n "$1" "first($m | select(.enabled) | .installPath) // empty" 2>/dev/null)
   if [ -n "$d" ] && [ -d "$d" ]; then printf '%s' "$d"
-  elif [ -z "$d" ] && i=$(printf '%s' "$l" | jq -er --arg n "$1" "first($m | .id)" 2>/dev/null); then
+  elif [ -n "$d" ]; then
+    printf '%s' "$d"
+    return 3
+  elif i=$(printf '%s' "$l" | jq -er --arg n "$1" "first($m | .id)" 2>/dev/null); then
     printf '%s' "$i"
     return 2
   else return 1
@@ -417,8 +421,12 @@ run_claude() {
   # The plugins the repo line names; one that isn't there: without it.
   for p in $(repo_option "$repo" plugins | tr ',' ' '); do
     if pd=$(plugin_dir "$p"); then set -- "$@" --plugin-dir "$pd"
-    elif [ $? = 2 ]; then printf "0\t=== plugin %s isn't enabled: this run goes without it\n" "$p" >>"$dir/log"
-    else printf "0\t=== plugin %s isn't installed: this run goes without it\n" "$p" >>"$dir/log"
+    else
+      case $? in
+      2) printf "0\t=== plugin %s isn't enabled: this run goes without it\n" "$p" >>"$dir/log" ;;
+      3) printf "0\t=== plugin %s's folder %s is missing: this run goes without it\n" "$p" "$pd" >>"$dir/log" ;;
+      *) printf "0\t=== plugin %s isn't installed: this run goes without it\n" "$p" >>"$dir/log" ;;
+      esac
     fi
   done
   set -- "$@" --settings "{$settings}"
@@ -1497,9 +1505,13 @@ version_line() {
 repo_plugins() {
   for p in $(repo_option "$1" plugins | tr ',' ' '); do
     if [ -z "$cv" ] || ! command -v jq >/dev/null; then fail "?" "$1: plugin $p" "needs claude and jq to check"
-    elif id=$(plugin_dir "$p"); then pass "$1: plugin $p"
-    elif [ $? = 2 ]; then fail missing "$1: plugin $p" "enable it: claude plugin enable $id"
-    else fail missing "$1: plugin $p" "claude plugin install $p"
+    elif pd=$(plugin_dir "$p"); then pass "$1: plugin $p"
+    else
+      case $? in
+      2) fail missing "$1: plugin $p" "enable it: claude plugin enable $pd" ;;
+      3) fail missing "$1: plugin $p's folder $pd" "reinstall it: claude plugin install $p" ;;
+      *) fail missing "$1: plugin $p" "claude plugin install $p" ;;
+      esac
     fi
   done
 }

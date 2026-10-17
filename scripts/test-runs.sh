@@ -372,6 +372,16 @@ Run make check.")
 (world
   cp -R "$ROOT/plugin" "$NS/plugin"
   plugin rn-agent@hvalec427
+  rmdir "$W/rn-agent"
+  printf 'repo %s %s plugins=rn-agent\n' "$REPO" "$CLONE" >"$NS/config"
+  gh_issue o/r 7 alice agent
+  poll
+  expect "a plugin whose folder is gone: skipped" "$(plugin_dirs)" "$NS/plugin "
+  expect_line "its log: the missing folder" "$(cat "$(idir 7)/log")" "^0	=== plugin rn-agent's folder $W/rn-agent is missing: this run goes without it$")
+
+(world
+  cp -R "$ROOT/plugin" "$NS/plugin"
+  plugin rn-agent@hvalec427
   mv "$CLONE" "$W/my clone"
   printf 'repo %s %s plugins=rn-agent\n' "$REPO" "$W/my clone" >"$NS/config"
   gh_issue o/r 7 alice agent
