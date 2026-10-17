@@ -73,6 +73,7 @@ expect "no test file calls a plain $plain" "$found" ""
   mkdir "$fx"
   head='. "$ROOT/scripts/test-lib.sh"; (world; temp >/dev/null; temp -d >/dev/null; echo "$NIGHTSHIFT_TEST_LABELS" >"$ct/labels")'
   printf '%s\nexpect pass 1 1\nreport\n' "$head" >"$fx/test-pass.sh"
+  printf '%s\nexpect pass 1 1\nreport\n' "$head" >"$fx/test-quick.sh"
   printf '%s\nexpect fail 1 2\nreport\n' "$head" >"$fx/test-fail.sh"
   printf '%s\n(world; temp -d >/dev/null; : >"$ct/started"; sleep 30)\n' "$head" >"$fx/test-int.sh"
   # What a fresh caller's TMPDIR holds after test.sh ran on the files $1…
@@ -107,7 +108,6 @@ expect "no test file calls a plain $plain" "$found" ""
   run_suite "$fx/test-pass.sh" "$fx/test-fail.sh" || rc=$?
   expect "test.sh: a failure among parallel files exits 1" "$rc" "1"
   # NIGHTSHIFT_TEST_SHARD=i/n: the shards between them run each file once.
-  cp "$fx/test-pass.sh" "$fx/test-quick.sh"
   ran() { "${caller[@]}" NIGHTSHIFT_TEST_SHARD="$1" bash "$ROOT/scripts/test.sh" "$fx/test-pass.sh" "$fx/test-quick.sh" "$fx/test-fail.sh" 2>/dev/null |
     sed -n 's/^=== \(test-[a-z0-9]*\)\.sh .*/\1/p'; }
   expect "test.sh: shards run each file once" "$( (ran 1/2; ran 2/2) | sort | paste -sd' ' -)" "test-fail test-pass test-quick"
