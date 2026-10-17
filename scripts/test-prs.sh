@@ -64,8 +64,7 @@ prn() { echo "${PR##*/}"; }
   runs_do "$LABELS_AT_START"'comment progress'
   poll
   expect "a conflict: an update run" "$(runs)" 2
-  expect_line "the issue is told" "$(gh_comments o/r 7)" \
-    "^master moved, and this pull request conflicts with master now, so I'm rebasing it onto master and updating it to fit\.$"
+  expect_line "the issue isn't told: the run's one comment is its report" "$(gh_comments o/r 7)" "rebasing" no
   expect_line "the run is told" "$(run_prompt)" "^- the watcher: master moved, and this pull request conflicts with master now"
   expect_line "the run is told it's an update run" "$(run_prompt)" "^This is an update run: the update skill's job\.$"
   expect "while it runs: updating" "$(grep '^nightshift: ' "$CLAUDE_FAKE/runs/2/start")" "nightshift: updating"
@@ -89,8 +88,9 @@ prn() { echo "${PR##*/}"; }
   runs_do 'comment progress'
   poll
   expect "what it goes after merged: an update run" "$(runs)" 2
-  expect_line "the issue is told why" "$(gh_comments o/r 7)" \
-    "^#5 (PR #$p) merged, and this pull request goes after it, so I'm rebasing it onto master and updating it to fit what merged\.$"
+  expect_line "the issue isn't told" "$(gh_comments o/r 7)" "rebasing" no
+  expect_line "the run is told why" "$(run_prompt)" \
+    "^- the watcher: #5 (PR #$p) merged, and this pull request goes after it, so I'm rebasing it onto master"
   expect_line "the watch log says so" "$(cat "$NS/watch.log")" "o/r#7: pull request updating after #5$"
   poll
   expect "that merge once: no second run" "$(runs)" 2)
@@ -99,9 +99,10 @@ prn() { echo "${PR##*/}"; }
   built 'Overlaps with #5. <!-- nightshift:overlaps #5 -->'
   p=$(merged_other 5)
   poll
-  expect_line "what it overlaps merged: an update run" "$(gh_comments o/r 7)" \
-    "^#5 (PR #$p) merged, and this pull request overlaps it, so I'm rebasing"
-  expect "with a run" "$(runs)" 2)
+  expect "what it overlaps merged: an update run" "$(runs)" 2
+  expect_line "the run is told why" "$(run_prompt)" \
+    "^- the watcher: #5 (PR #$p) merged, and this pull request overlaps it, so I'm rebasing"
+  expect_line "the issue isn't told" "$(gh_comments o/r 7)" "rebasing" no)
 
 (world
   merged_other 5 >/dev/null

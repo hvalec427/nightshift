@@ -28,8 +28,10 @@ the pull requests can merge in any order.
    succeeds.
 4. **Overlap lines.** In the PR body (`gh pr edit --body-file`), drop the lines about the
    merged work and add any new ones. Done when the body's lines match the work still open.
-5. **Report.** A `progress` comment: what conflicted and how you fixed it, then what
-   changed beyond the conflict fixes, and the checks you ran. After it, when the run prompt
-   says "This repo auto-merges", invoke the `nightshift:merge` skill with the Skill tool: it
-   checks the pull request again and merges it, or says what needs a look. That's how one
-   that goes after another merges once the other has.
+5. **Report.** What conflicted and how you fixed it, then what changed beyond the
+   conflict fixes, and the checks you ran. Post it as a `progress` comment, the run's one
+   comment, only when the repo doesn't auto-merge. When the run prompt says "This repo
+   auto-merges", post nothing and hand that report to the `nightshift:merge` skill,
+   invoked with the Skill tool: it puts it at the top of its one closing comment, after
+   checking the pull request again and merging it, or saying what needs a look. That's how
+   one that goes after another merges once the other has.

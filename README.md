@@ -83,14 +83,14 @@ What a repo's runs need beyond that comes with the plugins its `.nightshift/conf
 |---|---|
 | Open an issue, add the `agent` label (and a [type](#issue-types) label) | Reads it and the code; asks its questions in one comment (each with its recommended answer), or goes straight to the plan |
 | Reply | More questions, or a plan: the spec and its tickets, in the to-spec and to-tickets format of [Matt Pocock's skills](https://github.com/mattpocock/skills) |
-| Reply **go** (or what to change) | Posts the tickets as a checklist comment on the issue, ticked as each is committed, then builds the tickets in order, each in a subagent of its own (so one ticket's work doesn't crowd the next; a one-ticket plan is built directly), a progress comment per ticket; has two fresh subagents review the change against the plan and the repo's standards, and fixes what they found in one pass; then opens the pull request, which closes the issue, and links it, with what the review found |
+| Reply **go** (or what to change) | Builds the tickets in order, each in a subagent of its own (so one ticket's work doesn't crowd the next; a one-ticket plan is built directly), with no comment on the issue meanwhile; has two fresh subagents review the change against the plan and the repo's standards, and fixes what they found in one pass; then opens the pull request, which closes the issue, and links it, with what the review found |
 | Nothing (unless the repo's `.nightshift/config` has `auto_merge=false`) | Once the pull request is open or updated and its checks pass, squash-merges it when nothing in it needs you; otherwise lists what does in a look comment (a decision the plan didn't cover, a finding left open, a breaking or security-relevant change, …) |
 | Reply **merge** to a look comment | Checks it again (checks, conflicts, the pull requests it goes after) and merges it |
 | Comment on the issue after that | Makes the change on the same branch and pushes it (and checks it for merging again) |
 | Merge another pull request | Rebases and updates the ones it affects (below) |
 | Remove the label, add `invalid` or `wontfix`, or close the issue | Stops it; `nightshift status` says so and why |
 | Add the label back, remove `invalid`/`wontfix`, or reopen it | Picks up the stopped run where it left off |
-| Merge its pull request, or close the issue | It's done: a last comment says what its runs cost (dollars at API prices, tokens, time), the dollars of each model and the pull request's size (`PR +412 −37 in 9 files`), and lists every agent that ran in a table: a row a run (`plan run`), in the order they ran, with the subagents it started under it; each row's model, effort, skills, tokens, time and tool calls, and a run's cost; then a total row. Under it, the time from the first run to the last: how much the agent worked, how long it waited on you, and other waits (queued, an update); `nightshift status` leaves it out, and its state and branch are cleaned up |
+| Merge its pull request, or close the issue | It's done: a last comment says what its runs cost (dollars at API prices, tokens, time), the dollars of each model and the pull request's size (`PR +412 −37 in 9 files`), and lists every agent that ran in a table: a row a run (`plan run`), in the order they ran, with the subagents it started under it; each row's model, effort, skills, tokens (a subagent's: those of its turns), cost, time and tool calls; a subagent's cost is an estimate (`~$0.30`: the tokens of its turns at its model's average rate in that run, `–` when unknown) and a run's row is the rest of the run's cost, so the rows add up to the total row (unless the estimates overshoot the run's cost). Under it, the time from the first run to the last: how much the agent worked, how long it waited on you, and other waits (queued, an update); `nightshift status` leaves it out, and its state and branch are cleaned up |
 
 Each issue gets its own worktree (in the repo's clone, `.claude/worktrees/issue-<n>`,
 branch `nightshift/issue-<n>`) and a Claude session that its runs continue. When
@@ -223,10 +223,10 @@ otherwise the pull request that opened first does. `nightshift status` shows it 
 
 After a merge, each poll looks at the open nightshift pull requests. One that now
 conflicts with the default branch (after any merge, nightshift's or not), or that
-goes after or overlaps the nightshift pull request that just merged, gets a comment
-on its issue and a run. That run rebases it onto the default branch, fixes the
-conflicts, and updates the change to fit what merged, not just to apply. It runs the
-checks again, force-pushes (`--force-with-lease`), and says what changed beyond the
+goes after or overlaps the nightshift pull request that just merged, gets a run
+(its issue gets no comment until the run's own). That run rebases it onto the default
+branch, fixes the conflicts, and updates the change to fit what merged, not just to
+apply. It runs the checks again, force-pushes (`--force-with-lease`), and says what changed beyond the
 conflict fixes. A conflict that needs your decision gets a question on the issue
 instead. Meanwhile `status` shows `conflicts, rebasing` or `updating after #10`. So
 the pull requests can be merged in any order. With auto-merge on, a pull request

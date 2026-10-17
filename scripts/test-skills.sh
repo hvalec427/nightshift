@@ -82,7 +82,7 @@ for s in issue build update; do
   expect_line "the $s skill routes to nightshift:merge when the repo auto-merges" "$(flat "$SKILLS/$s/SKILL.md")" \
     '"This repo auto-merges"[^.]*`nightshift:merge`'
 done
-expect_ok "the build posts its done comment (the review in it) before the merge skill" \
+expect_ok "the build writes its report (the review in it) before the merge skill" \
   test "$(line_of "$SKILLS/build/SKILL.md" '\*\*Review:\*\*')" -lt "$(line_of "$SKILLS/build/SKILL.md" 'nightshift:merge`')"
 expect_line "with auto_merge=false, a merge reply doesn't merge" "$(flat "$ISSUE")" \
   '`auto_merge=false`[^.]*you don.t merge'
@@ -171,17 +171,29 @@ expect_line "the brief says to pass the issue number, not paste the ticket" "$br
 expect_line "the brief lists the earlier tickets' replies" "$brief" "replies of the earlier tickets"
 expect_line "those replies say what each delivered and flagged" "$brief" "earlier tickets[^.]*delivered[^.]*flagged"
 
-# On go, the tickets become one tasks comment on the issue, ticked as each is committed.
-tasks=$(flat "$SKILLS/build/TASKS.md" 2>/dev/null)
-expect_line "tasks is one of the issue skill's stages" "$(flat "$ISSUE")" "The stages are[^.]*\`tasks\`"
-expect_line "the issue skill says how long a tasks comment is" "$(flat "$ISSUE")" "\`tasks\`: a line per ticket"
-expect_line "the tasks comment carries its marker" "$tasks" "<!-- nightshift:tasks -->"
-expect_line "a task line is the ticket's ID and title" "$tasks" "\`- \[ \] T1: <ticket title>\`"
-expect_line "the build reuses the latest tasks comment" "$tasks" "latest comment carrying"
-expect_line "a reused tasks comment keeps its ticks" "$tasks" "keeping the ticks"
-expect_line "the tasks comment is edited by its comment id" "$tasks" "gh api -X PATCH repos/{owner}/{repo}/issues/comments/<id> -F body=@<file>"
-expect_line "the build posts the tasks comment before the first ticket" "$brief" "Before the first ticket"
-expect_line "the build ticks a ticket's box after its commit" "$brief" "commit[^.]*tick its box"
+# The build is silent until its closing comment: no tasks checklist, no comment per ticket.
+merge_flat=$(flat "$SKILLS/merge/SKILL.md")
+expect_ok "there is no TASKS.md" test ! -e "$SKILLS/build/TASKS.md"
+expect "no skill or the README mentions a tasks comment" \
+  "$(grep -rliE 'nightshift:tasks|`tasks`|tasks comment|tasks checklist' "$ROOT/plugin" "$ROOT/README.md" | sed "s|^$ROOT/||")" ""
+expect_line "the issue skill lists no tasks stage" "$(flat "$ISSUE")" "The stages are[^.]*\`tasks\`" no
+expect_line "the build posts no comment per ticket" "$brief" "no comment per ticket"
+expect_line "the build ticks no box" "$brief" "tick its box" no
+expect_line "the build posts no progress comment from a ticket's summary" "$brief" "post the \`progress\` comment from its summary" no
+expect_line "a ticket is done with its commit" "$brief" "Done when every ticket has its commit\."
+expect_line "the build posts done only when the repo doesn't auto-merge" "$brief" "\`done\` comment[^.]*only when the repo doesn.t auto-merge"
+expect_line "with auto-merge the build hands its report to the merge skill" "$brief" "hand[^.]*report[^.]*to the \`nightshift:merge\` skill"
+expect_line "the merge comment opens with the report it was handed" "$merge_flat" "handed a report[^.]*your one closing comment"
+expect_line "the merge comment gives the pull request link and the review" "$merge_flat" "report[^.]*pull request.s link[^.]*review"
+expect_line "the merge skill's review source is the PR body's open findings" "$merge_flat" "the PR body.s open findings"
+expect_line "the merge skill no longer reads the build's done comment" "$merge_flat" "the build.s \`done\` comment" no
+# An update run and a follow-up report once: through the merge comment with auto-merge, one progress comment without.
+update_flat=$(flat "$SKILLS/update/SKILL.md")
+issue_flat=$(flat "$ISSUE")
+expect_line "the update skill posts its progress comment only when the repo doesn't auto-merge" "$update_flat" "\`progress\` comment[^.]*only when the repo doesn.t auto-merge"
+expect_line "with auto-merge the update skill hands its report to the merge skill" "$update_flat" "hand[^.]*report[^.]*to the \`nightshift:merge\` skill"
+expect_line "issue case 7 posts its progress comment only when the repo doesn't auto-merge" "$issue_flat" "\`progress\` comment[^.]*only when the repo doesn.t auto-merge"
+expect_line "with auto-merge issue case 7 hands what it did to the merge skill" "$issue_flat" "hand[^.]*what it did[^.]*to the \`nightshift:merge\` skill"
 expect_line "the brief points at the ticket's ID and its file" "$brief" "the ticket's ID[^.]*\`.nightshift/tickets/T<n>.md\`"
 expect_line "the build writes a file per ticket before the first ticket" "$brief" "Before the first ticket[^.]*\`.nightshift/tickets/T<n>.md\`"
 expect_line "the files come from the latest plan and the replies that changed it" "$brief" "write each ticket of the latest \`plan\` comment.*reply of the user's after the plan that changed it"
@@ -215,7 +227,6 @@ expect_line "implement-spec is credited in the notices" "$(flat "$ROOT/plugin/TH
 expect_line "the PR skill is credited in the notices" "$(cat "$ROOT/plugin/THIRD_PARTY.md")" "\`pr\` in \`finish\`"
 
 # The merge skill takes a wide blast radius as a look item; the one definition is the finish skill's BODY.md.
-merge_flat=$(flat "$SKILLS/merge/SKILL.md")
 expect_line "a wide blast radius is a look item" "$merge_flat" "a wide blast radius"
 expect_line "the merge skill points at the finish skill's definition of wide" "$merge_flat" "\[the finish skill.s BODY.md\](\.\./finish/BODY.md)"
 expect "the wide definition lives in BODY.md alone" "$(grep -l 'Wide when' "$SKILLS"/*/*.md | sed "s|^$SKILLS/||")" "finish/BODY.md"
@@ -226,7 +237,7 @@ done
 expect_line "the wide definition works for any worked repo, with nightshift's examples" "$finish" "the repo.s persisted state[^.]*\`~/.nightshift\`"
 expect_line "the merge skill reads Merge Danger and judges the diff itself" "$merge_flat" "Merge Danger[^.]*the diff"
 expect_line "a one-way door alone isn't a look item" "$merge_flat" "one-way door alone"
-expect_line "the plan says tickets become the tasks checklist on go" "$(flat "$SKILLS/plan/SKILL.md")" "on \*\*go\*\*[^.]*tasks checklist"
+expect_line "the plan says nothing of a tasks checklist" "$(flat "$SKILLS/plan/SKILL.md")" "tasks checklist" no
 expect_line "the plan no longer says tickets are only in the comment" "$(flat "$SKILLS/plan/SKILL.md")" "All tickets are in this comment" no
 
 # Reference that only some branches need lives in a sibling file, linked from its SKILL.md.
@@ -236,7 +247,6 @@ while read -r skill sibling; do
 done <<'EOF'
 plan BUG.md
 plan WIDE-REFACTOR.md
-build TASKS.md
 finish BODY.md
 review SMELLS.md
 tdd tests.md

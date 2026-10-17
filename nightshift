@@ -807,9 +807,10 @@ JQ_DEFS='def short: sub("^claude-"; "") | sub("-[0-9]{8}$"; "");
 # What a run spent: the session's totals $now less the ones before it, $prev
 # (null: none), as dollars, tokens in, out and cache, and the models it used
 # (comma-separated, shortened, the main one $main first; - if none) and what
-# each cost (opus-5-5=3.2,haiku-4-5=0.1, in the same order; - if none). All of
-# $now if $prev is another session's, or any of its totals is higher (they
-# were reset).
+# each cost (opus-5-5=3.2,haiku-4-5=0.1, in the same order; - if none) and
+# its tokens (opus-5-5=90000,haiku-4-5=4000; - if none). All of $now if
+# $prev is another session's, or any of its totals is higher (they were
+# reset).
 # shellcheck disable=SC2016 # a jq program: $ is jq's
 SPENT='def fields: ["costUSD", "inputTokens", "outputTokens", "cacheReadInputTokens", "cacheCreationInputTokens"];
   ($prev != null and $prev.session_id == $now.session_id and $now.total_cost_usd >= $prev.total_cost_usd
@@ -818,11 +819,12 @@ SPENT='def fields: ["costUSD", "inputTokens", "outputTokens", "cacheReadInputTok
   | ($now.modelUsage | with_entries(.key as $m | .value |= with_entries(.value -= ($was.modelUsage[$m][.key] // 0)))) as $run
   | def sum(f): [$run[] | f] | add // 0;
   [$now.modelUsage | keys_unsorted[] as $m | {m: $m, u: $run[$m]} | select(.u.costUSD > 0 or .u.inputTokens > 0 or .u.outputTokens > 0)
-    | {m: (.m | short), usd: .u.costUSD, main: (.m == $main)}] | sort_by(.main | not) as $used
+    | {m: (.m | short), usd: .u.costUSD, tok: (.u.inputTokens + .u.outputTokens + .u.cacheReadInputTokens + .u.cacheCreationInputTokens), main: (.m == $main)}] | sort_by(.main | not) as $used
   | ($used | map(.m)) as $models
   | [$now.total_cost_usd - $was.total_cost_usd, sum(.inputTokens), sum(.outputTokens), sum(.cacheReadInputTokens + .cacheCreationInputTokens),
      (if $models == [] then "-" else $models | join(",") end),
-     (if $models == [] then "-" else $used | map("\(.m)=\(.usd)") | join(",") end)]
+     (if $models == [] then "-" else $used | map("\(.m)=\(.usd)") | join(",") end),
+     (if $models == [] then "-" else $used | map("\(.m)=\(.tok)") | join(",") end)]
   | map(tostring) | join(" ")'
 
 # The agents of a run (its out.jsonl, input), a JSON line each, in the order
@@ -840,6 +842,9 @@ SPENT='def fields: ["costUSD", "inputTokens", "outputTokens", "cacheReadInputTok
 #            its subagents' too (add_cost's, 0 without a result)
 #   usd      the run's dollars, its subagents' included (add_cost's, 0
 #            without a result)
+#   byModel  what each model did in the run, subagents' included: its
+#            dollars and tokens ({"opus-5-5": {"usd": 3.2, "tokens": 90000}}),
+#            for a subagent's cost (see AGENT_ROWS)
 #   reply    whether a comment of the user's started the run (in its news,
 #            or a fresh build session's approval): false for an update run or
 #            a resume the watcher started
@@ -849,6 +854,10 @@ SPENT='def fields: ["costUSD", "inputTokens", "outputTokens", "cacheReadInputTok
 #   skills   its Skill calls, in order
 #   tokens, secs, tools  its own, from its result; null (tools: counted) while
 #            it hadn't finished when the run ended
+#   spent    the tokens of its turns (in, out and cache; a message once, however
+#            many events it streamed as), the same count as the run's per-model
+#            tokens: a result's `tokens` is just its last turn's. null without
+#            a turn
 # Nothing without events. Its first line is {"kind":"partial"} when its
 # first run wasn't the issue's (runs before this was recorded).
 # shellcheck disable=SC2016 # a jq program: $ is jq's
@@ -864,7 +873,10 @@ AGENTS='[inputs | fromjson? | objects] as $e
      models: ([$main[].message.model? | strings | short] | firsts),
      skills: [$main[] | uses | select(.name == "Skill") | .input.skill],
      tools: ([$main[] | uses] | length), secs: $secs, tokens: $tokens,
-     usd: $usd, reply: $reply},
+     usd: $usd, reply: $reply,
+     byModel: ([($usds | split(",")[] | split("=") | select(length == 2) | {key: .[0], usd: (.[1] | tonumber)}),
+                ($toks | split(",")[] | split("=") | select(length == 2) | {key: .[0], tokens: (.[1] | tonumber)})]
+               | group_by(.key) | map({key: .[0].key, value: {tokens: (map(.tokens // empty) | add // 0), usd: (map(.usd // empty) | add // 0)}}) | from_entries)},
     ($turns[] | uses | select(.name == "Agent" or .name == "Task") | . as $a
        | ($results[$a.id] // {}) as $r
        | [$turns[] | select(.parent_tool_use_id == $a.id)] as $sub
@@ -872,6 +884,10 @@ AGENTS='[inputs | fromjson? | objects] as $e
           model: ($r.resolvedModel // ([$sub[].message.model? | strings] | first) // null | if . then short else . end),
           skills: [$sub[] | uses | select(.name == "Skill") | .input.skill],
           tokens: ($r.totalTokens // null),
+          spent: ([$sub[] | select(.message.usage? != null)] as $used
+                  | if $used == [] then null
+                    else reduce ($used | to_entries[]) as $x ({}; .[$x.value.message.id // "n\($x.key)"] = $x.value.message.usage)
+                      | [.[] | (.input_tokens // 0) + (.output_tokens // 0) + (.cache_read_input_tokens // 0) + (.cache_creation_input_tokens // 0)] | add end),
           secs: (if $r.totalDurationMs then ($r.totalDurationMs / 1000 | round) else null end),
           tools: ($r.totalToolUseCount // ([$sub[] | uses] | length))})'
 
@@ -881,7 +897,9 @@ AGENTS='[inputs | fromjson? | objects] as $e
 add_agents() {
   tokens=$(echo "${run:-0 0 0 0}" | awk '{ printf "%d", $2 + $3 + $4 }')
   usd=$(echo "${run:-0}" | awk '{ print $1 + 0 }')
-  out=$(jq -n -R -c --argjson start "$2" --argjson secs "$3" --argjson tokens "$tokens" --argjson usd "$usd" --argjson reply "${4:-false}" "$JQ_DEFS $AGENTS" "$1/out.jsonl" 2>/dev/null)
+  usds=$(echo "${run:-0 0 0 0 - -}" | awk '{ print $6 }')
+  toks=$(echo "${run:-0 0 0 0 - - -}" | awk '{ print $7 }')
+  out=$(jq -n -R -c --argjson start "$2" --argjson secs "$3" --argjson tokens "$tokens" --argjson usd "$usd" --argjson reply "${4:-false}" --arg usds "$usds" --arg toks "$toks" "$JQ_DEFS $AGENTS" "$1/out.jsonl" 2>/dev/null)
   [ -f "$1/agents" ] || [ "$(awk '{ print $6 }' "$1/cost")" -le 1 ] || echo '{"kind":"partial"}' >"$1/agents"
   [ -z "$out" ] || printf '%s\n' "$out" >>"$1/agents"
   touch "$1/agents"
@@ -1128,8 +1146,13 @@ definition_effort() {
 # row a run, in the order they ran (lines of the same second in file order),
 # named by its stage skill (`plan run`), and under it a row each of the
 # subagents it started, in the order they ran, and a Total row ($total, the
-# issue's dollars; tokens and seconds of the runs, tools of all rows). Tokens,
-# dollars (a run's only), seconds and tools are numbers, `-` where unknown.
+# issue's dollars; tokens and seconds of the runs, tools of all rows).
+# Tokens, dollars, seconds and tools are numbers, `-` where unknown. A
+# subagent's tokens are its `spent` (its turns', its result's on an older
+# line), and its dollars an estimate, `~` and those tokens at the rate of its
+# model in the run (the run's `byModel`: dollars over tokens); a run's are its
+# own less those, at least 0, so the rows add up to the total unless the
+# estimates overshoot the run's dollars.
 # shellcheck disable=SC2016 # a jq program: $ is jq's
 AGENT_ROWS='[inputs | fromjson? | objects | select(.kind == "session" or .kind == "agent")] as $all
   | ($eff | split("\n") | map(split("\t") | select(length == 3))) as $efforts
@@ -1142,11 +1165,14 @@ AGENT_ROWS='[inputs | fromjson? | objects | select(.kind == "session" or .kind =
     | if . == null then "run" else "\(.) run" end;
   [$all[] | select(.kind == "session")] | by_run as $runs
   | [$runs[] as $r
+     | [$all[] | select(.kind == "agent" and .run == $r.run and .session == $r.session)
+        | . + {est: (if .spent != null and .model != null and $r.byModel[.model].tokens > 0
+                     then .spent * $r.byModel[.model].usd / $r.byModel[.model].tokens else null end)}] as $subs
      | [($r.skills | stage), ($r.models | firsts | cell), "per skill", ($r.skills | map(skill) | cell),
-        $r.tokens // "-", $r.usd // "-", $r.secs // "-", $r.tools // "-"],
-       ($all[] | select(.kind == "agent" and .run == $r.run and .session == $r.session)
+        $r.tokens // "-", (if $r.usd == null then "-" else [$r.usd - ([$subs[].est // 0] | add), 0] | max end), $r.secs // "-", $r.tools // "-"],
+       ($subs[]
         | ["↳ \(.type | own) · \(.description // "" | text)", .model // "–", (.type | effort("agent")) // "default",
-           (.skills | map(skill) | cell), .tokens // "-", "-", .secs // "-", .tools // "-"])] as $rows
+           (.skills | map(skill) | cell), .spent // .tokens // "-", (if .est == null then "-" else "~\(.est)" end), .secs // "-", .tools // "-"])] as $rows
   | $rows[],
     (select($runs != []) | ["**Total**", "–", "–", "–", ([$runs[].tokens // 0] | add), $total, ([$runs[].secs // 0] | add), ([$rows[][7] | numbers] | add)])
   | map(tostring) | join("\t")'
@@ -1196,7 +1222,11 @@ agents_table() {
   printf '| Agent | Model | Effort | Skills | Tokens | Cost | Time | Tools |\n|---|---|---|---|---|---|---|---|\n'
   printf '%s\n' "$rows" | while IFS="$(printf '\t')" read -r agent model effort skills tokens usd secs tools; do
     if [ "$tokens" = - ]; then tokens=–; else tokens=$(awk -v n="$tokens" "$TOK"' BEGIN { printf "%s", tok(n) }'); fi
-    if [ "$usd" = - ]; then usd=–; else usd=$(awk -v n="$usd" 'BEGIN { printf "$%.2f", n }'); fi
+    case $usd in
+    -) usd=– ;;
+    "~"*) usd=$(awk -v n="${usd#"~"}" 'BEGIN { printf "~$%.2f", n }') ;;
+    *) usd=$(awk -v n="$usd" 'BEGIN { printf "$%.2f", n }') ;;
+    esac
     if [ "$secs" = - ]; then secs=–; else secs=$(duration "$secs"); fi
     printf '| %s | %s | %s | %s | %s | %s | %s | %s |\n' "$agent" "$model" "$effort" "$skills" "$tokens" "$usd" "$secs" "$tools"
   done
@@ -1264,14 +1294,10 @@ delete_remote_branch() {
 }
 
 # An update run for an issue's pull request, started by the issue loop: its
-# status, and why, which the issue gets as a comment and the run as its news.
+# status, and why, which the run gets as its news. The issue gets no comment
+# of its own: the run's closing comment says what it did.
 queue_update() {
   printf '%s\n%s\n' "$3" "$4" >"$(issue_dir "$1" "$2")/update"
-  gh issue comment "$2" --repo "$1" --body "🤖 **nightshift** · progress
-
-$4
-
-$MARKER <!-- nightshift:progress -->" >/dev/null 2>&1 || log "$1#$2: couldn't comment the update"
   log "$1#$2: pull request $3"
 }
 
