@@ -421,14 +421,15 @@ without() {
 
 (healthy
   echo "Ours." >"$W/ours.md"
-  printf 'repo o/r %s instructions=%s\n' "$CLONE" "$W/ours.md" >"$NS/config"
+  printf 'repo o/r %s instructions=%s other=x\n' "$CLONE" "$W/ours.md" >"$NS/config"
   try ns doctor
-  expect_line "doctor: the repo's instructions" "$OUT" "^  ok      o/r: instructions $W/ours.md$"
-  expect "doctor: with instructions=: passes" "$ST" 0
-  printf 'repo o/r %s instructions=%s other=x\n' "$CLONE" "$W/gone.md" >"$NS/config"
+  expect_line "doctor: instructions= on a repo line: a note to copy the file" "$OUT" \
+    "^  note    o/r: instructions=$W/ours.md on its repo line is ignored now: copy the file into .nightshift/instructions/ in o/r$"
+  expect "doctor: the note isn't a problem" "$ST" 0
+  printf 'repo o/r %s instructions=%s\n' "$CLONE" "$W/gone.md" >"$NS/config"
   try ns doctor
-  expect_line "doctor: the repo's instructions missing" "$OUT" "^  missing o/r: its instructions ($W/gone.md): create it, or fix its repo line in $NS/config$"
-  expect_line "doctor: counts it" "$OUT" "^1 to fix")
+  expect_line "doctor: instructions= of a missing file: still only the note" "$OUT" "^  note    o/r: instructions=$W/gone.md on its repo line is ignored now"
+  expect "doctor: a missing file isn't a problem either" "$ST" 0)
 
 (healthy
   echo "The repo's own." >"$CLONE/CLAUDE.local.md"

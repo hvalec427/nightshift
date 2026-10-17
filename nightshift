@@ -91,7 +91,7 @@ repos() {
 }
 
 # Repo $1's option $2 on its line in the config (`$2=value`, in any order), or
-# empty. Only `instructions` is still read from there; doctor notes the others.
+# empty. Only doctor reads them, to note the ones that are ignored now.
 repo_line_option() {
   awk -v r="$1" -v k="$2=" '$1 == "repo" && $2 == r {
     for (i = NF; i > 3 && $i ~ /^[a-z_]+=/; i--) if (index($i, k) == 1) { printf "%s", substr($i, length(k) + 1); exit }
@@ -362,34 +362,31 @@ worktree() {
 # Whether checkout $1 tracks a CLAUDE.local.md of its own.
 tracks_local_md() { [ -n "$(git -C "$1" ls-files CLAUDE.local.md 2>/dev/null)" ]; }
 
-# Repo $1's instructions= file, `~/` expanded, or empty. Only ever read.
-repo_instructions() {
-  f=$(repo_line_option "$1" instructions)
-  case "$f" in \~/*) f="$HOME/${f#\~/}" ;; esac
-  printf '%s' "$f"
-}
-
 # Worktree $1's CLAUDE.local.md, which every agent and subagent in it loads,
-# rewritten for every run: nightshift's instructions, then repo $3's own,
-# which win. A tracked one is left alone, and a missing instructions= file
-# skipped, each said in log dir $2's log.
+# rewritten for every run: nightshift's instructions, then the worktree's own
+# `.nightshift/instructions/*.md`, by name, which win. A tracked one is left
+# alone, which log dir $2's log says.
 write_instructions() {
   git_exclude "$1" /CLAUDE.local.md
   if tracks_local_md "$1"; then
     printf "0\t=== CLAUDE.local.md is tracked in the repo: nightshift's instructions aren't in it\n" >>"$2/log"
     return
   fi
-  own=$(repo_instructions "$3")
-  if [ -n "$own" ] && [ ! -f "$own" ]; then
-    printf "0\t=== %s (this repo's instructions=) doesn't exist: runs on with nightshift's instructions only\n" "$own" >>"$2/log"
-    own=""
-  fi
   rm -f "$1/CLAUDE.local.md"
-  if [ -f "$NS/plugin/instructions.md" ]; then
-    cp "$NS/plugin/instructions.md" "$1/CLAUDE.local.md"
-    [ -n "$own" ] && printf "\n# This project's instructions\n\nThese come after nightshift's and win where the two disagree.\n\n" >>"$1/CLAUDE.local.md"
-  fi
-  [ -n "$own" ] && cat "$own" >>"$1/CLAUDE.local.md"
+  wi_first=1
+  for wi_f in "$1"/.nightshift/instructions/*.md; do
+    [ -f "$wi_f" ] || continue
+    if [ -n "$wi_first" ] && [ -f "$NS/plugin/instructions.md" ]; then
+      cp "$NS/plugin/instructions.md" "$1/CLAUDE.local.md"
+      printf "\n# This project's instructions\n\nThese come after nightshift's and win where the two disagree.\n\n" >>"$1/CLAUDE.local.md"
+    fi
+    # A blank line between files, so they don't run together.
+    [ -n "$wi_first" ] || printf '\n' >>"$1/CLAUDE.local.md"
+    cat "$wi_f" >>"$1/CLAUDE.local.md"
+    wi_first=""
+  done
+  # None: nightshift's alone.
+  [ -n "$wi_first" ] && [ -f "$NS/plugin/instructions.md" ] && cp "$NS/plugin/instructions.md" "$1/CLAUDE.local.md"
   return 0
 }
 
@@ -1890,11 +1887,6 @@ cmd_doctor() {
       fi
     else fail missing "$repo: its \`$LABEL\` label" "gh label create $LABEL --repo $repo --color 5319E7"
     fi
-    own=$(repo_instructions "$repo")
-    if [ -z "$own" ]; then :
-    elif [ -f "$own" ]; then pass "$repo: instructions $own"
-    else fail missing "$repo: its instructions ($own)" "create it, or fix its repo line in $CONFIG"
-    fi
     tracks_local_md "$clone" &&
       fail tracked "$repo: CLAUDE.local.md, so runs don't get nightshift's instructions" "untrack it: git -C $clone rm --cached CLAUDE.local.md"
     repo_plugins "$repo"
@@ -1903,6 +1895,8 @@ cmd_doctor() {
       v=$(repo_line_option "$repo" "$o")
       [ -z "$v" ] || printf '  %-7s %s\n' note "$repo: $o=$v on its repo line is ignored now: put it in .nightshift/config on $repo's default branch"
     done
+    v=$(repo_line_option "$repo" instructions)
+    [ -z "$v" ] || printf '  %-7s %s\n' note "$repo: instructions=$v on its repo line is ignored now: copy the file into .nightshift/instructions/ in $repo"
     # A hint, not a problem: nightshift deletes its own merged branches.
     [ -n "$ghv" ] && [ "$(gh api "repos/$repo" -q .delete_branch_on_merge 2>/dev/null)" = false ] &&
       printf '  %-7s %s\n' hint "$repo: GitHub keeps merged branches (\"Automatically delete head branches\" is off); nightshift deletes its own, and for the rest: gh repo edit $repo --delete-branch-on-merge"

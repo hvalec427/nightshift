@@ -373,7 +373,8 @@ plugin_dirs() { run_args | grep -A1 -x -- --plugin-dir | grep -v -x -e --plugin-
 (world
   cp -R "$ROOT/plugin" "$NS/plugin"
   echo "The repo's own." >"$CLONE/CLAUDE.local.md"
-  git -C "$CLONE" add CLAUDE.local.md && git -C "$CLONE" commit -q -m "chore: local" && git -C "$CLONE" push -q origin master
+  mkdir -p "$CLONE/.nightshift/instructions" && echo "Ours." >"$CLONE/.nightshift/instructions/ours.md"
+  git -C "$CLONE" add CLAUDE.local.md .nightshift && git -C "$CLONE" commit -q -m "chore: local" && git -C "$CLONE" push -q origin master
   gh_issue o/r 7 alice agent
   poll
   expect "a tracked CLAUDE.local.md: left alone" "$(cat "$CLONE/.claude/worktrees/issue-7/CLAUDE.local.md")" "The repo's own."
@@ -382,11 +383,13 @@ plugin_dirs() { run_args | grep -A1 -x -- --plugin-dir | grep -v -x -e --plugin-
 
 (world
   cp -R "$ROOT/plugin" "$NS/plugin"
-  printf 'Use tabs.\nRun make check.\n' >"$W/ours.md"
-  printf 'repo %s %s instructions=%s\n' "$REPO" "$CLONE" "$W/ours.md" >"$NS/config"
+  origin_file .nightshift/instructions/b-tests.md "Run make check."
+  origin_file .nightshift/instructions/a-style.md "Use tabs.
+Keep lines short."
+  origin_file .nightshift/instructions/notes.txt "Not markdown."
   gh_issue o/r 7 alice agent
   poll
-  expect "a project's instructions=: after nightshift's, under a heading" "$(cat "$CLONE/.claude/worktrees/issue-7/CLAUDE.local.md")" \
+  expect "the instructions folder's .md files: after nightshift's, under a heading, in name order" "$(cat "$CLONE/.claude/worktrees/issue-7/CLAUDE.local.md")" \
     "$(cat "$ROOT/plugin/instructions.md")
 
 # This project's instructions
@@ -394,42 +397,26 @@ plugin_dirs() { run_args | grep -A1 -x -- --plugin-dir | grep -v -x -e --plugin-
 These come after nightshift's and win where the two disagree.
 
 Use tabs.
+Keep lines short.
+
 Run make check."
-  expect "a project's instructions=: the file is only read" "$(cat "$W/ours.md")" "Use tabs.
-Run make check.")
+  expect "CLAUDE.local.md with the folder's files stays out of git status" "$(git -C "$CLONE/.claude/worktrees/issue-7" status --porcelain)" "")
 
 (world
   cp -R "$ROOT/plugin" "$NS/plugin"
-  printf 'repo %s %s instructions=%s\n' "$REPO" "$CLONE" "$W/gone.md" >"$NS/config"
+  origin_file .nightshift/instructions/ours.md "Ours." nightshift/issue-7
   gh_issue o/r 7 alice agent
   poll
-  expect "instructions= missing: nightshift's only" "$(cat "$CLONE/.claude/worktrees/issue-7/CLAUDE.local.md")" "$(cat "$ROOT/plugin/instructions.md")"
-  expect_line "instructions= missing: the log says so" "$(cat "$(idir 7)/log")" \
-    "^0	=== $W/gone.md (this repo's instructions=) doesn't exist: runs on with nightshift's instructions only$")
+  expect "an instructions file on the issue's branch: read from the worktree" "$(tail -1 "$CLONE/.claude/worktrees/issue-7/CLAUDE.local.md")" "Ours.")
 
 (world
   cp -R "$ROOT/plugin" "$NS/plugin"
-  echo "Ours." >"$W/ours.md"
-  printf 'repo %s %s instructions=%s plugins=x,y\n' "$REPO" "$CLONE" "$W/ours.md" >"$NS/config"
+  echo "Use tabs." >"$W/ours.md"
+  printf 'repo %s %s instructions=%s\n' "$REPO" "$CLONE" "$W/ours.md" >"$NS/config"
   gh_issue o/r 7 alice agent
   poll
-  expect "instructions= before another option: still the clone's worktree, with the project's" "$(tail -1 "$CLONE/.claude/worktrees/issue-7/CLAUDE.local.md")" "Ours.")
-
-(world
-  cp -R "$ROOT/plugin" "$NS/plugin"
-  mkdir -p "$HOME/notes" && echo "Ours." >"$HOME/notes/ours.md"
-  printf 'repo %s %s instructions=~/notes/ours.md\n' "$REPO" "$CLONE" >"$NS/config"
-  gh_issue o/r 7 alice agent
-  poll
-  expect "instructions=~/ written by hand: home expanded" "$(tail -1 "$CLONE/.claude/worktrees/issue-7/CLAUDE.local.md")" "Ours.")
-
-(world
-  cp -R "$ROOT/plugin" "$NS/plugin"
-  mkdir "$W/dir.md"
-  printf 'repo %s %s instructions=%s\n' "$REPO" "$CLONE" "$W/dir.md" >"$NS/config"
-  gh_issue o/r 7 alice agent
-  poll
-  expect "instructions= a directory: nightshift's only" "$(cat "$CLONE/.claude/worktrees/issue-7/CLAUDE.local.md")" "$(cat "$ROOT/plugin/instructions.md")")
+  expect "instructions= on a repo line: ignored, nightshift's only" "$(cat "$CLONE/.claude/worktrees/issue-7/CLAUDE.local.md")" "$(cat "$ROOT/plugin/instructions.md")"
+  expect "instructions= on a repo line: the clone path without the option" "$(cat "$CLAUDE_FAKE/runs/1/cwd")" "$CLONE/.claude/worktrees/issue-7")
 
 (world
   cp -R "$ROOT/plugin" "$NS/plugin"
@@ -438,11 +425,13 @@ Run make check.")
   expect "only the root CLAUDE.local.md is excluded" "$(grep -c CLAUDE.local.md "$(git -C "$CLONE" rev-parse --path-format=absolute --git-common-dir)/info/exclude")$(grep -x /CLAUDE.local.md "$(git -C "$CLONE" rev-parse --path-format=absolute --git-common-dir)/info/exclude")" "1/CLAUDE.local.md")
 
 (world
-  echo "Ours." >"$W/ours.md"
-  printf 'repo %s %s instructions=%s\n' "$REPO" "$CLONE" "$W/ours.md" >"$NS/config"
+  origin_file .nightshift/instructions/ours.md "Ours."
+  origin_file .nightshift/instructions/more.md "More."
   gh_issue o/r 7 alice agent
   poll
-  expect "no plugin copy, a project's instructions=: the project's alone" "$(cat "$CLONE/.claude/worktrees/issue-7/CLAUDE.local.md")" "Ours.")
+  expect "no plugin copy, the instructions folder: the project's alone" "$(cat "$CLONE/.claude/worktrees/issue-7/CLAUDE.local.md")" "More.
+
+Ours.")
 
 (world
   cp -R "$ROOT/plugin" "$NS/plugin"

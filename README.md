@@ -42,9 +42,9 @@ Then:
    (`chmod 600`): a year of unattended runs on your Claude subscription.
 2. `gh auth login` (gh 2.99 or newer, for screenshots in pull requests).
 3. For each repo: a clone of it on the machine, then
-   `nightshift add <owner/repo> <path to the clone>`, with
-   `instructions=<file>` for the project's own rules (see below).
+   `nightshift add <owner/repo> <path to the clone>`.
    That also creates its `agent` label and the status labels.
+   The project's own rules go in its `.nightshift/instructions/` (see below).
    nightshift merges the repo's pull requests itself; to merge them yourself,
    or to load plugins in its runs, put `auto_merge=false` or `plugins=…` in the
    repo's `.nightshift/config` (see [Config](#config)).
@@ -254,7 +254,7 @@ Each run's line in `nightshift logs` shows the models it used, the main one firs
 
 ```
 repo hvalec427/nightshift /Users/me/dev/nightshift
-repo me/app /Users/me/dev/app instructions=/Users/me/notes/app.md
+repo me/app /Users/me/dev/app
 repo hvalec427/other /Users/me/dev/other
 allowed_users=hvalec427
 max_parallel=2
@@ -263,10 +263,9 @@ interval=5
 
 - `repo <owner/repo> <clone path> [key=value …]`: a watched repo and its clone
   (spaces in the path are fine, but its last word can't look like `key=value`:
-  it would read as an option), then `instructions=<file>`: a file of the
-  project's own rules for runs (below); `nightshift doctor` says when it's
-  missing. `auto_merge=` and `plugins=` on a repo line are ignored now, and
-  `doctor` says where they go: the repo's `.nightshift/config`.
+  it would read as an option). `instructions=`, `auto_merge=` and `plugins=` on a
+  repo line are ignored now, and `doctor` says where they go: the repo's
+  `.nightshift/instructions/` folder, or its `.nightshift/config`.
 - `<repo>/.nightshift/config`, committed to the repo's **default branch**
   (`key=value` lines, `#` comments; the last value of a key wins). nightshift
   reads it from origin's copy of that branch, fetched before each run, so a
@@ -321,8 +320,12 @@ it waits for its checks instead of leaving them running. Your own sessions get t
 from the plugin's `SessionStart` hook. Runs get them in the worktree's `CLAUDE.local.md`,
 which every agent and subagent loads: nightshift writes it before each run, kept
 out of git (in the clone's `info/exclude`), so a change applies from the next
-run. Then come the repo's `instructions=` file, if it names one, which wins where
-the two disagree; nightshift only reads it. A repo that tracks its own
+run. Then come the repo's own: every `.md` in the worktree's `.nightshift/instructions/`
+(the branch's copy, committed), in name order, under a "This project's instructions"
+heading, which win where they disagree with nightshift's. Split them by topic as you
+like; none there, and runs get nightshift's alone. An `instructions=` file on a repo
+line from an older version is ignored: copy it into that folder (`nightshift doctor`
+notes it). A repo that tracks its own
 `CLAUDE.local.md` keeps it, without nightshift's instructions (`nightshift
 doctor` flags it). Runs skip the clone's own
 `CLAUDE.md`, `.claude/CLAUDE.md` and `CLAUDE.local.md` (the worktree has its
@@ -337,7 +340,7 @@ A repo's runs load nightshift's plugin and the ones its `.nightshift/config` nam
 (`plugins=`, see [Config](#config)), nothing else. The rest of what its runs
 need is in the repo's own committed setup: the tools they may use in its
 `.claude/settings.json`, and how to check and show a change (screenshots, a
-recording) in its `CLAUDE.md` (or its `instructions=` file). Installing the
+recording) in its `CLAUDE.md` (or its `.nightshift/instructions/`). Installing the
 plugins and the tools they drive is up to each machine; the repo's `CLAUDE.md`
 lists them, and `nightshift doctor` says which named plugins are missing.
 
@@ -355,7 +358,7 @@ being loaded in every run gets it back with:
   }
   ```
 
-- In its `CLAUDE.md` (or `instructions=` file), how to show a change: e.g. run the app on its own
+- In its `CLAUDE.md` (or `.nightshift/instructions/`), how to show a change: e.g. run the app on its own
   simulator, take screenshots and a recording with boop into a git-excluded
   folder, and stop the app with `signalbox down --detached-only` when done.
 
