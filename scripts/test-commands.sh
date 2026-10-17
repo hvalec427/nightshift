@@ -33,8 +33,31 @@ try() {
   try ns add o/y "$W/plain"
   expect "add a directory that isn't a clone: fails" "$ST $OUT" "1 nightshift: $W/plain isn't a git checkout"
   try ns add o/y
-  expect "add without a clone: the usage" "$ST $OUT" "1 nightshift: usage: nightshift add <owner/repo> <clone path>"
+  expect "add without a clone: the usage" "$ST $OUT" "1 nightshift: usage: nightshift add <owner/repo> <clone path> [instructions=<path>]"
   expect_no_unexpected)
+
+(world
+  : >"$NS/config"
+  git init -q "$W/other"
+  gh_repo o/x "$W/other"
+  gh_repo o/y "$W/other"
+  gh_repo o/z "$W/other"
+  echo "Ours." >"$W/ours.md"
+  try ns add o/x "$W/other" "instructions=$W/ours.md"
+  expect "add with instructions=: the repo line has it" "$ST $(cat "$NS/config")" "0 repo o/x $W/other instructions=$W/ours.md"
+  mkdir -p "$W/home/notes"
+  echo "Ours." >"$W/home/notes/y.md"
+  (cd "$W" && HOME="$W/home" "$ROOT/nightshift" add o/y other "instructions=~/notes/y.md" >/dev/null)
+  expect "add with instructions=~/: home expanded" "$(tail -1 "$NS/config")" "repo o/y $W/other instructions=$W/home/notes/y.md"
+  (cd "$W" && "$ROOT/nightshift" add o/z other instructions=ours.md >/dev/null)
+  expect "add with a relative instructions=: made absolute" "$(tail -1 "$NS/config")" "repo o/z $W/other instructions=$W/ours.md"
+  : >"$NS/config"
+  try ns add o/x "$W/other" "instructions=$W/gone.md"
+  expect "add with a missing instructions= file: fails" "$ST $OUT" "1 nightshift: $W/gone.md doesn't exist"
+  expect "add with a missing instructions= file: nothing written" "$(cat "$NS/config")" ""
+  try ns add o/x "$W/other" plugins=a
+  expect "add with an unknown option: the usage" "$ST $OUT" "1 nightshift: usage: nightshift add <owner/repo> <clone path> [instructions=<path>]"
+  expect "add with an unknown option: nothing written" "$(cat "$NS/config")" "")
 
 # --- status -----------------------------------------------------------------------
 
@@ -285,6 +308,27 @@ without() {
   expect_line "doctor: no agent label" "$OUT" "^  missing o/r: its \`agent\` label: gh label create agent --repo o/r --color 5319E7$"
   expect_line "doctor: a clone that's gone" "$OUT" "^  missing o/gone: its clone ($W/gone): clone it there"
   expect_line "doctor: counts both" "$OUT" "^2 to fix")
+
+(healthy
+  expect_line "doctor: no instructions=, no line for it" "$(ns doctor)" "o/r: .*instructions" no)
+
+(healthy
+  echo "Ours." >"$W/ours.md"
+  printf 'repo o/r %s instructions=%s\n' "$CLONE" "$W/ours.md" >"$NS/config"
+  try ns doctor
+  expect_line "doctor: the repo's instructions" "$OUT" "^  ok      o/r: instructions $W/ours.md$"
+  expect "doctor: with instructions=: passes" "$ST" 0
+  printf 'repo o/r %s instructions=%s plugins=x\n' "$CLONE" "$W/gone.md" >"$NS/config"
+  try ns doctor
+  expect_line "doctor: the repo's instructions missing" "$OUT" "^  missing o/r: its instructions ($W/gone.md): create it, or fix its repo line in $NS/config$"
+  expect_line "doctor: counts it" "$OUT" "^1 to fix")
+
+(healthy
+  echo "The repo's own." >"$CLONE/CLAUDE.local.md"
+  git -C "$CLONE" add CLAUDE.local.md
+  try ns doctor
+  expect_line "doctor: a tracked CLAUDE.local.md" "$OUT" "^  tracked o/r: CLAUDE.local.md, so runs don't get nightshift's instructions: untrack it: git -C $CLONE rm --cached CLAUDE.local.md$"
+  expect_line "doctor: counts it" "$OUT" "^1 to fix")
 
 (healthy
   : >"$NS/config"

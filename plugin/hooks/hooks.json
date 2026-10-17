@@ -1,5 +1,5 @@
 {
-  "description": "Every session gets nightshift's default instructions (the plugin's instructions.md); nightshift runs have them in their system prompt instead.",
+  "description": "Every session gets nightshift's default instructions (the plugin's instructions.md); nightshift runs have them in their worktree's CLAUDE.local.md instead.",
   "hooks": {
     "SessionStart": [
       {

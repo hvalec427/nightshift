@@ -41,8 +41,9 @@ Then:
    (`chmod 600`): a year of unattended runs on your Claude subscription.
 2. `gh auth login` (gh 2.99 or newer, for screenshots in pull requests).
 3. For each repo: a clone of it on the machine, then
-   `nightshift add <owner/repo> <path to the clone>`. That also creates its
-   `agent` label and the status labels.
+   `nightshift add <owner/repo> <path to the clone>`, with
+   `instructions=<file>` for the project's own rules (see below). That also
+   creates its `agent` label and the status labels.
 
 ## What it needs
 
@@ -225,6 +226,7 @@ the pull requests can be merged in any order.
 
 ```
 repo hvalec427/nightshift /Users/me/dev/nightshift
+repo me/app /Users/me/dev/app instructions=/Users/me/notes/app.md
 allowed_users=hvalec427
 max_parallel=2
 interval=5
@@ -232,6 +234,9 @@ model=opus
 effort=high
 ```
 
+- `repo <owner/repo> <clone> [key=value …]`: a watched repo, its clone, then
+  its options in any order. `instructions=` names a file of the project's own
+  rules for runs (below); `nightshift doctor` says when it's missing.
 - `allowed_users`: whose labels and comments count (default: your gh account).
 - `max_parallel`: issues worked at once (each may run a simulator).
 - `interval`: seconds between polls (default 5). A poll that finds nothing new
@@ -270,10 +275,19 @@ enabled get nightshift's default instructions:
 [`plugin/instructions.md`](plugin/instructions.md) (installed at
 `~/.nightshift/plugin/instructions.md`), its rules for commit messages and pull
 requests, Conventional Commits and no AI attribution included, and for keeping a
-project's `CLAUDE.md` small and true. Runs get them in
-their system prompt, your own sessions from the plugin's `SessionStart` hook.
-Only the defaults apply: a `~/.nightshift/instructions.md` from an older version
-is ignored (`nightshift doctor` notes it).
+project's `CLAUDE.md` small and true. Your own sessions get them from the
+plugin's `SessionStart` hook. Runs get them in the worktree's `CLAUDE.local.md`,
+which every agent and subagent loads: nightshift writes it before each run, kept
+out of git (in the clone's `info/exclude`), so a change applies from the next
+run. Then come the repo's `instructions=` file, if it names one, which wins where
+the two disagree; nightshift only reads it. A repo that tracks its own
+`CLAUDE.local.md` keeps it, without nightshift's instructions (`nightshift
+doctor` flags it). Runs skip the clone's own
+`CLAUDE.md`, `.claude/CLAUDE.md` and `CLAUDE.local.md` (the worktree has its
+branch's), so personal notes in the clone don't change them. What runs should
+learn about a project belongs in its committed `CLAUDE.md`. A
+`~/.nightshift/instructions.md` from an older version is ignored (`nightshift
+doctor` notes it).
 
 ## A dedicated machine
 
