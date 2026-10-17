@@ -89,10 +89,15 @@ What a repo's runs need beyond that comes with the plugins its line names
 
 Each issue gets its own worktree (in the repo's clone, `.claude/worktrees/issue-<n>`,
 branch `nightshift/issue-<n>`) and a Claude session that its runs continue. When
-you approve the plan, the build starts in a fresh one, given the issue, the plan and
-your approval, so it doesn't carry (and pay for) the planning conversation: a reply
+you approve the plan, the build starts in a fresh one, given the issue, the plan, the
+comments since the plan and your approval, so it doesn't carry (and pay for) the
+planning conversation: a reply
 of just **go** starts it straight away, and any other approval once the planning
-session has read it. Later runs (your comments, updates) continue the build session.
+session has read it. Later runs (your comments, updates) continue the build session,
+until its context is half the model's window: the next run then starts a fresh
+session, given the issue, the latest plan, the pull request and what's new (the old
+session ids stay in the issue's `sessions` file under `~/.nightshift/issues`). A run
+that was stopped or stalled always resumes its session.
 A build, update or merge run that ends without commenting (it stopped to wait on
 something) is resumed once by itself; a second in a row asks you in a comment.
 Once the pull request is open, the worktree is
