@@ -4,7 +4,7 @@
 #   nightshift watch                     poll the configured repos and run agents
 #   nightshift start                     run `watch` in the background, whenever you're logged in
 #   nightshift once                      one poll, then exit (for testing)
-#   nightshift status [--all]            the service, the issues in progress (--all: done too), what each is doing, a run's last step
+#   nightshift status [--all]            the service, the issues in progress (--all: done too), what each is doing, a run's last step and activity
 #   nightshift stop                      stop the service (until `nightshift start`)
 #   nightshift stop <owner/repo>#<n>     stop an issue's running agent
 #   nightshift logs [<owner/repo>#<n>] [-f] [-v…]  what every issue (or one) does, at a level
@@ -1825,10 +1825,20 @@ skill_note() {
 
 # A running issue's heartbeat: its run's last tool call (a subagent's too), cut
 # to 60 characters, and how long since its log last changed; nothing without a log.
+# Bytes, counted as characters by skipping UTF-8's continuation bytes.
 heartbeat() {
   [ -f "$1/log" ] || return 0
-  awk 'sub(/^2\t[0-9:]+ +→ /, "") { step = $0; sub(/ +$/, "", step) }
-    END { if (step != "") printf " · now: %s", (length(step) > 60 ? substr(step, 1, 59) "…" : step) }' "$1/log"
+  LC_ALL=C awk '/^0\t=== [0-9-]+ [0-9:]+ run$/ { step = "" }
+    sub(/^2\t[0-9:]+ +→ /, "") { step = $0; sub(/ +$/, "", step) }
+    END {
+      if (step == "") exit
+      for (i = 1; i <= length(step); i++) {
+        if (substr(step, i, 1) ~ /[\200-\277]/) continue
+        if (++n == 60) at = i
+        if (n == 61) { step = substr(step, 1, at - 1) "…"; break }
+      }
+      printf " · now: %s", step
+    }' "$1/log"
   printf ' · last activity %s ago' "$(age "$1/log")"
 }
 

@@ -257,6 +257,28 @@ no issues yet")
   expect_line "status: a subagent's tool call, cut to 60 characters" "$(ns status)" \
     " · now: Bash: bash scripts/test.sh review runs && shellcheck -S war… · last activity [0-9]*s ago$"
   ns stop o/r#7 >/dev/null
+  wait "$bg"
+  runs_do 'say "back on it"; hang'
+  gh_comment o/r 7 alice "go on" >/dev/null
+  "$ROOT/nightshift" once &
+  bg=$!
+  wait_for "$CLAUDE_FAKE/runs/2/waiting"
+  wait_log 7 "back on it"
+  expect_line "status: the next run, no tool call yet: not the last run's" "$(ns status)" \
+    "(pid $(state 7 pid)) · last activity [0-9]*s ago · spent "
+  ns stop o/r#7 >/dev/null
+  wait "$bg")
+
+(world
+  gh_issue o/r 7 alice agent
+  runs_do 'tool_use "echo ······························································"; hang'
+  "$ROOT/nightshift" once &
+  bg=$!
+  wait_for "$CLAUDE_FAKE/runs/1/waiting"
+  wait_log 7 "echo ·"
+  expect_line "status: a step cut by characters, not bytes" "$(ns status)" \
+    " · now: Bash: echo ················································… · last activity [0-9]*s ago$"
+  ns stop o/r#7 >/dev/null
   wait "$bg")
 
 # --- logs -------------------------------------------------------------------------
