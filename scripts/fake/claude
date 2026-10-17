@@ -31,7 +31,7 @@ until mkdir "$CLAUDE_FAKE/runs/$k" 2>/dev/null; do k=$((k + 1)); done
 RUN="$CLAUDE_FAKE/runs/$k"
 printf '%s\0' "$@" >"$RUN/args"
 pwd -P >"$RUN/cwd"
-env | grep -E '^(NIGHTSHIFT_|CLAUDE_CODE_OAUTH_TOKEN=)' | sort >"$RUN/env"
+env | grep -E '^(NIGHTSHIFT_|GIT_EDITOR=|GIT_SEQUENCE_EDITOR=|CLAUDE_CODE_OAUTH_TOKEN=)' | sort >"$RUN/env"
 
 session="session-$k"
 prev=""

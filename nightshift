@@ -439,10 +439,13 @@ plugin_dir() {
 
 # Claude, for a run of $repo#$n with $resume, in the current
 # directory: exec'd, so it's the subshell's pid. With the issue, for
-# `nightshift label`, and this nightshift on its PATH.
+# `nightshift label`, this nightshift on its PATH, and git's editors off.
 run_claude() {
   PATH="$(dirname "$SELF"):$PATH" NIGHTSHIFT_REPO=$repo NIGHTSHIFT_ISSUE=$n
   export PATH NIGHTSHIFT_REPO NIGHTSHIFT_ISSUE
+  # No editor to wait on: `git rebase --continue` and merges just go on.
+  GIT_EDITOR=true GIT_SEQUENCE_EDITOR=true
+  export GIT_EDITOR GIT_SEQUENCE_EDITOR
   # shellcheck disable=SC2086 # $ALLOWED_TOOLS is a word per tool, $resume two words or none
   set -- -p "$1" --output-format stream-json --verbose --permission-mode auto --allowedTools $ALLOWED_TOOLS $resume
   # Without the plugin's copy (install.sh not run since), not isolated: the
