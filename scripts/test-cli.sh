@@ -121,8 +121,8 @@ expect "no test file calls a plain $plain" "$found" ""
   order() { "${caller[@]}" NIGHTSHIFT_TEST_JOBS=1 NIGHTSHIFT_TEST_SEED="$1" bash "$ROOT/scripts/test.sh" "$ct"/many/*.sh 2>/dev/null | names | paste -sd' ' -; }
   expect "test.sh: the same seed runs the files in the same order" "$(order 7)" "$(order 7)"
   expect "test.sh: another seed runs them in another order" "$([ "$(order 7)" != "$(order 8)" ] && echo differ)" "differ"
-  # sed, not head: test.sh must not write to a closed pipe (where SIGPIPE is
-  # ignored, as on CI, bash 3.2 then never ends).
+  # sed, not head: where SIGPIPE is ignored (as on CI), a reader that leaves
+  # early ends test.sh with 141 (see below).
   expect "test.sh: a seed prints before the results" "$("${caller[@]}" NIGHTSHIFT_TEST_SEED=7 bash "$ROOT/scripts/test.sh" "$fx/test-pass.sh" 2>/dev/null | sed -n 1p)" "seed 7"
   expect "test.sh: with no seed given, one is printed" "$("${caller[@]}" bash "$ROOT/scripts/test.sh" "$fx/test-pass.sh" 2>/dev/null | sed -n '1s/^seed [0-9][0-9]*$/seed/p')" "seed"
   # Its reader gone, with SIGPIPE ignored: it still ends, as SIGPIPE would
