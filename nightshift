@@ -622,11 +622,11 @@ $intro"
   wait $cpid
   status=$?
   # A signal interrupts `wait`; let claude finish its SessionEnd hooks.
-  while kill -0 $cpid 2>/dev/null; do sleep 1; done
+  while kill -0 $cpid 2>/dev/null; do sleep 0.1; done
   # The renderer ends when the stream closes; something claude left running
   # may hold it open, so give it a few seconds.
   i=0
-  while kill -0 $rpid 2>/dev/null && [ $i -lt 5 ]; do sleep 1; i=$((i + 1)); done
+  while kill -0 $rpid 2>/dev/null && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
   kill $rpid 2>/dev/null
   rm -f "$dir/stream"
   sid=$(sed -n 's/.*"session_id" *: *"\([^"]*\)".*/\1/p' "$dir/out.jsonl" | head -1)
