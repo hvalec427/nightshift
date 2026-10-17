@@ -50,6 +50,15 @@ try() {
   expect_line "add with an unknown option: no line" "$(cat "$NS/config")" "o/w" no
   try ns add o/w "$W/plain" rn-agent
   expect "add with a word that isn't key=value: the usage" "$ST $OUT" "1 nightshift: usage: nightshift add <owner/repo> <clone path> [instructions=<path>] [auto_merge=false] [plugins=<name>,…] (rn-agent isn't key=value)"
+  git init -q "$W/my dir=1"
+  before=$(cat "$NS/config")
+  try ns add o/s "$W/my dir=1"
+  expect "add a clone path ending in key=value: fails" "$ST $OUT" "1 nightshift: $W/my dir=1: a clone path can't end in a word like key=value"
+  expect "add a clone path ending in key=value: nothing written" "$(cat "$NS/config")" "$before"
+  git init -q "$W/my clone"
+  gh_repo o/s "$W/my clone"
+  try ns add o/s "$W/my clone"
+  expect "add a clone path with a space: on the repo line" "$ST $(tail -1 "$NS/config")" "0 repo o/s $W/my clone"
   expect_no_unexpected)
 
 (world

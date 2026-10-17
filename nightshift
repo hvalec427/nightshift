@@ -1590,6 +1590,8 @@ cmd_add() {
   use="usage: nightshift add <owner/repo> <clone path> [instructions=<path>] [auto_merge=false] [plugins=<name>,…]"
   [ $# -ge 2 ] || die "$use"
   repo=$1 clone=$(cd "$2" 2>/dev/null && pwd -P) || die "$2 doesn't exist"
+  # repos would read such a word as an option.
+  printf '%s\n' "$clone" | grep -q ' [a-z_][a-z_]*=[^ ]*$' && die "$clone: a clone path can't end in a word like key=value"
   shift 2
   opts=""
   for o in "$@"; do
