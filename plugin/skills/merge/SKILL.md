@@ -3,6 +3,8 @@ name: merge
 description: Wait for an issue's pull request checks, then squash-merge it when nothing needs a human look, or list what does in a look comment. Started by the build, update and issue skills when the run prompt says the repo auto-merges.
 allowed-tools: Bash(gh pr *) Bash(gh issue *) Bash(git fetch *) Bash(git log *) Bash(git diff *) Bash(git rev-parse *)
 user-invocable: false
+model: sonnet
+effort: medium
 ---
 
 # Merge a pull request

@@ -238,7 +238,7 @@ No setting changes them: `model=` and `effort=` in the config are ignored, and
 | Ticket builder (agent `ticket`) | sonnet | high |
 | Spec reviewer (agent `spec-review`) | opus | high |
 | Standards reviewer (agent `standards-review`) | sonnet | medium |
-| `answer`, `finish` | sonnet | medium |
+| `answer`, `finish`, `merge` | sonnet | medium |
 
 Each run's line in `nightshift logs` shows the models it used, the main one first.
 

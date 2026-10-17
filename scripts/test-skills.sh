@@ -76,7 +76,7 @@ model_effort() {
 model_effort "the issue skill" "$ISSUE" sonnet low
 for s in questions plan; do model_effort "the $s skill" "$SKILLS/$s/SKILL.md" opus high; done
 for s in build update review; do model_effort "the $s skill" "$SKILLS/$s/SKILL.md" sonnet high; done
-for s in answer finish; do model_effort "the $s skill" "$SKILLS/$s/SKILL.md" sonnet medium; done
+for s in answer finish merge; do model_effort "the $s skill" "$SKILLS/$s/SKILL.md" sonnet medium; done
 bad="" nomodel=""
 for f in "$SKILLS"/*/SKILL.md; do
   case "$(field "$f" effort)" in low|medium|high|max) ;; *) bad="$bad${f#"$SKILLS"/} " ;; esac
