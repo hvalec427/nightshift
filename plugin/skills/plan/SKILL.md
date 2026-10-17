@@ -73,7 +73,8 @@ schema, a type shape), trimmed to the decision.
 ## The tickets
 
 Numbered `T1`, `T2`, … in build order. The user approves them with the plan, and on **go**
-each becomes a sub-issue titled `T<n>: <title>`, so keep the titles short and unique.
+they become the build's tasks checklist, a line `T<n>: <title>` each, so keep the titles
+short and unique.
 
 **Prefactor** first: make the change easy, then make the easy change. Then cut
 **tracer bullets**:
@@ -101,7 +102,7 @@ Tickets follow the spec's rule on paths and snippets.
 ## The plan comment
 
 Short enough to read in a minute. The tickets live in this comment; on **go**, the build
-makes each a sub-issue of the issue (with no `agent` label), so you write no issues.
+lists them in a `tasks` comment, so you write no issues.
 
 - **On top:** what gets built, in two or three lines; the decisions the user should see;
   the tickets, one line each, in build order (`**T1: <title>.** <what it delivers>`); and
