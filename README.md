@@ -85,7 +85,7 @@ What a repo's runs need beyond that comes with the plugins its line names
 | Merge another pull request | Rebases and updates the ones it affects (below) |
 | Remove the label, add `invalid` or `wontfix`, or close the issue | Stops it; `nightshift status` says so and why |
 | Add the label back, remove `invalid`/`wontfix`, or reopen it | Picks up the stopped run where it left off |
-| Merge its pull request, or close the issue | It's done: a last comment says what its runs cost (dollars at API prices, tokens, time), the dollars of each model and the pull request's size (`PR +412 −37 in 9 files`), and lists every agent that ran in a table, a row a run in the order they ran (`plan run`) with the subagents it started under it, each with its model, effort, skills, tokens, time and tool calls, and a run with its cost; `nightshift status` leaves it out, and its state and branch are cleaned up |
+| Merge its pull request, or close the issue | It's done: a last comment says what its runs cost (dollars at API prices, tokens, time), the dollars of each model and the pull request's size (`PR +412 −37 in 9 files`), and lists every agent that ran in a table, a row a run in the order they ran (`plan run`) with the subagents it started under it, each with its model, effort, skills, tokens, time and tool calls, and a run with its cost, then a total row, and under it the time from the first run to the last split into working, waiting on you and other waits; `nightshift status` leaves it out, and its state and branch are cleaned up |
 
 Each issue gets its own worktree (in the repo's clone, `.claude/worktrees/issue-<n>`,
 branch `nightshift/issue-<n>`) and a Claude session that its runs continue. When

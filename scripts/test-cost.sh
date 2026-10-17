@@ -139,7 +139,7 @@ agents() { state "$1" agents | jq -S -c '.run = "R" | if .kind == "session" then
     comment questions"
   poll
   expect "a run: its session, then each subagent" "$(agents 7)" \
-'{"kind":"session","models":["opus-5-5"],"run":"R","secs":"S","session":"session-1","skills":["nightshift:issue","nightshift:questions"],"tokens":1000,"tools":5,"usd":1}
+'{"kind":"session","models":["opus-5-5"],"reply":false,"run":"R","secs":"S","session":"session-1","skills":["nightshift:issue","nightshift:questions"],"tokens":1000,"tools":5,"usd":1}
 {"description":"Build T1","kind":"agent","model":"haiku-4-5","run":"R","secs":12,"session":"session-1","skills":["nightshift:build"],"tokens":5000,"tools":7,"type":"nightshift:ticket"}
 {"description":"Find the cost code","kind":"agent","model":"sonnet-4-5","run":"R","secs":2,"session":"session-1","skills":[],"tokens":900,"tools":3,"type":"Explore"}'
   expect_line "its session ran for the run's seconds" "$(state 7 agents)" '^{"kind":"session",.*"secs":[0-9]*,'
@@ -150,7 +150,7 @@ agents() { state "$1" agents | jq -S -c '.run = "R" | if .kind == "session" then
   runs_do "costs 0.5 $OPUS 10 10 10 10; skill nightshift:plan; comment plan"
   poll
   expect "a resumed run: its own share of the tokens, on the same session" "$(agents 7 | tail -1)" \
-'{"kind":"session","models":[],"run":"R","secs":"S","session":"session-1","skills":["nightshift:plan"],"tokens":40,"tools":2,"usd":0.5}'
+'{"kind":"session","models":[],"reply":true,"run":"R","secs":"S","session":"session-1","skills":["nightshift:plan"],"tokens":40,"tools":2,"usd":0.5}'
   expect "its lines are added to the run before's" "$(state 7 agents | wc -l | tr -d ' ')" 4
   expect "a later run starts later or at the same second" "$(state 7 agents | jq -s '.[3].run >= .[0].run')" true
   rm "$(idir 7)/session"
@@ -158,7 +158,7 @@ agents() { state "$1" agents | jq -S -c '.run = "R" | if .kind == "session" then
   runs_do "costs 2 $OPUS 1 2 3 4; skill nightshift:build; comment progress"
   poll
   expect "a fresh session: all its tokens, its own id" "$(agents 7 | tail -1)" \
-'{"kind":"session","models":[],"run":"R","secs":"S","session":"session-3","skills":["nightshift:build"],"tokens":10,"tools":2,"usd":2}'
+'{"kind":"session","models":[],"reply":true,"run":"R","secs":"S","session":"session-3","skills":["nightshift:build"],"tokens":10,"tools":2,"usd":2}'
   gh_state o/r 7 closed
   poll
   expect "done: the agents stay" "$(state 7 agents | wc -l | tr -d ' ')" 5
@@ -172,7 +172,7 @@ agents() { state "$1" agents | jq -S -c '.run = "R" | if .kind == "session" then
     turn $HAIKU 5 100 0 toolu_1; fail_result"
   poll
   expect "a failed run: its session and its unfinished subagent" "$(agents 7)" \
-'{"kind":"session","models":[],"run":"R","secs":"S","session":"session-1","skills":["nightshift:issue"],"tokens":4,"tools":2,"usd":0.5}
+'{"kind":"session","models":[],"reply":false,"run":"R","secs":"S","session":"session-1","skills":["nightshift:issue"],"tokens":4,"tools":2,"usd":0.5}
 {"description":"Build T1","kind":"agent","model":"haiku-4-5","run":"R","secs":null,"session":"session-1","skills":["nightshift:build"],"tokens":null,"tools":1,"type":"nightshift:ticket"}'
   gh_comment o/r 7 alice "again" >/dev/null
   runs_do "turn $OPUS 5 1000 0; skill nightshift:plan; hang"
@@ -182,13 +182,28 @@ agents() { state "$1" agents | jq -S -c '.run = "R" | if .kind == "session" then
   ns stop o/r#7 >/dev/null
   wait "$bg"
   expect "a stopped run (no result): its session, no tokens" "$(agents 7 | tail -1)" \
-'{"kind":"session","models":["opus-5-5"],"run":"R","secs":"S","session":"session-1","skills":["nightshift:plan"],"tokens":0,"tools":1,"usd":0}')
+'{"kind":"session","models":["opus-5-5"],"reply":true,"run":"R","secs":"S","session":"session-1","skills":["nightshift:plan"],"tokens":0,"tools":1,"usd":0}')
 
 (world
   gh_issue o/r 7 alice agent
   touch "$CLAUDE_FAKE/silent"
   poll
   expect "a run with no events: nothing recorded" "$(wc -c <"$(idir 7)/agents" | tr -d ' ')" 0)
+
+# A run the user's comment started has reply true; an update run, with only
+# the watcher's news, false, even when it resumes a session.
+(world
+  gh_issue o/r 7 alice agent
+  runs_do "costs 1 $OPUS 1 1 1 1; skill nightshift:issue; comment questions"
+  poll
+  printf 'conflicts\nit conflicts with master\n' >"$(idir 7)/update"
+  runs_do "costs 1 $OPUS 1 1 1 1; skill nightshift:update; commit feature.txt"
+  poll
+  expect "an update run: no reply" "$(state 7 agents | jq -s -c 'map(.reply)')" "[false,false]"
+  gh_comment o/r 7 alice "thanks" >/dev/null
+  runs_do "costs 1 $OPUS 1 1 1 1; skill nightshift:issue; comment progress"
+  poll
+  expect "a comment after: a reply" "$(state 7 agents | jq -s -c 'map(.reply)')" "[false,false,true]")
 
 # Shown by status.
 (world
@@ -308,7 +323,10 @@ finish() { gh_state o/r "$1" closed; poll; }
 | plan run | opus-5-5 | per skill | issue (low), plan (high) | 2k | $1.00 | S | 3 |
 | build run | opus-5-5, sonnet-4-5 | per skill | issue (low), build (high) | 4k | $2.00 | S | 5 |
 | ↳ ticket · Build T1 | sonnet-4-5 | high | tdd | 60k | – | 7m | 16 |
-| ↳ spec-review · Review the spec | opus-5-5 | default | – | 40k | – | 2m | 9 |'
+| ↳ spec-review · Review the spec | opus-5-5 | default | – | 40k | – | 2m | 9 |
+| **Total** | – | – | – | 16k | $4.00 | S | 49 |'
+  expect_line "three runs: a time line" "$(gh_comments o/r 7)" \
+    '^\*\*Time:\*\* [0-9]*s: [0-9]*s working'
   expect "all runs recorded: no partial note" "$(gh_comments o/r 7 | grep -c 'starts from the first recorded run' || true)" 0
   expect_line "the table follows the headline in the one comment" "$(gh_comments o/r 7)" '^| Agent | Model '
   expect "one cost comment" "$(gh_comments o/r 7 | grep -c "^$COMMENT$")" 1
@@ -327,9 +345,10 @@ finish() { gh_state o/r "$1" closed; poll; }
     agent toolu_1 other:helper 'Help | out'; skill tdd toolu_1; turn $HAIKU 5 100 0 toolu_1; fail_result"
   poll
   finish 7
-  expect "a repo plugin's agent and skill: their efforts, its prefix kept" "$(table 7 | tail -2)" \
+  expect "a repo plugin's agent and skill: their efforts, its prefix kept" "$(table 7 | tail -3)" \
 '| run | – | per skill | issue (low), other:lint (low), other:nothing | 4 | $1.00 | S | 4 |
-| ↳ other:helper · Help \| out | haiku-4-5 | max | tdd | – | – | – | 1 |'
+| ↳ other:helper · Help \| out | haiku-4-5 | max | tdd | – | – | – | 1 |
+| **Total** | – | – | – | 4 | $1.00 | S | 5 |'
   expect_no_unexpected)
 
 # No agents file: no table. Runs before the first record: a note.
@@ -353,34 +372,82 @@ finish() { gh_state o/r "$1" closed; poll; }
   runs_do "costs 1 $OPUS 1 1 1 1; skill nightshift:issue; skill nightshift:plan; comment plan"
   poll
   finish 7
-  expect "records from the second run on: only that run's agents" "$(table 7 | tail -1)" \
-'| plan run | – | per skill | issue (low), plan (high) | 4 | $1.00 | S | 3 |'
+  expect "records from the second run on: only that run's agents" "$(table 7 | tail -2)" \
+'| plan run | – | per skill | issue (low), plan (high) | 4 | $1.00 | S | 3 |
+| **Total** | – | – | – | 4 | $2.00 | S | 3 |'
   expect_line "and a note under the table" "$(gh_comments o/r 7)" '^_The table starts from the first recorded run: earlier runs have no agent records\._$')
 
 # A session resumed after another ran: its later run comes after that one's,
 # with its own subagents, not merged into the session's first row. A record
-# without dollars has none; a run without a stage skill is a plain run.
+# without dollars has none; a run without a stage skill is a plain run. The
+# total row has the issue's dollars (from `cost`, runs before records
+# included) and what the rows add up to; the time line splits the time from
+# the first run's start to the last one's end.
+(world
+  own_plugin
+  gh_issue o/r 7 alice agent
+  runs_do "costs 1 $OPUS 1 1 1 1; skill nightshift:issue; comment questions"
+  poll
+  echo "7.5 1000 0 0 100 5 -" >"$(idir 7)/cost"
+  printf '%s\n' \
+    '{"kind":"session","run":2000000300,"session":"s1","models":["opus-5-5"],"skills":["nightshift:plan"],"tools":2,"secs":50,"tokens":300,"usd":0.5,"reply":true}' \
+    '{"kind":"agent","run":2000000300,"session":"s1","type":"Explore","description":"Late look","model":"haiku-4-5","skills":[],"tokens":10,"secs":5,"tools":1}' \
+    '{"kind":"session","run":2000000100,"session":"s1","models":["opus-5-5"],"skills":["nightshift:issue","nightshift:questions"],"tools":4,"secs":60,"tokens":100,"usd":1.234,"reply":false}' \
+    '{"kind":"session","run":2000000200,"session":"s2","models":["opus-5-5"],"skills":["nightshift:build"],"tools":3,"secs":70,"tokens":200,"reply":false}' \
+    '{"kind":"agent","run":2000000200,"session":"s2","type":"Explore","description":"Early look","model":"haiku-4-5","skills":[],"tokens":20,"secs":5,"tools":2}' \
+    '{"kind":"session","run":2000000400,"session":"s3","models":[],"skills":[],"tools":1,"secs":10,"tokens":0,"usd":0,"reply":false}' \
+    >"$(idir 7)/agents"
+  finish 7
+  expect "runs in the order they ran, a session's later run after the other's, cost from usd, then the total" "$(table 7 | sed 1,2d)" \
+'| questions run | opus-5-5 | per skill | issue (low), questions (high) | 100 | $1.23 | 1m | 4 |
+| build run | opus-5-5 | per skill | build (high) | 200 | – | 1m | 3 |
+| ↳ Explore · Early look | haiku-4-5 | default | – | 20 | – | 5s | 2 |
+| plan run | opus-5-5 | per skill | plan (high) | 300 | $0.50 | S | 2 |
+| ↳ Explore · Late look | haiku-4-5 | default | – | 10 | – | 5s | 1 |
+| run | – | per skill | – | 0 | $0.00 | S | 1 |
+| **Total** | – | – | – | 600 | $7.50 | 3m | 13 |'
+  expect "the time line: gaps before a reply are waiting on you, the others other waits" \
+    "$(gh_comments o/r 7 | grep '^\*\*Time')" \
+    '**Time:** 5m: 3m working · 30s waiting on you · 1m other waits'
+  expect "under the table, after a blank line" "$(gh_comments o/r 7 | grep -B2 '^\*\*Time' | sed -n '1p;2p' | tr '\n' '~')" '| **Total** | – | – | – | 600 | $7.50 | 3m | 13 |~~')
+
+# Zero parts are left out of the time line; one run has none.
 (world
   own_plugin
   gh_issue o/r 7 alice agent
   runs_do "costs 1 $OPUS 1 1 1 1; skill nightshift:issue; comment questions"
   poll
   printf '%s\n' \
-    '{"kind":"session","run":2000000300,"session":"s1","models":["opus-5-5"],"skills":["nightshift:plan"],"tools":2,"secs":50,"tokens":300,"usd":0.5}' \
-    '{"kind":"agent","run":2000000300,"session":"s1","type":"Explore","description":"Late look","model":"haiku-4-5","skills":[],"tokens":10,"secs":5,"tools":1}' \
-    '{"kind":"session","run":2000000100,"session":"s1","models":["opus-5-5"],"skills":["nightshift:issue","nightshift:questions"],"tools":4,"secs":60,"tokens":100,"usd":1.234}' \
-    '{"kind":"session","run":2000000200,"session":"s2","models":["opus-5-5"],"skills":["nightshift:build"],"tools":3,"secs":70,"tokens":200}' \
-    '{"kind":"agent","run":2000000200,"session":"s2","type":"Explore","description":"Early look","model":"haiku-4-5","skills":[],"tokens":20,"secs":5,"tools":2}' \
-    '{"kind":"session","run":2000000400,"session":"s3","models":[],"skills":[],"tools":1,"secs":10,"tokens":0,"usd":0}' \
+    '{"kind":"session","run":2000000000,"session":"s1","models":[],"skills":[],"tools":1,"secs":600,"tokens":1,"usd":1,"reply":false}' \
+    '{"kind":"session","run":2000004200,"session":"s1","models":[],"skills":[],"tools":1,"secs":300,"tokens":1,"usd":1,"reply":true}' \
     >"$(idir 7)/agents"
   finish 7
-  expect "runs in the order they ran, a session's later run after the other's, cost from usd" "$(table 7 | sed 1,2d)" \
-'| questions run | opus-5-5 | per skill | issue (low), questions (high) | 100 | $1.23 | 1m | 4 |
-| build run | opus-5-5 | per skill | build (high) | 200 | – | 1m | 3 |
-| ↳ Explore · Early look | haiku-4-5 | default | – | 20 | – | 5s | 2 |
-| plan run | opus-5-5 | per skill | plan (high) | 300 | $0.50 | S | 2 |
-| ↳ Explore · Late look | haiku-4-5 | default | – | 10 | – | 5s | 1 |
-| run | – | per skill | – | 0 | $0.00 | S | 1 |')
+  expect "a wait for a reply only: no other waits" "$(gh_comments o/r 7 | grep '^\*\*Time')" \
+    '**Time:** 1h 15m: 15m working · 1h 0m waiting on you')
+
+(world
+  own_plugin
+  gh_issue o/r 7 alice agent
+  runs_do "costs 1 $OPUS 1 1 1 1; skill nightshift:issue; comment questions"
+  poll
+  printf '%s\n' \
+    '{"kind":"session","run":2000000000,"session":"s1","models":[],"skills":[],"tools":1,"secs":600,"tokens":1,"usd":1,"reply":false}' \
+    '{"kind":"session","run":2000000600,"session":"s1","models":[],"skills":[],"tools":1,"secs":300,"tokens":1,"usd":1,"reply":false}' \
+    '{"kind":"session","run":2000000900,"session":"s1","models":[],"skills":[],"tools":1,"secs":300,"tokens":1,"usd":1}' \
+    >"$(idir 7)/agents"
+  finish 7
+  expect "touching runs, no reply fields: working alone" "$(gh_comments o/r 7 | grep '^\*\*Time')" \
+    '**Time:** 20m: 20m working'
+  expect "and the total row's time is the working time" "$(table 7 | tail -1)" '| **Total** | – | – | – | 3 | $1.00 | 20m | 3 |')
+
+(world
+  own_plugin
+  gh_issue o/r 7 alice agent
+  runs_do "costs 1 $OPUS 1 1 1 1; skill nightshift:issue; comment questions"
+  poll
+  finish 7
+  expect "one run: no time line" "$(gh_comments o/r 7 | grep -c '^\*\*Time' || true)" 0
+  expect "its total row" "$(table 7 | tail -1 | sed 's/| [0-9]*s |/| S |/')" '| **Total** | – | – | – | 4 | $1.00 | S | 2 |')
 
 (world
   own_plugin
