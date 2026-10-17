@@ -300,8 +300,8 @@ skills from `~/.claude/skills`, no `~/.claude/settings.json`,
 repo's own `.claude` setup, nightshift's plugin (its copy in
 `~/.nightshift/plugin`, which the install keeps up to date) and the plugins
 its repo line names; commits and pull requests get no Claude attribution.
-Runs can't use `pkill` or `killall`: a name pattern matches other runs too, so they
-stop a background task by its PID.
+Runs can't use `pkill` or `killall`: a name pattern matches other runs
+too, so they stop a background task by its PID.
 `isolated=` and `permission_mode=` lines from older versions are ignored
 (`nightshift doctor` notes them).
 
