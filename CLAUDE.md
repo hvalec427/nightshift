@@ -18,8 +18,8 @@ a plan, the build, a pull request, talking to the user only through the issue.
 
 - `bash scripts/test.sh` runs every test, `bash scripts/test.sh review runs` just
   `scripts/test-review.sh` and `scripts/test-runs.sh`. Run it with `bash`: it isn't executable.
-  The whole suite takes over 10 minutes, past the Bash tool's timeout: when it moves to the
-  background, wait on it in the same turn.
+  The files run in parallel and the whole suite takes about 3 minutes. While working, run
+  the files for what you changed; the whole suite once, before the pull request.
 - `shellcheck -S warning nightshift install.sh scripts/*.sh scripts/fake/*` — CI's exact file
   list (`.github/workflows/check.yml`).
 - `bash scripts/commit-lint.sh --title "<subject>"` checks a commit or pull request title.

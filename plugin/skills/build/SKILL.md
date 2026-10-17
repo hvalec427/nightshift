@@ -29,9 +29,11 @@ Build the tickets in order, one at a time, in this worktree. The sequence:
    context of the next. A plan with one ticket you build yourself, after invoking the
    `nightshift:tdd` skill with the Skill tool: there's no next ticket to keep clean.
    - Test-first where the ticket has logic to test, by the `nightshift:tdd` skill, and
-     checked the way the repo is checked: the project's build, typecheck, lint and tests,
-     and the running app the way the project's instructions say. Run them in the
-     foreground and wait for them, however long they take: a run ends when you stop.
+     checked the way the repo is checked: the project's build, typecheck and lint, the
+     tests for what the ticket touched (its own and the existing ones that cover the code
+     it changed), and the running app the way the project's instructions say. Not the
+     whole test suite: that runs once, after the review. Run them in the foreground and
+     wait for them, however long they take: a run ends when you stop.
    - Commit each ticket on its own, in the repo's and the user's commit style.
    - After its commit, tick its box in the `tasks` comment, and post a short `progress`
      comment: what the ticket delivered and how it was checked.
@@ -41,6 +43,9 @@ Build the tickets in order, one at a time, in this worktree. The sequence:
    Done when every ticket has its commit, its tick and its `progress` comment.
 4. **Review.** Invoke the `nightshift:review` skill with the Skill tool: one review, one fix
    pass. Done when it hands back its three lists (fixed, dismissed, open).
+   Then the **full checks**, once: the whole test suite with the build, typecheck and lint,
+   in the foreground. A failure is fixed and only what failed is run again, then the whole
+   suite once more. Done when they pass on the last commit.
 5. **Finish.** Check the **overlap** (in the issue skill) again, since other work may have
    started or merged since the plan, then invoke the `nightshift:finish` skill to open the
    pull request, handing it the overlap lines for the body. The review's findings left
