@@ -78,7 +78,7 @@ expect "no test file calls a plain $plain" "$found" ""
   printf '%s\n(world; temp -d >/dev/null; : >"$ct/started"; sleep 30)\n' "$head" >"$fx/test-int.sh"
   # What a fresh caller's TMPDIR holds after test.sh ran on the files $1…
   # A fresh caller's environment, with $ct/caller as its TMPDIR.
-  caller=(env -u NIGHTSHIFT_TEST_LABELS -u NIGHTSHIFT_TEST_SHARD -u KEEP_WORLD ROOT="$ROOT" ct="$ct" TMPDIR="$ct/caller")
+  caller=(env -u NIGHTSHIFT_TEST_LABELS -u NIGHTSHIFT_TEST_SHARD -u NIGHTSHIFT_TEST_SEED -u KEEP_WORLD ROOT="$ROOT" ct="$ct" TMPDIR="$ct/caller")
   run_suite() {
     "${caller[@]}" bash "$ROOT/scripts/test.sh" "$@" >/dev/null 2>&1
   }
@@ -121,7 +121,9 @@ expect "no test file calls a plain $plain" "$found" ""
   order() { "${caller[@]}" NIGHTSHIFT_TEST_JOBS=1 NIGHTSHIFT_TEST_SEED="$1" bash "$ROOT/scripts/test.sh" "$ct"/many/*.sh 2>/dev/null | names | paste -sd' ' -; }
   expect "test.sh: the same seed runs the files in the same order" "$(order 7)" "$(order 7)"
   expect "test.sh: another seed runs them in another order" "$([ "$(order 7)" != "$(order 8)" ] && echo differ)" "differ"
-  expect "test.sh: a seed prints before the results" "$("${caller[@]}" NIGHTSHIFT_TEST_SEED=7 bash "$ROOT/scripts/test.sh" "$fx/test-pass.sh" 2>/dev/null | head -1)" "seed 7"
+  # sed, not head: test.sh must not write to a closed pipe (where SIGPIPE is
+  # ignored, as on CI, bash 3.2 then never ends).
+  expect "test.sh: a seed prints before the results" "$("${caller[@]}" NIGHTSHIFT_TEST_SEED=7 bash "$ROOT/scripts/test.sh" "$fx/test-pass.sh" 2>/dev/null | sed -n 1p)" "seed 7"
   expect "test.sh: with no seed given, one is printed" "$("${caller[@]}" bash "$ROOT/scripts/test.sh" "$fx/test-pass.sh" 2>/dev/null | sed -n '1s/^seed [0-9][0-9]*$/seed/p')" "seed"
   shards() { for s in 1/3 2/3 3/3; do "${caller[@]}" NIGHTSHIFT_TEST_SHARD="$s" NIGHTSHIFT_TEST_SEED="$1" bash "$ROOT/scripts/test.sh" "$ct"/many/*.sh 2>/dev/null | names; done | sort | paste -sd' ' -; }
   expect "test.sh: shards cover every file once, under seed 7" "$(shards 7)" "test-a test-b test-c test-d test-e test-f test-g test-h test-i test-j"
