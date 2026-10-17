@@ -15,7 +15,8 @@ doesn't auto-merge, or told neither, stop here: merging is the user's.
 
 You are handed a report (what was done, the pull request's link, the review) by the skill
 that started you; it goes at the top of your one closing comment, so the issue gets one
-comment where it would have got a report and a verdict.
+comment where it would have got a report and a verdict. Started on the user's **merge** reply to a
+`look` comment, you have none: the closing comment is the outcome alone.
 
 This issue's pull request is open and up to date. Merge it yourself when nothing in it
 needs a human; otherwise tell the user exactly what does, and let them say **merge**.

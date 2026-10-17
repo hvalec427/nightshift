@@ -227,7 +227,6 @@ expect_line "implement-spec is credited in the notices" "$(flat "$ROOT/plugin/TH
 expect_line "the PR skill is credited in the notices" "$(cat "$ROOT/plugin/THIRD_PARTY.md")" "\`pr\` in \`finish\`"
 
 # The merge skill takes a wide blast radius as a look item; the one definition is the finish skill's BODY.md.
-merge_flat=$(flat "$SKILLS/merge/SKILL.md")
 expect_line "a wide blast radius is a look item" "$merge_flat" "a wide blast radius"
 expect_line "the merge skill points at the finish skill's definition of wide" "$merge_flat" "\[the finish skill.s BODY.md\](\.\./finish/BODY.md)"
 expect "the wide definition lives in BODY.md alone" "$(grep -l 'Wide when' "$SKILLS"/*/*.md | sed "s|^$SKILLS/||")" "finish/BODY.md"

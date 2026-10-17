@@ -37,7 +37,8 @@ issue, earlier comments, what the diff shows). Lengths to aim for:
 
 - `questions`: one line per question or option (the questions skill);
 - `plan`: a minute to read, the full spec collapsed (the plan skill);
-- `progress`, `blocked`: one or two lines, e.g. "Waiting for #4's PR to merge first.";
+- `progress`, `blocked`: one or two lines, e.g. "Waiting for #4's PR to merge first."
+  (the merge skill's `progress` opens with the report it was handed);
 - `done`: the build's report, led by the pull request's link and what's in it, the review
   collapsed (the build skill; the merge skill's `done` and `look` open with it);
 - `answer`: the answer first, in a few lines, then where it comes from;

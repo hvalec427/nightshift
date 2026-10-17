@@ -808,9 +808,9 @@ JQ_DEFS='def short: sub("^claude-"; "") | sub("-[0-9]{8}$"; "");
 # (null: none), as dollars, tokens in, out and cache, and the models it used
 # (comma-separated, shortened, the main one $main first; - if none) and what
 # each cost (opus-5-5=3.2,haiku-4-5=0.1, in the same order; - if none) and
-# tokens (opus-5-5=90000,haiku-4-5=4000; - if none). All of
-# $now if $prev is another session's, or any of its totals is higher (they
-# were reset).
+# its tokens (opus-5-5=90000,haiku-4-5=4000; - if none). All of $now if
+# $prev is another session's, or any of its totals is higher (they were
+# reset).
 # shellcheck disable=SC2016 # a jq program: $ is jq's
 SPENT='def fields: ["costUSD", "inputTokens", "outputTokens", "cacheReadInputTokens", "cacheCreationInputTokens"];
   ($prev != null and $prev.session_id == $now.session_id and $now.total_cost_usd >= $prev.total_cost_usd
@@ -1146,11 +1146,12 @@ definition_effort() {
 # row a run, in the order they ran (lines of the same second in file order),
 # named by its stage skill (`plan run`), and under it a row each of the
 # subagents it started, in the order they ran, and a Total row ($total, the
-# issue's dollars; tokens and seconds of the runs, tools of all rows). Tokens,
-# dollars, seconds and tools are numbers, `-` where unknown. A subagent's dollars are
-# an estimate, `~` and its `spent` tokens at the rate of its model in the run (the
-# run's `byModel`: dollars over tokens); a run's are its own less those, at
-# least 0, so the rows add up to the total.
+# issue's dollars; tokens and seconds of the runs, tools of all rows).
+# Tokens, dollars, seconds and tools are numbers, `-` where unknown. A
+# subagent's dollars are an estimate, `~` and its `spent` tokens (its turns')
+# at the rate of its model in the run (the run's `byModel`: dollars over
+# tokens); a run's are its own less those, at least 0, so the rows add up to
+# the total unless the estimates overshoot the run's dollars.
 # shellcheck disable=SC2016 # a jq program: $ is jq's
 AGENT_ROWS='[inputs | fromjson? | objects | select(.kind == "session" or .kind == "agent")] as $all
   | ($eff | split("\n") | map(split("\t") | select(length == 3))) as $efforts
