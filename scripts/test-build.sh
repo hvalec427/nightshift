@@ -9,7 +9,7 @@ set -euo pipefail
 planned() {
   gh_issue o/r 7 alice agent enhancement
   gh_edit "$(gh_dir o/r)/issues/7.json" '.body = "Make it faster."'
-  runs_do 'comment plan "T1: the fast path."'
+  runs_do 'skill nightshift:plan; comment plan "T1: the fast path."'
   poll
 }
 
@@ -30,6 +30,7 @@ planned() {
   expect "the planning session is kept" "$(state 7 plan-session)" session-1
   expect "the build's is the session now" "$(state 7 session)" session-2
   expect_ok "nothing is left pending" test ! -f "$(idir 7)/build"
+  expect "the planning session's skill is cleared" "$(state 7 skill)" ""
   gh_comment o/r 7 alice "rename it" >/dev/null
   poll
   expect "a later comment resumes the build session" "$(run_opt --resume)" session-2
