@@ -23,13 +23,13 @@ ticket files are written:
 - one that stops the build: one `blocked` comment saying you stopped as asked; end the run;
 - anything else (a remark, a question the plan answers): build on.
 
-The sequence:
-
 **A small issue** (the issue skill's case 2, no `plan` comment): the issue and the user's
 replies are the plan, and it is one ticket. Write no ticket files (skip step 1) and build
 it yourself (step 2); the review, finish, report and merge are as below. The report opens
 with: "Treated as small: built straight from the issue, with no plan. Reply **full
 process** to get a plan instead."
+
+The sequence:
 
 1. **Ticket files.** Before the first ticket, write each ticket of the latest `plan`
    comment to `.nightshift/tickets/T<n>.md` in this worktree: its text, blockers and

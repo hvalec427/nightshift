@@ -126,8 +126,8 @@ small issue (case 2) has a pull request and no plan, and its later runs take cas
    skill, invoked with the Skill tool: it puts that at the top of its one closing comment
    and checks the updated pull request again.
    On a small issue (case 2), a reply asking for a plan or "the full process" is a plan
-   request instead: invoke `nightshift:plan`, and the build after its **go** works on this
-   same branch and its pull request.
+   request instead: invoke `nightshift:plan`, and the build after its **go** (or its
+   carry-on) works on this same branch and its pull request.
 
 Done when the run's comment is posted, or the run ended as case 5 says.
 
