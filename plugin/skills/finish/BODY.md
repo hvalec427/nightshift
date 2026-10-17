@@ -49,9 +49,8 @@ The body also carries, from the build:
 - the open review findings, a line each, under **Left open:** at the end of Merge Danger;
 - the overlap lines, as written with their markers (`<!-- nightshift:after #N -->`,
   `<!-- nightshift:overlaps #N -->`), after Merge Danger;
-- last, the closing lines, one on each line: `Closes #<issue>` for the issue the run works,
-  and `Closes #<sub>` for each sub-issue number the build passes, so the merge closes them
-  all.
+- last, the closing line, `Closes #<issue>` for the issue the run works, so the merge
+  closes it.
 
 Outside nightshift the body ends after Merge Danger: no `Closes` line unless the user names
 an issue to close, and no overlap lines or review findings.

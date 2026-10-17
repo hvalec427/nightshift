@@ -171,23 +171,25 @@ expect_line "the brief says to pass the issue number, not paste the ticket" "$br
 expect_line "the brief lists the earlier tickets' replies" "$brief" "replies of the earlier tickets"
 expect_line "those replies say what each delivered and flagged" "$brief" "earlier tickets[^.]*delivered[^.]*flagged"
 
-# On go, each ticket becomes a sub-issue (no agent label) that the brief and the PR body name.
-subissues=$(flat "$SKILLS/build/SUB-ISSUES.md" 2>/dev/null)
-expect_line "the build makes a sub-issue per ticket with --parent" "$subissues" "One sub-issue per ticket[^.]*gh issue create --parent"
-expect_line "the build falls back to the sub_issues API" "$subissues" "sub_issues"
-expect_line "the fallback adds the new issue's id, not its number" "$subissues" "new issue.s \`id\` field.*not its number"
-expect_line "a sub-issue is titled by its ticket ID" "$subissues" "\`T1: <ticket title>\`"
-expect_line "a sub-issue carries the ticket's text, blockers and criteria" "$subissues" "blockers and acceptance criteria"
-expect_line "a sub-issue has no agent label" "$subissues" "No \`agent\` label"
-expect_line "the build reuses sub-issues found by title under the parent" "$subissues" "reuses[^.]*by title"
-expect_line "the build makes the sub-issues before the first ticket" "$brief" "Before the first ticket"
-expect_line "the brief names the ticket's sub-issue" "$brief" "its sub-issue[^.]*number"
-expect_line "the build hands the sub-issue numbers to the finish skill" "$brief" "nightshift:finish[^.]*sub-issue numbers"
+# On go, the tickets become one tasks comment on the issue, ticked as each is committed.
+tasks=$(flat "$SKILLS/build/TASKS.md" 2>/dev/null)
+expect_line "tasks is one of the issue skill's stages" "$(flat "$ISSUE")" "The stages are[^.]*\`tasks\`"
+expect_line "the issue skill says how long a tasks comment is" "$(flat "$ISSUE")" "\`tasks\`: a line per ticket"
+expect_line "the tasks comment carries its marker" "$tasks" "<!-- nightshift:tasks -->"
+expect_line "a task line is the ticket's ID and title" "$tasks" "\`- \[ \] T1: <ticket title>\`"
+expect_line "the build reuses the latest tasks comment" "$tasks" "latest comment carrying"
+expect_line "a reused tasks comment keeps its ticks" "$tasks" "keeping the ticks"
+expect_line "the tasks comment is edited by its comment id" "$tasks" "gh api -X PATCH repos/{owner}/{repo}/issues/comments/<id>"
+expect_line "the build posts the tasks comment before the first ticket" "$brief" "Before the first ticket"
+expect_line "the build ticks a ticket's box after its commit" "$brief" "commit[^.]*tick its box"
+expect_line "the brief points at the ticket's ID and the plan comment" "$brief" "the ticket's ID[^.]*plan comment"
+for w in "sub-issue" "sub_issue" "--parent" "Closes #<sub>"; do
+  expect "no skill or agent mentions $w" "$(grep -rl -e "$w" "$ROOT/plugin" | sed "s|^$ROOT/||")" ""
+done
 finish=$(flat "$SKILLS/finish/BODY.md" 2>/dev/null)
 expect_line "the finish skill writes the body by BODY.md" "$(flat "$SKILLS/finish/SKILL.md")" "by \[BODY.md\](BODY.md)"
 expect_line "the PR body closes the issue" "$finish" "Closes #<issue>"
-expect_line "the PR body closes each sub-issue" "$finish" "Closes #<sub>"
-expect_line "the closing lines end the PR body" "$finish" "last, the closing lines[^.]*Closes #"
+expect_line "the closing line ends the PR body" "$finish" "last, the closing line[^.]*Closes #<issue>"
 # The PR body follows the pr skill: Summary, Evidence, Merge Danger, then what nightshift adds.
 for h in Summary Evidence "Merge Danger"; do
   expect_line "the finish skill's PR body has a $h section" "$(cat "$SKILLS/finish/BODY.md" 2>/dev/null)" "^## $h\$"
@@ -217,7 +219,7 @@ done
 expect_line "the wide definition works for any worked repo, with nightshift's examples" "$finish" "the repo.s persisted state[^.]*\`~/.nightshift\`"
 expect_line "the merge skill reads Merge Danger and judges the diff itself" "$merge_flat" "Merge Danger[^.]*the diff"
 expect_line "a one-way door alone isn't a look item" "$merge_flat" "one-way door alone"
-expect_line "the plan says tickets become sub-issues on go" "$(flat "$SKILLS/plan/SKILL.md")" "on \*\*go\*\*[^.]*sub-issue"
+expect_line "the plan says tickets become the tasks checklist on go" "$(flat "$SKILLS/plan/SKILL.md")" "on \*\*go\*\*[^.]*tasks checklist"
 expect_line "the plan no longer says tickets are only in the comment" "$(flat "$SKILLS/plan/SKILL.md")" "All tickets are in this comment" no
 
 # Reference that only some branches need lives in a sibling file, linked from its SKILL.md.
@@ -227,7 +229,7 @@ while read -r skill sibling; do
 done <<'EOF'
 plan BUG.md
 plan WIDE-REFACTOR.md
-build SUB-ISSUES.md
+build TASKS.md
 finish BODY.md
 review SMELLS.md
 tdd tests.md

@@ -14,10 +14,9 @@ overlap, bounds) hold throughout. The ticket brief is adapted from Matt Pocock's
 
 Build the tickets in order, one at a time, in this worktree. The sequence:
 
-1. **Sub-issues.** Before the first ticket, give each ticket a sub-issue of the issue, by
-   [SUB-ISSUES.md](SUB-ISSUES.md): it is where the ticket's text lives, for you, the
-   subagent and the user. Done when the issue lists one sub-issue per ticket
-   (`gh issue view <issue> --json subIssues`, or `gh api` on its `sub_issues`).
+1. **Tasks.** Before the first ticket, post the issue's `tasks` comment, a checklist line
+   per ticket, or reuse the one an earlier build posted, by [TASKS.md](TASKS.md). Done
+   when the issue has one `tasks` comment listing every ticket of the latest plan.
 2. **Each ticket,** in order. With two or more tickets, hand each to a **ticket subagent**
    ([below](#ticket-subagents)), so a ticket's reads, test output and fixes don't fill the
    context of the next. A plan with one ticket you build yourself, after invoking the
@@ -27,17 +26,17 @@ Build the tickets in order, one at a time, in this worktree. The sequence:
      and the running app the way the project's instructions say. Run them in the
      foreground and wait for them, however long they take: a run ends when you stop.
    - Commit each ticket on its own, in the repo's and the user's commit style.
-   - Post a short `progress` comment: what the ticket delivered and how it was checked.
+   - After its commit, tick its box in the `tasks` comment, and post a short `progress`
+     comment: what the ticket delivered and how it was checked.
    - A ticket that can't be finished (a decision the plan didn't cover, a broken
      dependency) gets one `blocked` comment saying what's needed; end the run there.
 
-   Done when every ticket has its commit and its `progress` comment.
+   Done when every ticket has its commit, its tick and its `progress` comment.
 3. **Review.** Invoke the `nightshift:review` skill with the Skill tool: one review, one fix
    pass. Done when it hands back its three lists (fixed, dismissed, open).
 4. **Finish.** Check the **overlap** (in the issue skill) again, since other work may have
    started or merged since the plan, then invoke the `nightshift:finish` skill to open the
-   pull request, handing it the overlap lines and the sub-issue numbers (it closes them)
-   for the body. The review's findings left open go in the pull request body too, as
+   pull request, handing it the overlap lines for the body. The review's findings left open go in the pull request body too, as
    what's left open. Done when you have the pull request's URL.
 5. **Report.** A `done` comment with the pull request's link and what's in it, and the
    review: a line counting it, then each finding in a `<details>` block, a line each (its
@@ -59,10 +58,10 @@ model its agent sets; the agent loads the `nightshift:tdd` skill itself. Its bri
 nothing of this conversation, so it works by pointers: say where to read, and leave what
 the subagent can read itself unpasted.
 
-- the ticket's ID (T2, say), its sub-issue (the number, where the ticket's text lives), and
-  where the plan comment is: the issue number and the repo, and that it reads its
-  sub-issue and the latest `plan` comment (`<!-- nightshift:plan -->`) with `gh`, plus any
-  reply of the user's after it that changed it. The ticket, its blockers, its acceptance
+- the ticket's ID (T2, say) and where the plan comment is, where the ticket's text lives:
+  the issue number and the repo, and that it reads the latest `plan` comment
+  (`<!-- nightshift:plan -->`) with `gh`, plus any reply of the user's after it that
+  changed it. The ticket, its blockers, its acceptance
   criteria and the spec's decisions are there, not pasted. When it's a retry after a
   `blocked` comment, add the user's answer and what the last attempt left in the
   worktree;
