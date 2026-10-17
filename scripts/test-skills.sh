@@ -72,8 +72,9 @@ merge="$SKILLS/merge/SKILL.md"
 expect "the merge skill is named merge" "$(field "$merge" name 2>/dev/null)" merge
 expect "the merge skill isn't user-invocable" "$(field "$merge" user-invocable 2>/dev/null)" false
 expect_line "the merge skill says who starts it" "$(field "$merge" description 2>/dev/null)" "build, update and issue skills"
-expect "the merge skill reaches only gh pr, gh issue and git" \
-  "$(field "$merge" allowed-tools 2>/dev/null | grep -o '[A-Za-z]*([^)]*)' | grep -Ev '^Bash\((gh pr|gh issue|git [a-z-]+) \*\)$')" ""
+expect "the merge skill reaches only gh pr, gh issue, gh run and git" \
+  "$(field "$merge" allowed-tools 2>/dev/null | grep -o '[A-Za-z]*([^)]*)' | grep -Ev '^Bash\((gh pr|gh issue|gh run|git [a-z-]+) \*\)$')" ""
+expect_line "the merge skill may read a failed run's log with gh run" "$(field "$merge" allowed-tools 2>/dev/null)" 'Bash(gh run \*)'
 expect_line "the merge skill merges only when the prompt says the repo auto-merges" "$(cat "$merge" 2>/dev/null)" '"This repo auto-merges"'
 expect_line "the merge skill merges only the head it checked" "$(cat "$merge" 2>/dev/null)" "match-head-commit"
 
@@ -277,6 +278,18 @@ expect_line "the wide definition works for any worked repo, with nightshift's ex
 expect_line "the merge skill reads Merge Danger and judges the diff itself" "$merge_flat" "Merge Danger[^.]*the diff"
 expect_line "a one-way door alone isn't a look item" "$merge_flat" "one-way door alone"
 expect_line "the plan says nothing of a tasks checklist" "$(flat "$SKILLS/plan/SKILL.md")" "tasks checklist" no
+
+# A failing check is fixed before the user is asked: read the log, fix, push, at most two rounds.
+expect_line "a failing check is read with gh run view --log-failed" "$merge_flat" "gh run view[^.]*--log-failed"
+expect_line "the run id comes from gh pr checks --json" "$merge_flat" "run id[^.]*gh pr checks[^.]*--json"
+expect_line "the fix is checked, committed and pushed, then the checks are watched again" "$merge_flat" "commit[^.]*git push[^.]*watch the checks again"
+expect_line "the merge skill fixes a failing check at most twice" "$merge_flat" "at most two fix rounds"
+expect_line "a check still failing after the fixes is a look item" "$merge_flat" "[Ss]till failing[^.]*look item"
+expect_line "a failure it can't fix (flaky, runner, network, quota) is a look item" "$merge_flat" "can.t reproduce or fix (flaky[^.]*look item"
+expect_line "the look item names the check, the cause and what was tried" "$merge_flat" "Either look item names the check, the cause and what you tried"
+expect_line "checks pending after 30 minutes stay a look item" "$merge_flat" "pending after 30 minutes[^.]*look item"
+expect_line "the closing comment lists the fixes pushed" "$merge_flat" "done. comment[^.]*it lists each fix (the check, the cause, the commit)"
+expect_line "the gates after a look comment fix a failing check the same way" "$merge_flat" "After a look comment.*A failing check you fix the same way"
 expect_line "the plan no longer says tickets are only in the comment" "$(flat "$SKILLS/plan/SKILL.md")" "All tickets are in this comment" no
 
 # Reference that only some branches need lives in a sibling file, linked from its SKILL.md.
