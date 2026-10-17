@@ -18,7 +18,7 @@
 # issue `issues/<owner>_<repo>_<n>/` with `session` (the Claude session id
 # runs resume), `plan-session` (the planning one, once the build has its own),
 # `sessions` (the ids of sessions left behind for a fresh one, oldest first: see
-# FRESH),
+# context_full),
 # `build` (the approval, while a fresh build session waits to start),
 # `seen` (the last comment handed to the agent), `pid` while it runs,
 # `finished` once a run ended, `pr` once it opened one, `off` (why) while it has
@@ -540,6 +540,9 @@ $intro}"
       grep -qx "$(cat "$dir/session")" "$dir/sessions" 2>/dev/null || cat "$dir/session" >>"$dir/sessions"
       intro=$(fresh_intro "$repo" "$n" "$dir" "$news")
       resume=""
+      # The fresh session starts empty: a run of it with no turn mustn't
+      # leave it on the old one's figure.
+      echo "0 $window" >"$dir/context"
     fi
   fi
   prompt="You are nightshift, working GitHub issue #$n in $repo, unattended: nobody is at a terminal, and you talk to the user only through the issue. Use the issue skill.
@@ -661,17 +664,16 @@ stalled_run() {
 # $issue, $plan and $planid; empty without a plan.
 fetch_plan() {
   issue=$(gh api "repos/$1/issues/$2" --jq '.title + "\n\n" + (.body // "")' 2>/dev/null)
-  plan=$(gh api --paginate "repos/$1/issues/$2/comments?per_page=100" \
-    --jq ".[] | select(.body | contains(\"$MARKER\") and contains(\"nightshift:plan -->\")) | .body | @json" 2>/dev/null | tail -1 | jq -r . 2>/dev/null)
-  planid=$(gh api --paginate "repos/$1/issues/$2/comments?per_page=100" \
-    --jq ".[] | select(.body | contains(\"$MARKER\") and contains(\"nightshift:plan -->\")) | .id" 2>/dev/null | tail -1)
+  latest=$(gh api --paginate "repos/$1/issues/$2/comments?per_page=100" \
+    --jq ".[] | select(.body | contains(\"$MARKER\") and contains(\"nightshift:plan -->\")) | {id, body} | @json" 2>/dev/null | tail -1)
+  plan=$(printf '%s' "$latest" | jq -r .body 2>/dev/null)
+  planid=$(printf '%s' "$latest" | jq -r .id 2>/dev/null)
 }
 
-# FRESH: a session whose context, at the end of its last run, was at least half
-# the model's window is left behind for a fresh one, so a long-lived issue
-# doesn't pay for (and wade through) its old history on every run. With no
-# known window it is never left.
-# Whether issue dir $1's last run ended with its context that full.
+# Whether issue dir $1's last run ended with its context at least half the
+# model's window (never, with no known window). Such a session is left behind
+# for a fresh one, so a long-lived issue doesn't pay for (and wade through) its
+# old history on every run.
 context_full() {
   [ -s "$1/context" ] || return 1
   read -r tokens window <"$1/context"

@@ -91,8 +91,7 @@ Each issue gets its own worktree (in the repo's clone, `.claude/worktrees/issue-
 branch `nightshift/issue-<n>`) and a Claude session that its runs continue. When
 you approve the plan, the build starts in a fresh one, given the issue, the plan, the
 comments since the plan and your approval, so it doesn't carry (and pay for) the
-planning conversation: a reply
-of just **go** starts it straight away, and any other approval once the planning
+planning conversation: a reply of just **go** starts it straight away, and any other approval once the planning
 session has read it. Later runs (your comments, updates) continue the build session,
 until its context is half the model's window: the next run then starts a fresh
 session, given the issue, the latest plan, the pull request and what's new (the old

@@ -61,6 +61,18 @@ first() {
   expect "and again: another fresh session" "$(run_opt --resume)" ""
   expect "the sessions, oldest first" "$(state 7 sessions | paste -sd, -)" session-1,session-3)
 
+# A fresh session's run without a turn doesn't leave it on the old figure.
+(world
+  first 500 1000
+  gh_comment o/r 7 alice "1 yes" >/dev/null
+  runs_do 'comment progress'
+  poll
+  expect "a fresh session" "$(run_opt --resume)" ""
+  gh_comment o/r 7 alice "ok" >/dev/null
+  poll
+  expect "the next run resumes it" "$(run_opt --resume)" session-2
+  expect "one session kept" "$(state 7 sessions)" session-1)
+
 # An unknown window never resets.
 (world
   first 900000 0
