@@ -25,15 +25,17 @@ jobs:
         run: shellcheck -S warning nightshift install.sh scripts/*.sh scripts/fake/*
 
   # nightshift runs on macOS (launchd, BSD date), so its tests do too.
-  # Split across two machines: a runner's 3 cores are what bound the suite.
+  # Split across three machines: a runner's 3 cores are what bound the suite.
+  # One seed shuffles the files of all three, so a failure repeats from the run id.
   tests:
     runs-on: macos-latest
     strategy:
       matrix:
-        shard: [1/2, 2/2]
+        shard: [1/3, 2/3, 3/3]
     steps:
       - uses: actions/checkout@v4
       - name: Tests
         env:
           NIGHTSHIFT_TEST_SHARD: ${{ matrix.shard }}
+          NIGHTSHIFT_TEST_SEED: ${{ github.run_id }}
         run: bash scripts/test.sh

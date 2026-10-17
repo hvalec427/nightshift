@@ -32,6 +32,9 @@ a plan, the build, a pull request, talking to the user only through the issue.
   BSD-compatible flags, no GNU-only ones.
 - Skills are prose in `plugin/skills/<name>/SKILL.md` with frontmatter (`name`,
   `description`, `user-invocable: false`, `model`, `effort`) that `scripts/test-skills.sh` checks.
+- A test file passes alone, in any order and in any split across machines (the files are
+  shuffled and sharded): tests that rely on each other live in one file, nothing relies on
+  another file.
 - Tests drive nightshift through the fakes in `scripts/fake/` (`gh`, `claude`, `curl`); the
   README's Tests section says how, and names the one exception.
 
