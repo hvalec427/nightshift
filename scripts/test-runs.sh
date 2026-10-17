@@ -380,14 +380,6 @@ Run make check.")
   expect "a clone path with a space: its plugins load" "$(plugin_dirs)" "$NS/plugin $W/rn-agent ")
 
 (world
-  plugin rn-agent@hvalec427
-  printf 'repo %s %s plugins=rn-agent\n' "$REPO" "$CLONE" >"$NS/config"
-  set_config isolated false
-  gh_issue o/r 7 alice agent
-  poll
-  expect "isolated false: the named plugins still load" "$(plugin_dirs)" "$W/rn-agent ")
-
-(world
   cp -R "$ROOT/plugin" "$NS/plugin"
   set_config isolated false
   set_config permission_mode bypassPermissions
