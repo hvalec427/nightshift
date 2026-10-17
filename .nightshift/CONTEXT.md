@@ -29,3 +29,6 @@ nightshift's runs read this file and keep it up to date.
   `full_suite` is unset.
 - **seed / shard**: `NIGHTSHIFT_TEST_SEED` fixes the random order `scripts/test.sh` runs the test
   files in; `NIGHTSHIFT_TEST_SHARD=i/n` runs every n-th file, one of CI's three test jobs.
+- **open choice**: a decision in a plan that the issue and the user's answers don't settle, and
+  that the user might make differently (an assumption in place of an answer counts). A plan with
+  none carries on to the build without waiting for a go.

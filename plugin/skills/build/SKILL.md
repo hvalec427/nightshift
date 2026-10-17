@@ -12,7 +12,18 @@ The issue skill sent you here, and its rules (comments, the status label, the is
 overlap, bounds) hold throughout. The ticket brief is adapted from Matt Pocock's
 `implement-spec` skill (see `THIRD_PARTY.md` in the plugin).
 
-Build the tickets in order, one at a time, in this worktree. The sequence:
+Build the tickets in order, one at a time, in this worktree.
+
+**A carry-on build** is one whose prompt says the plan has no open choices, so no one said
+**go**. A user comment since the plan comes before anything else, and it is read before the
+ticket files are written:
+
+- one that changes the plan: invoke the `nightshift:plan` skill for a revised plan, which
+  waits for **go** or carries on by its own rule; build nothing now;
+- one that stops the build: one `blocked` comment saying you stopped as asked; end the run;
+- anything else (a remark, a question the plan answers): build on.
+
+The sequence:
 
 **A small issue** (the issue skill's case 2, no `plan` comment): the issue and the user's
 replies are the plan, and it is one ticket. Write no ticket files (skip step 1) and build

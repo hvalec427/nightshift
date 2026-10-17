@@ -29,11 +29,26 @@ Synthesise from what you have; the interview was the questions skill's.
    dropped.
 4. **Cut the tickets** ([below](#the-tickets)). Done when every ticket is verifiable on its
    own and its blockers are named.
-5. **Write the comment** ([below](#the-plan-comment)), then end the run. Done when the
-   comment is posted.
+5. **Check for open choices** ([below](#open-choices)). Done when you can name each open
+   choice, or say there is none.
+6. **Write the comment** ([below](#the-plan-comment)), then end the run as it says: wait
+   for the user, or carry on. Done when the comment is posted.
 
 A revised plan, after the user asked for changes, is the same: a new `plan` comment with
-their changes in it, then wait again.
+their changes in it, then wait again, or carry on when it has no open choice. A bug's plan,
+from the diagnose skill, is the same too.
+
+## Open choices
+
+An **open choice** is a decision in the plan that the issue and the user's answers don't
+settle, and that the user might make differently. Answering a question with an assumption
+counts. A choice with one sensible answer doesn't: where the code goes, naming that follows
+the code's conventions, test seams that follow prior art. A revised plan that only applies
+the changes the user asked for makes no choice of its own.
+
+With any open choice, the plan stops for **go** and names those choices under "Decisions to
+look at". With none, it carries on: the comment says so, and the run builds without waiting.
+When unsure, it's open.
 
 ## The spec
 
@@ -109,7 +124,8 @@ writes them to ticket files, so you write no issues.
   the **overlap** (in the issue skill) with other nightshift work, if any.
 - **Collapsed,** in one `<details><summary>Full spec</summary>` block: the spec, then each
   ticket's blockers and acceptance criteria.
-- **Last line:** "Reply **go** to build it, or tell me what to change."
+- **Last line,** with an open choice: "Reply **go** to build it, or tell me what to change."
+  With none: "No open choices, so I'm building it now: comment to stop or change it."
 
 ```
 **What changes:** <two or three lines>.
@@ -125,3 +141,8 @@ writes them to ticket files, so you write no issues.
 
 Reply **go** to build it, or tell me what to change.
 ```
+
+With no open choice the last line is the carry-on one instead. Post the comment, then run
+`nightshift build --carry-on`. When it says a fresh session builds it, end the run there,
+with no comment; otherwise invoke the `nightshift:build` skill with the Skill tool and build
+here. Done when the comment is posted and the run ended or went on to build, as it said.

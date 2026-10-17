@@ -105,11 +105,12 @@ small issue (case 2) has a pull request and no plan, and its later runs take cas
    and ticket guidance.
 4. **A plan, and the user asked for changes.** Invoke `nightshift:plan` too, for a revised
    plan, then wait again.
-5. **A plan the user approved** ("go", or anything that clearly means build it). Run
-   `nightshift build` first: when it says a fresh session builds it, end the run there,
-   with no comment. Otherwise invoke the `nightshift:build` skill: it builds the tickets
-   test-first and opens the pull request (and hands it to the merge skill when the repo
-   auto-merges).
+5. **A plan the user approved** ("go", or anything that clearly means build it), **or a
+   plan that carried on** (its last line says it has no open choices, so no one said go).
+   Run `nightshift build` first (`nightshift build --carry-on` for the carry-on): when it
+   says a fresh session builds it, end the run there, with no comment. Otherwise invoke
+   the `nightshift:build` skill: it builds the tickets test-first and opens the pull
+   request (and hands it to the merge skill when the repo auto-merges).
 6. **An update run:** the watcher's news says the default branch moved under this pull
    request. Invoke the `nightshift:update` skill: it rebases the branch and adapts the
    change to what merged.
