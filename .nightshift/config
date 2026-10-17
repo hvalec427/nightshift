@@ -1,0 +1,8 @@
+# nightshift's settings for this repo. It reads this file from the default branch on origin,
+# so a change applies once it's merged. Uncomment a line to change it.
+#
+# auto_merge=false: its pull requests wait for you to merge (default true: nightshift merges them).
+# auto_merge=false
+#
+# plugins: the Claude Code plugins its runs load, comma-separated (default none).
+# plugins=name,other@marketplace
