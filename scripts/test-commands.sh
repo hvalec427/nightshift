@@ -49,7 +49,7 @@ try() {
   expect "add with an unknown option: the usage" "$ST $OUT" "1 nightshift: usage: nightshift add <owner/repo> <clone path> [instructions=<path>] [auto_merge=false] [plugins=<name>,…] (colour isn't an option)"
   expect_line "add with an unknown option: no line" "$(cat "$NS/config")" "o/w" no
   try ns add o/w "$W/plain" rn-agent
-  expect "add with a word that isn't key=value: the usage" "$ST $OUT" "1 nightshift: usage: nightshift add <owner/repo> <clone path> [plugins=<name>,…] (rn-agent isn't key=value)"
+  expect "add with a word that isn't key=value: the usage" "$ST $OUT" "1 nightshift: usage: nightshift add <owner/repo> <clone path> [instructions=<path>] [plugins=<name>,…] (rn-agent isn't key=value)"
   expect_no_unexpected)
 
 (world
@@ -352,7 +352,7 @@ without() {
   try ns doctor
   expect_line "doctor: the repo's instructions" "$OUT" "^  ok      o/r: instructions $W/ours.md$"
   expect "doctor: with instructions=: passes" "$ST" 0
-  printf 'repo o/r %s instructions=%s plugins=x\n' "$CLONE" "$W/gone.md" >"$NS/config"
+  printf 'repo o/r %s instructions=%s other=x\n' "$CLONE" "$W/gone.md" >"$NS/config"
   try ns doctor
   expect_line "doctor: the repo's instructions missing" "$OUT" "^  missing o/r: its instructions ($W/gone.md): create it, or fix its repo line in $NS/config$"
   expect_line "doctor: counts it" "$OUT" "^1 to fix")
