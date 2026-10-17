@@ -9,7 +9,7 @@ set -euo pipefail
 
 SKILLS="$ROOT/plugin/skills"
 ISSUE="$SKILLS/issue/SKILL.md"
-STAGES="questions plan build update answer"
+STAGES="questions plan build update answer diagnose"
 
 # The value of the frontmatter field $2 in the skill file $1.
 field() { sed -n '/^---$/,/^---$/p' "$1" | sed -n "s/^$2: *//p"; }
@@ -23,6 +23,49 @@ for s in $STAGES; do
   expect_ok "the $s skill has a description" test -n "$(field "$f" description)"
   expect_line "the issue skill routes to nightshift:$s" "$(cat "$ISSUE")" "nightshift:$s\`"
 done
+
+# The tdd skill: loaded by the ticket agent, not routed to as a stage.
+tdd="$SKILLS/tdd/SKILL.md"
+expect_ok "the tdd skill exists" test -f "$tdd"
+expect "the tdd skill is named tdd" "$(field "$tdd" name 2>/dev/null)" tdd
+expect "the tdd skill isn't user-invocable" "$(field "$tdd" user-invocable 2>/dev/null)" false
+expect_ok "the tdd skill has a description" test -n "$(field "$tdd" description 2>/dev/null)"
+tddtext=$(flat "$tdd" 2>/dev/null)
+expect_line "the tdd skill has the loop: red before green" "$tddtext" "Red before green"
+expect_line "the tdd skill has what a good test is" "$tddtext" "public interface"
+expect_line "the tdd skill has the mocking rules" "$tddtext" "system boundaries"
+expect_line "the tdd skill tests only at the plan's seams" "$tddtext" "plan.s testing decisions"
+expect_line "a seam the plan didn't name is a blocked comment" "$tddtext" "\`blocked\` comment"
+expect_line "the tdd skill covers a repo without tests at that seam" "$tddtext" "repo without tests at that seam"
+expect_line "refactoring is the review's, not the loop's" "$tddtext" "Refactoring.*review"
+expect_line "the review skill covers refactoring" "$(flat "$SKILLS/review/SKILL.md")" "refactor"
+
+# The diagnose skill: the issue skill starts it for a bug with no plan, and it ends in the plan.
+diag="$SKILLS/diagnose/SKILL.md"
+diagtext=$(flat "$diag" 2>/dev/null)
+expect_line "a bug with no plan is diagnosed before it is planned" "$(flat "$ISSUE")" "\`bug\`[^.]*\`nightshift:diagnose\`"
+expect_line "the issue skill diagnoses a bug only when there's no plan yet" "$(flat "$ISSUE")" "nothing open.*On a \`bug\`, invoke the \`nightshift:diagnose\`"
+expect_line "open decisions on a bug are still asked first" "$(flat "$ISSUE")" "No plan yet, open decisions"
+expect_line "diagnose builds a feedback loop that goes red" "$diagtext" "red-capable"
+expect_line "diagnose reproduces and minimises" "$diagtext" "inimise"
+expect_line "diagnose ranks 3-5 falsifiable hypotheses" "$diagtext" "3.5 ranked hypotheses"
+expect_line "diagnose instruments one variable at a time" "$diagtext" "one variable at a time"
+expect_line "the hypotheses go in the plan, not to the user to await" "$diagtext" "plan[^.]*wait"
+expect_line "with no red-capable check it posts a questions comment" "$diagtext" "No red-capable check.*\`questions\` comment"
+expect_line "that comment says what it tried" "$diagtext" "What you tried"
+expect_line "that comment says what it needs" "$diagtext" "What you need"
+expect_line "diagnose plans no guess without a red check" "$diagtext" "without a red check is a guess"
+expect_line "diagnose ends by invoking nightshift:plan" "$diagtext" "invoke \`nightshift:plan\`"
+expect_line "it hands the plan the cause, the red check and the hypotheses" "$diagtext" "cause[^.]*red check[^.]*hypotheses"
+expect_line "the first ticket turns the minimised repro into the failing test" "$diagtext" "first ticket[^.]*minimised repro[^.]*failing test"
+expect_line "diagnose commits no fix" "$diagtext" "no fix"
+expect_line "diagnose says where the scratch repro lives" "$diagtext" "scratch"
+expect_line "diagnose redacts secrets" "$diagtext" "REDACTED"
+bugplan=$(flat "$SKILLS/plan/BUG.md" 2>/dev/null)
+expect_line "a bug plan shows the cause" "$bugplan" "bug[^.]*the cause"
+expect_line "a bug plan shows the red check" "$bugplan" "bug[^.]*red check"
+expect_line "a bug plan shows the ranked hypotheses" "$bugplan" "bug[^.]*hypotheses"
+expect_line "the diagnosing-bugs skill is credited in the notices" "$(cat "$ROOT/plugin/THIRD_PARTY.md")" "\`diagnosing-bugs\` in \`diagnose\`"
 
 # The merge skill: started by the build, update and issue skills, not routed to as a stage.
 merge="$SKILLS/merge/SKILL.md"
@@ -74,8 +117,8 @@ model_effort() {
   expect "$1: its effort" "$(field "$2" effort)" "$4"
 }
 model_effort "the issue skill" "$ISSUE" sonnet low
-for s in questions plan; do model_effort "the $s skill" "$SKILLS/$s/SKILL.md" opus high; done
-for s in build update review merge; do model_effort "the $s skill" "$SKILLS/$s/SKILL.md" sonnet high; done
+for s in questions plan diagnose; do model_effort "the $s skill" "$SKILLS/$s/SKILL.md" opus high; done
+for s in build update review merge tdd; do model_effort "the $s skill" "$SKILLS/$s/SKILL.md" sonnet high; done
 for s in answer finish; do model_effort "the $s skill" "$SKILLS/$s/SKILL.md" sonnet medium; done
 bad="" nomodel=""
 for f in "$SKILLS"/*/SKILL.md; do
@@ -113,6 +156,85 @@ expect_line "a stuck subagent replies BLOCKED:" "$build" "\`BLOCKED:\`"
 expect_line "the subagent doesn't comment on the issue" "$build" "comments on the issue, changes labels"
 expect_line "the run checks each ticket's commit and a clean tree" "$build" "the tree clean"
 expect_line "a one-ticket plan is built without a subagent" "$build" "plan with one ticket"
+
+# Test-first is the tdd skill's alone; the build's brief points at the plan and the worktree.
+expect_line "the ticket agent loads nightshift:tdd with the Skill tool" "$(flat "$AGENTS/ticket.md")" "Skill tool[^.]*\`nightshift:tdd\`"
+for t in "A good test" "Tautological" "Horizontal" "Red before green" "^## Test first" "^## Mocks" "^## The loop"; do
+  expect_line "the build skill doesn't carry the test-first text ($t)" "$build" "$t" no
+done
+expect_line "the build skill points to the tdd skill" "$build" "nightshift:tdd"
+brief=$(flat "$SKILLS/build/SKILL.md")
+expect_line "the brief points at the plan comment through gh" "$brief" "issue number[^.]*gh"
+expect_line "the brief gives the worktree's absolute path" "$brief" "worktree's absolute path"
+expect_line "the brief gives the commits so far" "$brief" "commits so far"
+expect_line "the brief says to pass the issue number, not paste the ticket" "$brief" "not pasted"
+
+# On go, each ticket becomes a sub-issue (no agent label) that the brief and the PR body name.
+subissues=$(flat "$SKILLS/build/SUB-ISSUES.md" 2>/dev/null)
+expect_line "the build makes a sub-issue per ticket with --parent" "$subissues" "One sub-issue per ticket[^.]*gh issue create --parent"
+expect_line "the build falls back to the sub_issues API" "$subissues" "sub_issues"
+expect_line "the fallback adds the new issue's id, not its number" "$subissues" "new issue.s \`id\` field.*not its number"
+expect_line "a sub-issue is titled by its ticket ID" "$subissues" "\`T1: <ticket title>\`"
+expect_line "a sub-issue carries the ticket's text, blockers and criteria" "$subissues" "blockers and acceptance criteria"
+expect_line "a sub-issue has no agent label" "$subissues" "No \`agent\` label"
+expect_line "the build reuses sub-issues found by title under the parent" "$subissues" "reuses[^.]*by title"
+expect_line "the build makes the sub-issues before the first ticket" "$brief" "Before the first ticket"
+expect_line "the brief names the ticket's sub-issue" "$brief" "its sub-issue[^.]*number"
+expect_line "the build hands the sub-issue numbers to the finish skill" "$brief" "nightshift:finish[^.]*sub-issue numbers"
+finish=$(flat "$SKILLS/finish/BODY.md" 2>/dev/null)
+expect_line "the finish skill writes the body by BODY.md" "$(flat "$SKILLS/finish/SKILL.md")" "by \[BODY.md\](BODY.md)"
+expect_line "the PR body closes the issue" "$finish" "Closes #<issue>"
+expect_line "the PR body closes each sub-issue" "$finish" "Closes #<sub>"
+expect_line "the closing lines end the PR body" "$finish" "last, the closing lines[^.]*Closes #"
+# The PR body follows the pr skill: Summary, Evidence, Merge Danger, then what nightshift adds.
+for h in Summary Evidence "Merge Danger"; do
+  expect_line "the finish skill's PR body has a $h section" "$(cat "$SKILLS/finish/BODY.md" 2>/dev/null)" "^## $h\$"
+done
+expect_ok "the PR body's sections run Summary, Evidence, Merge Danger" \
+  test "$(line_of "$SKILLS/finish/BODY.md" '^## Summary$')" -lt "$(line_of "$SKILLS/finish/BODY.md" '^## Evidence$')" \
+    -a "$(line_of "$SKILLS/finish/BODY.md" '^## Evidence$')" -lt "$(line_of "$SKILLS/finish/BODY.md" '^## Merge Danger$')"
+expect_line "the summary is the smallest visual" "$finish" "smallest visual"
+expect_line "the evidence is a before and after" "$finish" "Before:.*After:"
+expect_line "the merge danger names the door" "$finish" "one-way or two-way"
+expect_line "the merge danger names the blast radius in one word, narrow or wide" "$finish" "Blast radius:[^.]*narrow.*wide"
+expect_line "the PR body keeps the open review findings" "$finish" "open review findings"
+expect_line "the PR body keeps the overlap lines and their markers" "$finish" "overlap lines[^.]*<!-- nightshift:after #N -->[^.]*<!-- nightshift:overlaps #N -->"
+expect_line "the closing lines and overlap lines are for nightshift only" "$finish" "Outside nightshift[^.]*no \`Closes\`"
+expect_line "implement-spec is credited in the notices" "$(flat "$ROOT/plugin/THIRD_PARTY.md")" "\`implement-spec\` in \`build\`"
+expect_line "the PR skill is credited in the notices" "$(cat "$ROOT/plugin/THIRD_PARTY.md")" "\`pr\` in \`finish\`"
+
+# The merge skill takes a wide blast radius as a look item; the one definition is the finish skill's BODY.md.
+merge_flat=$(flat "$SKILLS/merge/SKILL.md")
+expect_line "a wide blast radius is a look item" "$merge_flat" "a wide blast radius"
+expect_line "the merge skill points at the finish skill's definition of wide" "$merge_flat" "\[the finish skill.s BODY.md\](\.\./finish/BODY.md)"
+expect "the wide definition lives in BODY.md alone" "$(grep -l 'Wide when' "$SKILLS"/*/*.md | sed "s|^$SKILLS/||")" "finish/BODY.md"
+expect_line "wide means the change reaches past its feature" "$finish" "Wide when the change reaches past its feature"
+for r in "config" "persisted state or data layout" "installer" "commands or flags" "what a run can reach"; do
+  expect_line "the wide definition names $r" "$finish" "Wide when[^;]*$r"
+done
+expect_line "the wide definition works for any worked repo, with nightshift's examples" "$finish" "the repo.s persisted state[^.]*\`~/.nightshift\`"
+expect_line "the merge skill reads Merge Danger and judges the diff itself" "$merge_flat" "Merge Danger[^.]*the diff"
+expect_line "a one-way door alone isn't a look item" "$merge_flat" "one-way door alone"
+expect_line "the plan says tickets become sub-issues on go" "$(flat "$SKILLS/plan/SKILL.md")" "on \*\*go\*\*[^.]*sub-issue"
+expect_line "the plan no longer says tickets are only in the comment" "$(flat "$SKILLS/plan/SKILL.md")" "All tickets are in this comment" no
+
+# Reference that only some branches need lives in a sibling file, linked from its SKILL.md.
+while read -r skill sibling; do
+  expect_ok "the $skill skill has $sibling" test -s "$SKILLS/$skill/$sibling"
+  expect_line "the $skill skill links $sibling" "$(cat "$SKILLS/$skill/SKILL.md")" "]($sibling)"
+done <<'EOF'
+plan BUG.md
+plan WIDE-REFACTOR.md
+build SUB-ISSUES.md
+finish BODY.md
+review SMELLS.md
+tdd tests.md
+tdd mocking.md
+EOF
+expect_line "the plan points a wide refactor to expand-contract" "$(flat "$SKILLS/plan/WIDE-REFACTOR.md" 2>/dev/null)" "Expand.*Migrate.*Contract"
+expect_line "the review's smell baseline names its smells" "$(flat "$SKILLS/review/SMELLS.md" 2>/dev/null)" "Mysterious Name.*Refused Bequest"
+expect_line "the review skill pastes the smell baseline into the Standards brief" "$(flat "$SKILLS/review/SKILL.md")" "SMELLS.md[^.]*pasted in full"
+expect_line "writing-for-agents is credited in the notices" "$(flat "$ROOT/plugin/THIRD_PARTY.md")" "every skill and agent is written by his \`writing-for-agents\`"
 
 # The plugin's SessionStart hook, as Claude Code runs it: your own sessions get
 # nightshift's defaults, a run (which has them in its system prompt) nothing.

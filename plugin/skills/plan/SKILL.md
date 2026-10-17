@@ -1,6 +1,6 @@
 ---
 name: plan
-description: Write or revise an issue's plan, its spec and tickets, as one plan comment. Started by the issue skill when an issue has no plan and nothing is left to ask, or the user asked for changes to its plan.
+description: Write or revise an issue's plan, a spec and tickets in one plan comment. Started by the issue skill for an issue with no plan and nothing left to ask, or when the user asked to change its plan.
 user-invocable: false
 model: opus
 effort: high
@@ -9,53 +9,36 @@ effort: high
 # Plan an issue
 
 The issue skill sent you here, and its rules (comments, the status label, the issue's type,
-overlap, bounds) hold throughout. The spec and ticket guidance below is adapted from Matt
+overlap, bounds) hold throughout. The spec and ticket guidance is adapted from Matt
 Pocock's `to-spec` and `to-tickets` skills (see `THIRD_PARTY.md` in the plugin).
 
-## The plan comment
+Synthesise the issue, the answers and the code into one `plan` comment. The build runs in a
+fresh session that sees the issue and this comment, not this conversation, so the plan
+holds everything the build needs: the answers, the decisions, the constraints you found.
+Synthesise from what you have; the interview was the questions skill's.
 
-Write the plan as one `plan` comment, short enough to
-read in a minute. The build runs in a fresh session that sees the issue and this comment,
-not this conversation, so the plan holds everything the build needs: the answers, the
-decisions, the constraints you found.
+1. **Explore.** Read the code to know its current state. Use the project's own vocabulary
+   (a `GLOSSARY.md` if it has one) and respect its ADRs in the area you touch. On a `bug`,
+   read [BUG.md](BUG.md) now: it shapes the comment, the spec and the tickets. Done when
+   you can say where the change lands.
+2. **Choose the seams.** A **seam** is the public boundary a test observes behaviour at.
+   Prefer an existing seam to a new one and the highest seam you can; the fewer, the
+   better, and one is ideal. They go under Testing decisions, where the user approves them
+   with the plan. Done when each behaviour the change adds has a seam to be tested at.
+3. **Write the spec** ([below](#the-spec)). Done when each heading says something or is
+   dropped.
+4. **Cut the tickets** ([below](#the-tickets)). Done when every ticket is verifiable on its
+   own and its blockers are named.
+5. **Write the comment** ([below](#the-plan-comment)), then end the run. Done when the
+   comment is posted.
 
-- **On top:** what gets built, in two or three lines; the decisions the user should see;
-  the tickets, one line each, in build order (`**T1: <title>.** <what it delivers>`); and
-  the **overlap** (in the issue skill) with other nightshift work, if any.
-- **Collapsed,** in one `<details><summary>Full spec</summary>` block: the **spec**
-  (below), and each ticket's blockers and acceptance criteria (the **tickets**, below).
-  All tickets are in this comment (no new issues).
-- It ends with "Reply **go** to build it, or tell me what to change."
-
-```
-**What changes:** <two or three lines>.
-
-**Tickets**
-- **T1: <title>.** <what it delivers>
-- **T2: <title>.** <what it delivers>
-
-<details><summary>Full spec</summary>
-
-<the spec, then each ticket's blockers and criteria>
-</details>
-
-Reply **go** to build it, or tell me what to change.
-```
-
-When the user asked for changes to a plan: the same, as a revised `plan` comment, then
-wait again.
+A revised plan, after the user asked for changes, is the same: a new `plan` comment with
+their changes in it, then wait again.
 
 ## The spec
 
-It goes in the `plan` comment's collapsed block, synthesised from the issue, the answers
-and the code: no further interview. Size it to the issue: a line or two under each
-heading, a single line for a small change, and drop a heading that has nothing to say.
-
-Before writing it, explore the code to know its current state, and use the project's own
-vocabulary (a `GLOSSARY.md` if it has one) and its ADRs in the area you touch. Sketch the
-**seams** you'll test at: prefer existing seams to new ones, the highest seam possible, and
-as few as you can (ideally one). They go under Testing decisions, where the user approves
-them with the plan.
+Size it to the issue: a line or two under each heading, a single line for a small change,
+and no heading that has nothing to say.
 
 ```
 ## Spec
@@ -74,6 +57,7 @@ them with the plan.
 - What you settled yourself, and why
 
 **Testing decisions**
+- What a good test is here: external behaviour, never implementation details
 - The seams under test, each with what it catches and misses
 - Prior art: similar tests in the codebase
 - How the change is checked beyond tests (the project's build, typecheck, lint; the
@@ -82,29 +66,28 @@ them with the plan.
 **Out of scope:** what this doesn't do.
 ```
 
-No file paths or code snippets: they go stale fast. The exception is a snippet that encodes
-a decision more precisely than prose can (a state machine, a schema, a type shape), trimmed
-to the decision.
+Describe modules and interfaces in prose: paths and snippets go stale fast. The exception
+is a snippet that encodes a decision more precisely than prose can (a state machine, a
+schema, a type shape), trimmed to the decision.
 
 ## The tickets
 
-They're in the `plan` comment, numbered `T1`, `T2`, … in build order: one line each on
-top, and in full (below) in its collapsed block. The user approves them with the plan.
+Numbered `T1`, `T2`, … in build order. The user approves them with the plan, and on **go**
+each becomes a sub-issue titled `T<n>: <title>`, so keep the titles short and unique.
 
-Look for prefactoring first: make the change easy, then make the easy change. Then break
-the work into **tracer bullets**:
+**Prefactor** first: make the change easy, then make the easy change. Then cut
+**tracer bullets**:
 
 - Each ticket cuts a narrow but complete path through every layer (schema, API, UI,
-  tests): vertical, not one layer at a time.
-- A finished ticket is verifiable on its own, and is its own commit.
-- Each fits in one sitting; prefactoring comes first.
+  tests): vertical, one slice of the feature across all of them.
+- A finished ticket is demoable or verifiable on its own, and is its own commit.
+- Each fits one fresh context window.
 - Each names its **blockers**: the tickets that must be done before it can start, and only
   those.
 
-A **wide refactor** (one mechanical change whose blast radius breaks call sites across the
-codebase: a rename, a retyped shared symbol) is the exception: sequence it as
-expand–contract. Expand (add the new form beside the old), migrate the call sites in
-batches each its own ticket, then contract (delete the old form) once no caller remains.
+A **wide refactor** (one mechanical change that breaks call sites across the codebase: a
+rename, a retyped shared symbol) cannot be a tracer bullet: sequence it as in
+[WIDE-REFACTOR.md](WIDE-REFACTOR.md).
 
 ```
 **T1: <title>.** Blocked by: none (or T…).
@@ -113,4 +96,31 @@ What it delivers: the end-to-end behaviour it makes work, from the user's perspe
 - [ ] …
 ```
 
-No file paths or code snippets, as in the spec.
+Tickets follow the spec's rule on paths and snippets.
+
+## The plan comment
+
+Short enough to read in a minute. The tickets live in this comment; on **go**, the build
+makes each a sub-issue of the issue (with no `agent` label), so you write no issues.
+
+- **On top:** what gets built, in two or three lines; the decisions the user should see;
+  the tickets, one line each, in build order (`**T1: <title>.** <what it delivers>`); and
+  the **overlap** (in the issue skill) with other nightshift work, if any.
+- **Collapsed,** in one `<details><summary>Full spec</summary>` block: the spec, then each
+  ticket's blockers and acceptance criteria.
+- **Last line:** "Reply **go** to build it, or tell me what to change."
+
+```
+**What changes:** <two or three lines>.
+
+**Tickets**
+- **T1: <title>.** <what it delivers>
+- **T2: <title>.** <what it delivers>
+
+<details><summary>Full spec</summary>
+
+<the spec, then each ticket's blockers and criteria>
+</details>
+
+Reply **go** to build it, or tell me what to change.
+```

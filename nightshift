@@ -220,7 +220,9 @@ stopped|BFBFBF|nightshift was stopped partway'
 # each: the skill (without `nightshift:`) and its status. Others set none.
 SKILL_STATUSES='questions|thinking
 plan|planning
+diagnose|thinking
 build|building
+tdd|building
 review|building
 finish|building
 update|updating

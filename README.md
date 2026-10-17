@@ -78,7 +78,7 @@ What a repo's runs need beyond that comes with the plugins its line names
 |---|---|
 | Open an issue, add the `agent` label (and a [type](#issue-types) label) | Reads it and the code; asks its questions in one comment (each with its recommended answer), or goes straight to the plan |
 | Reply | More questions, or a plan: the spec and its tickets, in the to-spec and to-tickets format of [Matt Pocock's skills](https://github.com/mattpocock/skills) |
-| Reply **go** (or what to change) | Builds the tickets in order, each in a subagent of its own (so one ticket's work doesn't crowd the next; a one-ticket plan is built directly), a progress comment per ticket; has two fresh subagents review the change against the plan and the repo's standards, and fixes what they found in one pass; then opens the pull request and links it, with what the review found |
+| Reply **go** (or what to change) | Makes each ticket a sub-issue of the issue, then builds the tickets in order, each in a subagent of its own (so one ticket's work doesn't crowd the next; a one-ticket plan is built directly), a progress comment per ticket; has two fresh subagents review the change against the plan and the repo's standards, and fixes what they found in one pass; then opens the pull request, which closes the issue and its sub-issues, and links it, with what the review found |
 | Nothing (unless the repo has `auto_merge=false`) | Once the pull request is open or updated and its checks pass, squash-merges it when nothing in it needs you; otherwise lists what does in a look comment (a decision the plan didn't cover, a finding left open, a breaking or security-relevant change, …) |
 | Reply **merge** to a look comment | Checks it again (checks, conflicts, the pull requests it goes after) and merges it |
 | Comment on the issue after that | Makes the change on the same branch and pushes it (and checks it for merging again) |
@@ -116,7 +116,7 @@ calls for:
 
 | Label | nightshift |
 |---|---|
-| `bug` | finds the cause, and its plan starts with a test that fails the way the bug does; the fix makes it pass |
+| `bug` | finds the cause with a check that fails the way the bug does (or asks, when it can't build one), and its plan starts with a test that fails the way the bug does; the fix makes it pass |
 | `enhancement` | asks, plans, builds and opens a pull request, as above |
 | `documentation` | the same, kept to the docs |
 | `question` | answers it in a comment: no plan, no pull request. Reply to follow up, or ask for a change to have it built |
@@ -152,10 +152,11 @@ waiting on you:
 | `nightshift: stopped` | a run was stopped partway |
 
 The watcher sets them as runs start and end, and as a run invokes one of
-nightshift's skills: `nightshift:questions` sets `thinking`, `plan` `planning`,
-`build`, `review` and `finish` `building`, `update` `updating`, `merge` `merging` and `answer` `answering`
-(`nightshift label <status>` sets one by hand). They come off once it's done, or when you remove the `agent` label with nothing
-running (and come back with it). `nightshift status` says the same, with the
+nightshift's skills: `nightshift:questions` and `diagnose` set `thinking`, `plan` `planning`,
+`build`, `tdd`, `review` and `finish` `building`, `update` `updating`, `merge` `merging` and
+`answer` `answering` (`nightshift label <status>` sets one by hand). They come off once
+it's done, or when you remove the `agent` label with nothing running (and come back with
+it). `nightshift status` says the same, with the
 skill a run is in (or its last one ended in).
 
 A run that spots a real defect outside its own issue (a bug, broken docs, a
