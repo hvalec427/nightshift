@@ -275,13 +275,14 @@ enabled get nightshift's default instructions:
 [`plugin/instructions.md`](plugin/instructions.md) (installed at
 `~/.nightshift/plugin/instructions.md`), its rules for commit messages and pull
 requests, Conventional Commits and no AI attribution included, and for keeping a
-project's `CLAUDE.md` small and true. Your own sessions get them from the plugin's `SessionStart` hook. Runs get them in the
-worktree's `CLAUDE.local.md`, which every agent and subagent loads: nightshift
-writes it before each run, kept out of git (in the clone's `info/exclude`), so a
-change applies from the next run. Then come the repo's `instructions=` file, if
-it names one, which wins where the two disagree; nightshift only reads it. A
-repo that tracks its own `CLAUDE.local.md` keeps it, without nightshift's
-instructions (`nightshift doctor` flags it). Runs skip the clone's own
+project's `CLAUDE.md` small and true. Your own sessions get them from the
+plugin's `SessionStart` hook. Runs get them in the worktree's `CLAUDE.local.md`,
+which every agent and subagent loads: nightshift writes it before each run, kept
+out of git (in the clone's `info/exclude`), so a change applies from the next
+run. Then come the repo's `instructions=` file, if it names one, which wins where
+the two disagree; nightshift only reads it. A repo that tracks its own
+`CLAUDE.local.md` keeps it, without nightshift's instructions (`nightshift
+doctor` flags it). Runs skip the clone's own
 `CLAUDE.md`, `.claude/CLAUDE.md` and `CLAUDE.local.md` (the worktree has its
 branch's), so personal notes in the clone don't change them. What runs should
 learn about a project belongs in its committed `CLAUDE.md`. A
