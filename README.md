@@ -310,9 +310,9 @@ A repo's runs load nightshift's plugin and the ones its line names
 (`plugins=`, see [Config](#config)), nothing else. The rest of what its runs
 need is in the repo's own committed setup: the tools they may use in its
 `.claude/settings.json`, and how to check and show a change (screenshots, a
-recording) in its `CLAUDE.md`. Installing the plugins and the tools they drive
-is up to each machine; the repo's `CLAUDE.md` lists them, and `nightshift
-doctor` says which named plugins are missing.
+recording) in its `CLAUDE.md` (or its `instructions=` file). Installing the
+plugins and the tools they drive is up to each machine; the repo's `CLAUDE.md`
+lists them, and `nightshift doctor` says which named plugins are missing.
 
 A React Native repo that relied on [rn-agent](https://github.com/hvalec427/rn-agent)
 being loaded in every run gets it back with:
@@ -328,7 +328,7 @@ being loaded in every run gets it back with:
   }
   ```
 
-- In its `CLAUDE.md`, how to show a change: e.g. run the app on its own
+- In its `CLAUDE.md` (or `instructions=` file), how to show a change: e.g. run the app on its own
   simulator, take screenshots and a recording with boop into a git-excluded
   folder, and stop the app with `signalbox down --detached-only` when done.
 

@@ -12,9 +12,9 @@ own check; stop and say so at the first one that fails, leaving everything in pl
 
 1. **Ready.** The change was seen working, or what couldn't be verified is known, to go in
    the description. Done when you can say which.
-2. **Show it,** only when the project's instructions (its `CLAUDE.md`, rules or skills)
-   say how to show a change: follow them, so a reviewer sees the change without running
-   it (screenshots, a recording, as they say). Keep the media out of the commit: under
+2. **Show it,** only when the project's instructions (its `CLAUDE.md`, rules, skills or
+   nightshift instructions) say how to show a change: follow them, so a reviewer sees the
+   change without running it (screenshots, a recording, as they say). Keep the media out of the commit: under
    a git-ignored or git-excluded path. No such instructions, or nothing to show: skip
    it. Done when each file they ask for is made, or there's nothing to show.
 3. **Commit.** `git status` shows what's left: commit it in the repo's style and the
