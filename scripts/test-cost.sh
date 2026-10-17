@@ -139,9 +139,9 @@ agents() { state "$1" agents | jq -S -c '.run = "R" | if .kind == "session" then
     comment questions"
   poll
   expect "a run: its session, then each subagent" "$(agents 7)" \
-'{"kind":"session","models":["opus-5-5"],"reply":false,"run":"R","secs":"S","session":"session-1","skills":["nightshift:issue","nightshift:questions"],"tokens":1000,"tools":5,"usd":1}
-{"description":"Build T1","kind":"agent","model":"haiku-4-5","run":"R","secs":12,"session":"session-1","skills":["nightshift:build"],"tokens":5000,"tools":7,"type":"nightshift:ticket"}
-{"description":"Find the cost code","kind":"agent","model":"sonnet-4-5","run":"R","secs":2,"session":"session-1","skills":[],"tokens":900,"tools":3,"type":"Explore"}'
+'{"byModel":{"opus-5-5":{"tokens":1000,"usd":1}},"kind":"session","models":["opus-5-5"],"reply":false,"run":"R","secs":"S","session":"session-1","skills":["nightshift:issue","nightshift:questions"],"tokens":1000,"tools":5,"usd":1}
+{"description":"Build T1","kind":"agent","model":"haiku-4-5","run":"R","secs":12,"session":"session-1","skills":["nightshift:build"],"spent":106,"tokens":5000,"tools":7,"type":"nightshift:ticket"}
+{"description":"Find the cost code","kind":"agent","model":"sonnet-4-5","run":"R","secs":2,"session":"session-1","skills":[],"spent":null,"tokens":900,"tools":3,"type":"Explore"}'
   expect_line "its session ran for the run's seconds" "$(state 7 agents)" '^{"kind":"session",.*"secs":[0-9]*,'
   expect "a line's run marker: the run's start, the same for all its lines" \
     "$(state 7 agents | jq -r '.run' | sort -u | wc -l | tr -d ' ')" 1
@@ -150,7 +150,7 @@ agents() { state "$1" agents | jq -S -c '.run = "R" | if .kind == "session" then
   runs_do "costs 0.5 $OPUS 10 10 10 10; skill nightshift:plan; comment plan"
   poll
   expect "a resumed run: its own share of the tokens, on the same session" "$(agents 7 | tail -1)" \
-'{"kind":"session","models":[],"reply":true,"run":"R","secs":"S","session":"session-1","skills":["nightshift:plan"],"tokens":40,"tools":2,"usd":0.5}'
+'{"byModel":{"opus-5-5":{"tokens":40,"usd":0.5}},"kind":"session","models":[],"reply":true,"run":"R","secs":"S","session":"session-1","skills":["nightshift:plan"],"tokens":40,"tools":2,"usd":0.5}'
   expect "its lines are added to the run before's" "$(state 7 agents | wc -l | tr -d ' ')" 4
   expect "a later run starts later or at the same second" "$(state 7 agents | jq -s '.[3].run >= .[0].run')" true
   rm "$(idir 7)/session"
@@ -158,7 +158,7 @@ agents() { state "$1" agents | jq -S -c '.run = "R" | if .kind == "session" then
   runs_do "costs 2 $OPUS 1 2 3 4; skill nightshift:build; comment progress"
   poll
   expect "a fresh session: all its tokens, its own id" "$(agents 7 | tail -1)" \
-'{"kind":"session","models":[],"reply":true,"run":"R","secs":"S","session":"session-3","skills":["nightshift:build"],"tokens":10,"tools":2,"usd":2}'
+'{"byModel":{"opus-5-5":{"tokens":10,"usd":2}},"kind":"session","models":[],"reply":true,"run":"R","secs":"S","session":"session-3","skills":["nightshift:build"],"tokens":10,"tools":2,"usd":2}'
   gh_state o/r 7 closed
   poll
   expect "done: the agents stay" "$(state 7 agents | wc -l | tr -d ' ')" 5
@@ -172,8 +172,8 @@ agents() { state "$1" agents | jq -S -c '.run = "R" | if .kind == "session" then
     turn $HAIKU 5 100 0 toolu_1; fail_result"
   poll
   expect "a failed run: its session and its unfinished subagent" "$(agents 7)" \
-'{"kind":"session","models":[],"reply":false,"run":"R","secs":"S","session":"session-1","skills":["nightshift:issue"],"tokens":4,"tools":2,"usd":0.5}
-{"description":"Build T1","kind":"agent","model":"haiku-4-5","run":"R","secs":null,"session":"session-1","skills":["nightshift:build"],"tokens":null,"tools":1,"type":"nightshift:ticket"}'
+'{"byModel":{"opus-5-5":{"tokens":4,"usd":0.5}},"kind":"session","models":[],"reply":false,"run":"R","secs":"S","session":"session-1","skills":["nightshift:issue"],"tokens":4,"tools":2,"usd":0.5}
+{"description":"Build T1","kind":"agent","model":"haiku-4-5","run":"R","secs":null,"session":"session-1","skills":["nightshift:build"],"spent":106,"tokens":null,"tools":1,"type":"nightshift:ticket"}'
   gh_comment o/r 7 alice "again" >/dev/null
   runs_do "turn $OPUS 5 1000 0; skill nightshift:plan; hang"
   "$ROOT/nightshift" once &
@@ -182,7 +182,7 @@ agents() { state "$1" agents | jq -S -c '.run = "R" | if .kind == "session" then
   ns stop o/r#7 >/dev/null
   wait "$bg"
   expect "a stopped run (no result): its session, no tokens" "$(agents 7 | tail -1)" \
-'{"kind":"session","models":["opus-5-5"],"reply":true,"run":"R","secs":"S","session":"session-1","skills":["nightshift:plan"],"tokens":0,"tools":1,"usd":0}')
+'{"byModel":{},"kind":"session","models":["opus-5-5"],"reply":true,"run":"R","secs":"S","session":"session-1","skills":["nightshift:plan"],"tokens":0,"tools":1,"usd":0}')
 
 (world
   gh_issue o/r 7 alice agent
@@ -314,9 +314,12 @@ finish() { gh_state o/r "$1" closed; poll; }
   poll
   rm "$(idir 7)/session"
   gh_comment o/r 7 alice "go" >/dev/null
-  runs_do "costs 2 $SONNET 1000 1000 1000 1000; turn $OPUS 5 1 0; turn $SONNET 5 1 0; skill nightshift:issue; skill nightshift:build
-    agent toolu_1 nightshift:ticket 'Build T1'; skill tdd toolu_1; agent_result toolu_1 $SONNET 60000 420000 16
-    agent toolu_2 nightshift:spec-review 'Review the spec'; agent_result toolu_2 $OPUS 40000 120000 9
+  runs_do "costs 2 $SONNET 100000 100000 100000 100000; costs 0.5 $OPUS 20000 20000 20000 20000
+    turn $OPUS 5 1 0; turn $SONNET 5 1 0; skill nightshift:issue; skill nightshift:build
+    agent toolu_1 nightshift:ticket 'Build T1'; skill tdd toolu_1
+    turn $SONNET 0 59999 0 toolu_1 msg_1; turn $SONNET 0 59999 0 toolu_1 msg_1; turn $SONNET 0 59999 0 toolu_1 msg_2
+    agent_result toolu_1 $SONNET 60000 420000 16
+    agent toolu_2 nightshift:spec-review 'Review the spec'; turn $OPUS 0 39999 0 toolu_2; agent_result toolu_2 $OPUS 40000 120000 9
     comment progress"
   poll
   finish 7
@@ -326,10 +329,10 @@ finish() { gh_state o/r "$1" closed; poll; }
 | questions run | opus-5-5 | per skill | issue (low), questions (high) | 10k | $1.00 | S | 4 |
 | ↳ Explore · Find the cost code | haiku-4-5 | default | – | 30k | – | 1m | 12 |
 | plan run | opus-5-5 | per skill | issue (low), plan (high) | 2k | $1.00 | S | 3 |
-| build run | opus-5-5, sonnet-4-5 | per skill | issue (low), build (high) | 4k | $2.00 | S | 5 |
-| ↳ ticket · Build T1 | sonnet-4-5 | high | tdd | 60k | – | 7m | 16 |
-| ↳ spec-review · Review the spec | opus-5-5 | default | – | 40k | – | 2m | 9 |
-| **Total** | – | – | – | 16k | $4.00 | S | 49 |'
+| build run | opus-5-5, sonnet-4-5 | per skill | issue (low), build (high) | 480k | $1.65 | S | 5 |
+| ↳ ticket · Build T1 | sonnet-4-5 | high | tdd | 60k | ~$0.60 | 7m | 16 |
+| ↳ spec-review · Review the spec | opus-5-5 | default | – | 40k | ~$0.25 | 2m | 9 |
+| **Total** | – | – | – | 492k | $4.50 | S | 49 |'
   expect_line "three runs: a time line" "$(gh_comments o/r 7)" \
     '^\*\*Time:\*\* [0-9]*s: [0-9]*s working'
   expect "all runs recorded: no partial note" "$(gh_comments o/r 7 | grep -c 'starts from the first recorded run' || true)" 0
@@ -415,6 +418,43 @@ finish() { gh_state o/r "$1" closed; poll; }
     "$(gh_comments o/r 7 | grep '^\*\*Time')" \
     '**Time:** 5m: 3m working · 30s waiting on you · 1m other waits'
   expect "under the table, after a blank line" "$(gh_comments o/r 7 | grep -B2 '^\*\*Time' | sed -n '1p;2p' | tr '\n' '~')" '| **Total** | – | – | – | 600 | $7.50 | 3m | 13 |~~')
+
+# A subagent's cost is the tokens of its turns (`spent`, not its result's
+# last-turn `tokens`; a message streamed as several events counted once) at
+# the rate of its model in that run (the run's dollars over its tokens), `~`-marked as an estimate; its run's row is
+# the run's dollars less those, never below 0. No split, an unfinished
+# subagent or a model the run didn't use: no cost.
+(world
+  own_plugin
+  gh_issue o/r 7 alice agent
+  runs_do "costs 1 $OPUS 1 1 1 1; skill nightshift:issue; comment questions"
+  poll
+  printf '%s\n' \
+    '{"kind":"session","run":2000000100,"session":"s1","models":["opus-5-5"],"skills":["nightshift:plan"],"tools":2,"secs":60,"tokens":1000,"usd":1,"byModel":{"opus-5-5":{"tokens":600,"usd":0.9},"haiku-4-5":{"tokens":400,"usd":0.1}}}' \
+    '{"kind":"agent","run":2000000100,"session":"s1","type":"Explore","description":"Two","model":"haiku-4-5","skills":[],"tokens":20,"spent":200,"secs":5,"tools":1}' \
+    '{"kind":"agent","run":2000000100,"session":"s1","type":"Explore","description":"Three","model":"opus-5-5","skills":[],"tokens":30,"spent":300,"secs":5,"tools":1}' \
+    '{"kind":"agent","run":2000000100,"session":"s1","type":"Explore","description":"Not done","model":"haiku-4-5","skills":[],"tokens":null,"spent":null,"secs":null,"tools":1}' \
+    '{"kind":"agent","run":2000000100,"session":"s1","type":"Explore","description":"Other model","model":"sonnet-4-5","skills":[],"tokens":100,"spent":100,"secs":5,"tools":1}' \
+    '{"kind":"session","run":2000000200,"session":"s1","models":["opus-5-5"],"skills":["nightshift:build"],"tools":2,"secs":60,"tokens":1000,"usd":0.5,"byModel":{"opus-5-5":{"tokens":1000,"usd":0.5}}}' \
+    '{"kind":"agent","run":2000000200,"session":"s1","type":"Explore","description":"Most of it","model":"opus-5-5","skills":[],"tokens":900,"spent":900,"secs":5,"tools":1}' \
+    '{"kind":"agent","run":2000000200,"session":"s1","type":"Explore","description":"Too much","model":"opus-5-5","skills":[],"tokens":900,"spent":900,"secs":5,"tools":1}' \
+    '{"kind":"session","run":2000000300,"session":"s2","models":["opus-5-5"],"skills":["nightshift:plan"],"tools":2,"secs":60,"tokens":1000,"usd":0.5}' \
+    '{"kind":"agent","run":2000000300,"session":"s2","type":"Explore","description":"Old record","model":"opus-5-5","skills":[],"tokens":100,"secs":5,"tools":1}' \
+    >"$(idir 7)/agents"
+  echo "1.5 0 0 0 0 3 -" >"$(idir 7)/cost"
+  finish 7
+  expect "estimates from the run's split; the run's row is the rest, at least 0" "$(table 7 | sed 1,2d | sed 's/| [0-9][0-9]*m |/| T |/;s/| [0-9][0-9]*s |/| T |/')" \
+'| plan run | opus-5-5 | per skill | plan (high) | 1k | $0.50 | T | 2 |
+| ↳ Explore · Two | haiku-4-5 | default | – | 20 | ~$0.05 | T | 1 |
+| ↳ Explore · Three | opus-5-5 | default | – | 30 | ~$0.45 | T | 1 |
+| ↳ Explore · Not done | haiku-4-5 | default | – | – | – | – | 1 |
+| ↳ Explore · Other model | sonnet-4-5 | default | – | 100 | – | T | 1 |
+| build run | opus-5-5 | per skill | build (high) | 1k | $0.00 | T | 2 |
+| ↳ Explore · Most of it | opus-5-5 | default | – | 900 | ~$0.45 | T | 1 |
+| ↳ Explore · Too much | opus-5-5 | default | – | 900 | ~$0.45 | T | 1 |
+| plan run | opus-5-5 | per skill | plan (high) | 1k | $0.50 | T | 2 |
+| ↳ Explore · Old record | opus-5-5 | default | – | 100 | – | T | 1 |
+| **Total** | – | – | – | 3k | $1.50 | T | 13 |')
 
 # Zero parts are left out of the time line; one run has none.
 (world
