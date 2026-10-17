@@ -2,8 +2,9 @@
 # Install nightshift: the `nightshift` command (into ~/.nightshift/bin) and its
 # Claude Code plugin, at the latest release; with --master, at master instead
 # (for testing); with --service, also run `nightshift watch` in the background
-# whenever you're logged in; with --auto-update, also have that watch install
-# each new release itself (auto_update=true in ~/.nightshift/config).
+# whenever you're logged in. A release install's watch installs each new release
+# itself, unless ~/.nightshift/config says auto_update=false; --auto-update sets
+# auto_update=true there (on is the default).
 #
 #   curl -fsSL https://raw.githubusercontent.com/hvalec427/nightshift/master/install.sh | sh
 #   … | sh -s -- --master
@@ -12,7 +13,7 @@
 #
 # Run it again to update. Run from a clone (sh install.sh), it installs the
 # clone's files; piped, even from inside a clone, it installs a release.
-# A watch with auto_update=true runs it itself, with NIGHTSHIFT_UPDATING=1:
+# A watch that updates itself (the default) runs it, with NIGHTSHIFT_UPDATING=1:
 # then it leaves the service as it is (the watch restarts itself).
 set -e
 
@@ -118,7 +119,7 @@ fi
 if [ $auto -eq 1 ]; then
   { grep -v '^auto_update=' "$NS/config" 2>/dev/null || true; echo auto_update=true; } >"$NS/config.new"
   mv "$NS/config.new" "$NS/config"
-  echo "auto_update=true in $NS/config: the service installs each new release itself, between runs"
+  echo "auto_update=true in $NS/config: the service installs each new release itself once nothing runs"
 fi
 
 # What's missing on this machine, and how to get it. `nightshift start` writes

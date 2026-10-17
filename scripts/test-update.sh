@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests for auto_update: a release install's watch updating itself to the
-# latest release, between runs.
+# latest release once nothing runs.
 #   bash scripts/test-update.sh
 set -euo pipefail
 . "$(dirname "$0")/test-lib.sh"
@@ -74,19 +74,41 @@ checks() { cat "$CURL_FAKE/calls" 2>/dev/null | grep -c 'releases/latest' || tru
   wait_for "$CLAUDE_FAKE/runs/1/waiting"
   latest 0.6.0
   wait_log "v0.6.0 is out"
-  expect_line "a run in flight: the update waits for it" "$(cat "$NS/watch.log")" "v0.6.0 is out: updating once the runs in flight finish$"
+  expect_line "a run in flight: the update waits until nothing runs" "$(cat "$NS/watch.log")" "v0.6.0 is out: updating once nothing runs$"
   gh_issue o/r 8 alice agent
-  wait_log "#8 waits (updating)"
-  expect_line "a new issue meanwhile: waits" "$(cat "$NS/watch.log")" "#8 waits (updating)"
-  expect "its status: queued" "$(status_label 8)" queued
-  expect "no new run" "$(runs)" 1
+  wait_for "$CLAUDE_FAKE/runs/2/waiting"
+  expect_line "a new issue meanwhile: starts" "$(cat "$CLAUDE_FAKE/runs/2/env")" "^NIGHTSHIFT_ISSUE=8$"
+  expect "no hold in the log" "$(grep -c 'waits (updating)' "$NS/watch.log" || true)" 0
+  expect "not queued" "$(status_label 8)" thinking
+  expect "both run" "$(runs)" 2
   expect_ok "install.sh: not yet" test ! -e "$W/installed"
+  runs_do ''
+  touch "$CLAUDE_FAKE/runs/1/go"
+  sleep 2
+  expect_ok "one run still in flight: install.sh waits" test ! -e "$W/installed"
+  touch "$CLAUDE_FAKE/runs/2/go"
+  wait_log "watching (nightshift 0.6.0)"
+  expect_line "both runs done: it updates" "$(cat "$NS/watch.log")" "updated to v0.6.0: restarting$"
+  stop_bg)
+
+(world
+  release_ns 0.5.1
+  set_config interval 1
+  set_config auto_update true
+  latest 0.6.0
+  release_install 0.6.0
+  gh_issue o/r 7 alice agent
+  runs_do 'hold'
+  watch_bg
+  wait_for "$CLAUDE_FAKE/runs/1/waiting"
+  wait_log "v0.6.0 is out"
+  expect_line "idle when found, a run started by the same poll: it waits" "$(cat "$NS/watch.log")" "v0.6.0 is out: updating once nothing runs$"
+  sleep 2
+  expect_ok "install.sh: not while it runs" test ! -e "$W/installed"
   runs_do ''
   touch "$CLAUDE_FAKE/runs/1/go"
   wait_log "watching (nightshift 0.6.0)"
   expect_line "the run done: it updates" "$(cat "$NS/watch.log")" "updated to v0.6.0: restarting$"
-  wait_for "$CLAUDE_FAKE/runs/2/env"
-  expect_line "then the waiting issue starts" "$(cat "$CLAUDE_FAKE/runs/2/env")" "^NIGHTSHIFT_ISSUE=8$"
   stop_bg)
 
 (world
@@ -133,13 +155,26 @@ checks() { cat "$CURL_FAKE/calls" 2>/dev/null | grep -c 'releases/latest' || tru
 (world
   release_ns 0.5.1
   set_config interval 1
+  set_config auto_update false
   latest 0.6.0
   release_install 0.6.0
   export NIGHTSHIFT_UPDATE_INTERVAL=0
   watch_bg
   wait_log "polled o/r"
   sleep 1
-  expect "auto_update off (the default): never checks" "$(checks)" 0
+  expect "auto_update=false: never checks" "$(checks)" 0
+  stop_bg)
+
+(world
+  release_ns 0.5.1
+  set_config interval 1
+  latest 0.6.0
+  release_install 0.6.0
+  watch_bg
+  wait_log "watching (nightshift 0.6.0)"
+  log=$(cat "$NS/watch.log")
+  expect_line "an empty config (the default): checks and updates" "$log" "updated to v0.6.0: restarting$"
+  expect "install.sh ran once" "$(cat "$W/installed")" 1
   stop_bg)
 
 (world
@@ -167,17 +202,26 @@ checks() { cat "$CURL_FAKE/calls" 2>/dev/null | grep -c 'releases/latest' || tru
 
 (world
   release_ns 0.5.1
-  set_config auto_update true
-  out=$("$NS/bin/nightshift" doctor 2>&1 || true)
-  expect_line "doctor, on: says so" "$out" "^  ok      auto-update: each new release installs itself, between runs$"
   : >"$NS/config"
   out=$("$NS/bin/nightshift" doctor 2>&1 || true)
-  expect_line "doctor, off: how to turn it on" "$out" "^  hint    auto-update is off: curl .*install.sh | sh -s -- --auto-update, "
+  expect_line "doctor, by default: on" "$out" "^  ok      auto-update: each new release installs itself once nothing runs$"
+  set_config auto_update true
+  out=$("$NS/bin/nightshift" doctor 2>&1 || true)
+  expect_line "doctor, auto_update=true: on" "$out" "^  ok      auto-update: each new release installs itself once nothing runs$"
+  : >"$NS/config"
+  set_config auto_update false
+  out=$("$NS/bin/nightshift" doctor 2>&1 || true)
+  expect_line "doctor, auto_update=false: how to turn it on" "$out" "^  hint    auto-update is off: remove auto_update=false from .*config, or set it to true, to have new releases install themselves$"
+  expect_line "doctor, off: no ok line" "$out" "auto-update: each new release" no
+  : >"$NS/config"
   set_config auto_update true
   out=$(ns doctor 2>&1 || true)
-  expect_line "doctor, on in a dev install: it won't update" "$out" "^  hint    auto_update is on, but only a release install updates itself: "
+  expect_line "doctor, auto_update=true in a dev install: it won't update" "$out" "^  hint    auto_update is on, but only a release install updates itself: "
   : >"$NS/config"
   out=$(ns doctor 2>&1 || true)
-  expect_line "doctor, off in a dev install: nothing" "$out" "auto.update" no)
+  expect_line "doctor, default in a dev install: nothing" "$out" "auto.update" no
+  set_config auto_update false
+  out=$(ns doctor 2>&1 || true)
+  expect_line "doctor, auto_update=false in a dev install: nothing" "$out" "auto.update" no)
 
 report
