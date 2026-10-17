@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Tests for a repo's settings in a run: .nightshift/config on the default branch
-# (auto_merge, full_suite) and how a run reads it.
+# (auto_merge, full_suite), how a run reads it, and that the prompt lines the skills
+# key on are the ones a run gets.
 #   bash scripts/test-runs-config.sh
 set -euo pipefail
 . "$(dirname "$0")/test-lib.sh"
@@ -180,7 +181,6 @@ SUITE_NOTHING="^nightshift runs no whole test suite in this repo (full_suite=not
 # skill, would silently stop the skill acting (no merge, the wrong checks), so each quoted
 # string must begin a line of the prompt of some run, under each setting that changes one.
 PROMPTS=$(temp)
-trap 'rm -f "$FAILS" "$PROMPTS"' EXIT
 for setting in "" "auto_merge=false" "full_suite=local" "full_suite=nothing"; do
   (world
     [ -z "$setting" ] || origin_config "$setting"
@@ -197,5 +197,6 @@ while IFS= read -r quoted; do
   awk -v q="$quoted" 'index($0, q) == 1 { found = 1 } END { exit !found }' "$PROMPTS" && begins=yes
   expect "a run's prompt has a line beginning \"$quoted\", as a skill quotes it" "$begins" yes
 done <<<"$QUOTED"
+rm -f "$PROMPTS"
 
 report

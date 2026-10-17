@@ -37,6 +37,7 @@ expect_ok "the tdd skill has a description" test -n "$(field "$tdd" description 
 merge="$SKILLS/merge/SKILL.md"
 expect "the merge skill is named merge" "$(field "$merge" name 2>/dev/null)" merge
 expect "the merge skill isn't user-invocable" "$(field "$merge" user-invocable 2>/dev/null)" false
+expect_ok "the merge skill has a description" test -n "$(field "$merge" description 2>/dev/null)"
 expect "the merge skill reaches only gh pr, gh issue, gh run and git" \
   "$(field "$merge" allowed-tools 2>/dev/null | grep -o '[A-Za-z]*([^)]*)' | grep -Ev '^Bash\((gh pr|gh issue|gh run|git [a-z-]+) \*\)$')" ""
 expect_line "the merge skill may read a failed run's log with gh run" "$(field "$merge" allowed-tools 2>/dev/null)" 'Bash(gh run \*)'
@@ -50,6 +51,16 @@ while IFS= read -r f; do
   done
 done < <(find "$SKILLS" -name '*.md')
 expect "every link in a skill resolves" "$dangling" ""
+
+# Reference that only some branches need lives in a sibling file of a SKILL.md: each one has
+# something in it and is linked from its skill, or no run ever reads it.
+unlinked=""
+for f in "$SKILLS"/*/*.md; do
+  b=$(basename "$f")
+  [ "$b" = SKILL.md ] && continue
+  { [ -s "$f" ] && grep -qF "]($b)" "$(dirname "$f")/SKILL.md"; } || unlinked="$unlinked${f#"$SKILLS"/} "
+done
+expect "every file beside a SKILL.md has something in it and is linked from its skill" "$unlinked" ""
 
 # Each skill and plugin agent runs on its own model and effort, from its frontmatter.
 model_effort() {
