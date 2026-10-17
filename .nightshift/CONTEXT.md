@@ -22,6 +22,8 @@ nightshift's runs read this file and keep it up to date.
 - **full_suite**: the `.nightshift/config` option for where a repo's whole test suite runs:
   `local` (before each push), `nothing` (never by nightshift), or unset (on CI; locally only
   without CI). An unknown value counts as unset.
+- **test_command**: the `.nightshift/config` option naming the command that runs a repo's whole
+  test suite. The prompt's whole-suite line names it, except under `full_suite=nothing`.
 - **has CI**: a workflow in `.github/workflows/` triggers on `pull_request`, or the repo's latest
   merged pull request lists checks (`gh pr checks`), so external CI counts. It matters only when
   `full_suite` is unset.

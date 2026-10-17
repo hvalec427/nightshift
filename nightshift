@@ -769,12 +769,16 @@ merge_note() {
 }
 
 # What a run is told of repo $1's whole test suite: `full_suite=local` runs it
-# before the push, `nothing` runs none, else (unset or unknown) CI runs it.
+# before the push, `nothing` runs none, else (unset or unknown) CI runs it. A
+# `test_command` names the command on the lines where the suite may run.
 suite_note() {
+  sn_cmd=$(repo_option "$1" test_command)
+  sn_run=""
+  [ -z "$sn_cmd" ] || sn_run=" Run it with \`$sn_cmd\`."
   case "$(repo_option "$1" full_suite)" in
-    local) echo "This repo runs its whole test suite locally (full_suite=local in .nightshift/config): run it before you push." ;;
+    local) printf '%s\n' "This repo runs its whole test suite locally (full_suite=local in .nightshift/config): run it before you push.$sn_run" ;;
     nothing) echo "nightshift runs no whole test suite in this repo (full_suite=nothing in .nightshift/config): check what you touched, then push." ;;
-    *) echo "This repo leaves its whole test suite to CI: check what you touched, then push; run the whole suite yourself only if the repo has no CI checks on its pull requests." ;;
+    *) printf '%s\n' "This repo leaves its whole test suite to CI: check what you touched, then push; run the whole suite yourself only if the repo has no CI checks on its pull requests.$sn_run" ;;
   esac
 }
 
@@ -2039,6 +2043,9 @@ scaffold_repo() {
 # full_suite: where the whole test suite runs. Unset (the default): on CI, and locally only if the
 # repo has no CI checks on its pull requests. local: before each push. nothing: never by nightshift.
 # full_suite=local
+#
+# test_command: the command that runs the whole test suite (default: runs work it out from the repo's instructions).
+# test_command=npm test
 EOS
     sr_made=".nightshift/config"
   fi
