@@ -1,6 +1,6 @@
 ---
 name: build
-description: Build an issue's approved plan ticket by ticket, test-first, then open its pull request. Started by the issue skill when the user approved the plan.
+description: Build an issue's approved plan ticket by ticket, test-first, then open its pull request. Started by the issue skill when the user approved the plan, or for a small issue.
 user-invocable: false
 model: sonnet
 effort: high
@@ -13,6 +13,12 @@ overlap, bounds) hold throughout. The ticket brief is adapted from Matt Pocock's
 `implement-spec` skill (see `THIRD_PARTY.md` in the plugin).
 
 Build the tickets in order, one at a time, in this worktree. The sequence:
+
+**A small issue** (the issue skill's case 2, no `plan` comment): the issue and the user's
+replies are the plan, and it is one ticket. Write no ticket files (skip step 1) and build
+it yourself (step 2); the review, finish, report and merge are as below. The report opens
+with: "Treated as small: built straight from the issue, with no plan. Reply **full
+process** to get a plan instead."
 
 1. **Ticket files.** Before the first ticket, write each ticket of the latest `plan`
    comment to `.nightshift/tickets/T<n>.md` in this worktree: its text, blockers and

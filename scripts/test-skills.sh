@@ -233,8 +233,8 @@ update_flat=$(flat "$SKILLS/update/SKILL.md")
 issue_flat=$(flat "$ISSUE")
 expect_line "the update skill posts its progress comment only when the repo doesn't auto-merge" "$update_flat" "\`progress\` comment[^.]*only when the repo doesn.t auto-merge"
 expect_line "with auto-merge the update skill hands its report to the merge skill" "$update_flat" "hand[^.]*report[^.]*to the \`nightshift:merge\` skill"
-expect_line "issue case 7 posts its progress comment only when the repo doesn't auto-merge" "$issue_flat" "\`progress\` comment[^.]*only when the repo doesn.t auto-merge"
-expect_line "with auto-merge issue case 7 hands what it did to the merge skill" "$issue_flat" "hand[^.]*what it did[^.]*to the \`nightshift:merge\` skill"
+expect_line "issue case 8 posts its progress comment only when the repo doesn't auto-merge" "$issue_flat" "\`progress\` comment[^.]*only when the repo doesn.t auto-merge"
+expect_line "with auto-merge issue case 8 hands what it did to the merge skill" "$issue_flat" "hand[^.]*what it did[^.]*to the \`nightshift:merge\` skill"
 expect_line "the brief points at the ticket's ID and its file" "$brief" "the ticket's ID[^.]*\`.nightshift/tickets/T<n>.md\`"
 expect_line "the build writes a file per ticket before the first ticket" "$brief" "Before the first ticket[^.]*\`.nightshift/tickets/T<n>.md\`"
 expect_line "the files come from the latest plan and the replies that changed it" "$brief" "write each ticket of the latest \`plan\` comment.*reply of the user's after the plan that changed it"
