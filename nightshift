@@ -44,8 +44,9 @@
 # `label`, its status label (see STATUSES); `skill`, the last nightshift skill
 # its session invoked (see SKILL_STATUSES); `type`, its type label as the
 # last run left it (see TYPES); and per repo, `merged/<owner>_<repo>`, the
-# merged nightshift pull requests seen, and `labels/<owner>_<repo>`, the
-# version of the status labels created there.
+# merged nightshift pull requests seen, `labels/<owner>_<repo>`, the
+# version of the status labels created there, and `all_issues/<owner>_<repo>`,
+# when the repo's all_issues=true was first read on (UTC), until it reads off.
 set -u
 
 # install.sh writes the version in: X.Y.Z for a release, `master (<sha>)` or
@@ -1443,12 +1444,15 @@ queue_update() {
   log "$1#$2: pull request $3"
 }
 
-# The repo's open labelled issues, as GitHub's JSON. Asked with the ETag of
-# the last answer, GitHub says 304 when nothing changed (which costs no rate
-# limit), and the last answer, kept in poll/<owner>_<repo>.json, stands.
+# The repo's open labelled issues, as GitHub's JSON (with $2 = all, its newest
+# 100 open issues, for all_issues). Asked with the ETag of the last answer,
+# GitHub says 304 when nothing changed (which costs no rate limit), and the last
+# answer, kept in poll/<owner>_<repo>.json (.all.json), stands.
 list_issues() {
   f="$NS/poll/$(echo "$1" | tr '/' '_')"
-  set -- "repos/$1/issues?labels=$LABEL&state=open&per_page=100"
+  q="labels=$LABEL&state=open&per_page=100"
+  if [ "${2:-}" = all ]; then f="$f.all" q="state=open&sort=created&direction=desc&per_page=100"; fi
+  set -- "repos/$1/issues?$q"
   [ -s "$f.json" ] && [ -s "$f.etag" ] && set -- -H "If-None-Match: $(cat "$f.etag")" "$@"
   mkdir -p "$NS/poll"
   # gh fails on a 304; the status line says which it was.
@@ -1461,6 +1465,26 @@ list_issues() {
   printf '%s\n' "$res" | sed '1,/^$/d' >"$f.json.tmp" && mv "$f.json.tmp" "$f.json"
   printf '%s\n' "$res" | sed -n '1,/^$/s/^[Ee][Tt][Aa][Gg]: *//p' >"$f.etag"
   cat "$f.json"
+}
+
+# With all_issues=true on repo $1, the time it was first read on (UTC, in
+# all_issues/<owner>_<repo>); off or unset, nothing, and the record goes. The
+# repo's settings are fetched first (every NIGHTSHIFT_PR_INTERVAL, 30 s), as
+# no run may be fetching them.
+all_issues_since() {
+  af="$NS/all_issues/$(echo "$1" | tr '/' '_')"
+  ff="$NS/poll/$(echo "$1" | tr '/' '_').fetch" now=$(date +%s)
+  if [ $((now - $(cat "$ff" 2>/dev/null || echo 0))) -ge "${NIGHTSHIFT_PR_INTERVAL:-30}" ]; then
+    mkdir -p "$NS/poll"
+    git -C "$2" fetch -q origin >/dev/null 2>&1 || true
+    echo "$now" >"$ff"
+  fi
+  if [ "$(repo_option "$1" all_issues)" = true ]; then
+    [ -s "$af" ] || { mkdir -p "$NS/all_issues" && date -u +%Y-%m-%dT%H:%M:%SZ >"$af"; }
+    cat "$af"
+  else
+    rm -f "$af"
+  fi
 }
 
 # The merged pull request of $1#$2's branch, asked by head branch (`pr` may not
@@ -1490,6 +1514,18 @@ poll_repo() {
   # Each labelled issue, and the label that holds it (`invalid` or `wontfix`;
   # `-`, none). A held one isn't worked: it's off, as if unlabelled.
   issues=$(list_issues "$repo" 2>>"$NS/watch.log") || { log "$repo: couldn't list issues"; return; }
+  # With all_issues=true, an allowed user's open issues from the option's
+  # on-time on count too, labelled or not: `extra` are the ones the label
+  # didn't list, whose author is the check (below).
+  extra=""
+  all_since=$(all_issues_since "$repo" "$clone")
+  if [ -n "$all_since" ]; then
+    more=$(list_issues "$repo" all 2>>"$NS/watch.log") || { log "$repo: couldn't list issues"; return; }
+    more=$(printf '%s\n' "$more" | jq -c --argjson have "$(printf '%s\n' "$issues" | jq -c '[.[].number]')" --argjson allowed "$allowed" --arg since "$all_since" \
+      '[.[] | select((.pull_request | not) and (.number | IN($have[]) | not) and (.user.login as $u | $allowed | index($u)) and .created_at >= $since)]')
+    extra=$(printf '%s\n' "$more" | jq -r '.[].number')
+    issues=$(printf '%s\n%s\n' "$issues" "$more" | jq -s -c 'add')
+  fi
   all=$(printf '%s\n' "$issues" | jq -r '.[] | select(.pull_request | not) | "\(.number) \(.updated_at) \([.labels[].name | select(. == "invalid" or . == "wontfix")] | first // "-")"')
   open=$(printf '%s\n' "$all" | awk 'NF && $3 == "-" { print $1, $2 }')
   held=$(printf '%s\n' "$all" | awk 'NF && $3 != "-" { print $1, $3 }')
@@ -1513,6 +1549,8 @@ poll_repo() {
     hold=$(printf '%s\n' "$held" | awk -v n="$n" '$1 == n { print $2 }')
     if [ "$state" = closed ]; then why="issue closed"
     elif [ -n "$hold" ]; then why="$hold label added"
+    elif [ -f "$d/unlabelled" ] && [ -z "$all_since" ]; then why="all_issues turned off"
+    elif [ -f "$d/unlabelled" ]; then why="not among the newest 100 open issues"
     else why="label removed"
     fi
     echo "$why" >"$d/off"
@@ -1550,7 +1588,10 @@ poll_repo() {
     d=$(issue_dir "$repo" "$n")
     running "$d" && { did="$did, #$n running"; continue; }
     [ ! -f "$d/update" ] && [ ! -f "$d/build" ] && [ ! -f "$d/interrupted" ] && [ ! -f "$d/stalled" ] && [ -f "$d/updated" ] && [ "$(cat "$d/updated")" = "$updated" ] && continue
-    if [ ! -d "$d" ]; then
+    if [ ! -d "$d" ] && printf '%s\n' "$extra" | grep -qx "$n"; then
+      # Unlabelled, by an allowed user: the author is the check.
+      mkdir -p "$d" && touch "$d/unlabelled"
+    elif [ ! -d "$d" ]; then
       # Only a label added by an allowed user starts work.
       by=$(gh api --paginate "repos/$repo/issues/$n/events" \
         --jq "[.[] | select(.event == \"labeled\" and .label.name == \"$LABEL\")] | last | .actor.login // empty" 2>/dev/null | tail -1)
@@ -2334,6 +2375,11 @@ cmd_doctor() {
     [ -n "$repo" ] || continue
     if ! git -C "$clone" rev-parse --git-dir >/dev/null 2>&1; then
       fail missing "$repo: its clone ($clone)" "clone it there, or fix its repo line in $CONFIG"
+    elif [ "$(repo_option "$repo" all_issues)" = true ]; then
+      # Works its allowed users' new issues, so no agent label is needed.
+      if auto_merges "$repo"; then pass "$repo: clone $clone, all_issues=true works its allowed users' new issues, PRs merge on their own"
+      else pass "$repo: clone $clone, all_issues=true works its allowed users' new issues, PRs wait for you (auto_merge=false in .nightshift/config)"
+      fi
     elif [ -z "$ghv" ]; then fail "?" "$repo: its \`$LABEL\` label" "needs gh to check"
     elif gh api "repos/$repo/labels/$LABEL" >/dev/null 2>&1; then
       if auto_merges "$repo"; then pass "$repo: clone $clone, \`$LABEL\` label, PRs merge on their own"
@@ -2385,12 +2431,17 @@ cmd_add() {
   touch "$CONFIG"
   grep -q "^repo $repo " "$CONFIG" && die "$repo is already watched"
   echo "repo $repo $clone" >>"$CONFIG"
-  gh label create "$LABEL" --repo "$repo" --color 5319E7 --description "nightshift works this issue" >/dev/null 2>&1 || true
+  # With all_issues=true on the default branch already, the repo needs no agent label.
+  all=""
+  [ "$(repo_option "$repo" all_issues)" = true ] && all=1
+  [ -n "$all" ] || gh label create "$LABEL" --repo "$repo" --color 5319E7 --description "nightshift works this issue" >/dev/null 2>&1 || true
   ensure_labels "$repo" || true
   if auto_merges "$repo"; then merging="PRs merge on their own (auto_merge=false in .nightshift/config turns it off)"
   else merging="PRs wait for you (auto_merge=false in .nightshift/config)"
   fi
-  echo "watching $repo (clone: $clone); $merging; add the \`$LABEL\` label to an issue to start"
+  if [ -n "$all" ]; then echo "watching $repo (clone: $clone); $merging; all_issues=true works your allowed users' new issues, no \`$LABEL\` label needed"
+  else echo "watching $repo (clone: $clone); $merging; add the \`$LABEL\` label to an issue to start"
+  fi
   scaffold_repo "$clone"
 }
 
@@ -2424,6 +2475,10 @@ scaffold_repo() {
 #
 # cost_comment=false: no closing cost comment at all (default true).
 # cost_comment=false
+#
+# all_issues=true: nightshift works every issue an allowed user opens from then on, labelled or not
+# (default: only issues with the agent label). Issues opened before it came on are left alone.
+# all_issues=true
 EOS
     sr_made=".nightshift/config"
   fi

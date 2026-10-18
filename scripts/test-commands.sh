@@ -79,6 +79,18 @@ $SCAFFOLD"
   expect "add with an option: no .nightshift in the clone" "$([ -e "$W/other/.nightshift" ] && echo yes || echo no)" "no"
   expect_no_unexpected)
 
+# With all_issues=true already on origin's default branch, add makes no agent label.
+(world
+  : >"$NS/config"
+  origin_config "all_issues=true"
+  git -C "$CLONE" fetch -q origin
+  try ns add o/r "$CLONE"
+  expect "add with all_issues=true: says it works the allowed users' new issues, not to add the label" "$OUT" \
+    "watching o/r (clone: $CLONE); PRs merge on their own (auto_merge=false in .nightshift/config turns it off); all_issues=true works your allowed users' new issues, no \`agent\` label needed
+$SCAFFOLD"
+  expect_line "add with all_issues=true: no agent label" "$(cat "$(gh_dir o/r)/labels")" "^agent$" no
+  expect_line "add with all_issues=true: the status labels still" "$(cat "$(gh_dir o/r)/labels")" "^nightshift: needs you$")
+
 (world
   : >"$NS/config"
   git init -q "$W/other"
@@ -106,7 +118,11 @@ $SCAFFOLD"
 # cost_breakdown=false
 #
 # cost_comment=false: no closing cost comment at all (default true).
-# cost_comment=false"
+# cost_comment=false
+#
+# all_issues=true: nightshift works every issue an allowed user opens from then on, labelled or not
+# (default: only issues with the agent label). Issues opened before it came on are left alone.
+# all_issues=true"
   expect "add: CONTEXT.md is scaffolded with a heading and what goes in it" "$(cat "$W/other/.nightshift/CONTEXT.md")" \
     "# Context
 
@@ -411,6 +427,17 @@ without() {
   git -C "$CLONE" fetch -q origin
   expect_line "doctor: auto_merge=false in .nightshift/config, its PRs wait" "$(ns doctor)" \
     "^  ok      o/r: clone $CLONE, \`agent\` label, PRs wait for you (auto_merge=false in .nightshift/config)$")
+
+# all_issues=true: no agent label needed, and doctor says what it does instead.
+(healthy
+  : >"$(gh_dir o/r)/labels"
+  origin_config "all_issues=true"
+  git -C "$CLONE" fetch -q origin
+  try ns doctor
+  expect "doctor: all_issues=true and no agent label: passes" "$ST" 0
+  expect_line "doctor: all_issues=true: works its allowed users' new issues" "$OUT" \
+    "^  ok      o/r: clone $CLONE, all_issues=true works its allowed users' new issues, PRs merge on their own$"
+  expect_line "doctor: all_issues=true: no missing label" "$OUT" "agent. label" no)
 
 (healthy
   printf 'repo %s %s auto_merge=false plugins=rn-agent\n' "$REPO" "$CLONE" >"$NS/config"

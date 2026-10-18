@@ -42,6 +42,15 @@ interval=5
   - `cost_breakdown=false` keeps the closing cost comment to one line: dollars, tokens,
     time and the pull request's size. Unset (or any other value), it has the breakdown
     too: the dollars of each model, the agents table and the time line.
+  - `all_issues=true` works every issue an allowed user opens from then on, with or
+    without the `agent` label, so the repo needs no `agent` label (`add` doesn't
+    create it, `doctor` doesn't ask for it). Only issues opened at or after the
+    moment nightshift first read the option on count (the *all-issues on-time*,
+    kept in `~/.nightshift/all_issues/`, dropped when the option is read off): the
+    backlog is left alone. A stranger's issue still needs `agent` from an allowed
+    user, and closing an issue or adding `wontfix`/`invalid` stops it as usual.
+    Only the newest 100 open issues are looked at, and the watcher fetches the
+    clone between runs to read the option. Unset or any other value, off.
   - `cost_comment=false` posts no closing cost comment at all (`nightshift status`
     still shows what a done issue spent).
 - `allowed_users`: whose labels and comments count (default: your gh account).
