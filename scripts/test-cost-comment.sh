@@ -171,6 +171,17 @@ built() {
   expect_line "and the agents table" "$(gh_comments o/r 7)" '^| Agent | Model ')
 
 (world
+  gh_issue o/r 7 alice agent
+  runs_do "costs 1 $OPUS 1 1 1 1; comment questions"
+  poll
+  gh_state o/r 7 closed
+  poll
+  expect "cost_breakdown unset, no pull request: the headline alone" "$(cost_lines 7)" \
+    '**$1.00** at API prices · **4 tokens** (1 in, 1 out, 2 cache) · **S** over 1 run
+
+<!-- nightshift --> <!-- nightshift:cost -->')
+
+(world
   origin_file .nightshift/config cost_breakdown=true nightshift/issue-7
   built
   expect "cost_breakdown=true only on the issue's branch: the short comment" "$(cost_lines 7)" "$SHORT")

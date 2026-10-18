@@ -297,10 +297,9 @@ interval=5
   - `test_command`: the command that runs the whole test suite (`test_command=npm test`).
     Where a run may run the suite, its prompt names the command; unset, the run works it
     out from the repo's instructions.
-  - `cost_breakdown=true` gives the closing cost comment its breakdown: the
-    dollars of each model, the agents table and the time line. Unset (or any
-    other value), the comment is one line: dollars, tokens, time and the pull
-    request's size.
+  - `cost_breakdown=true` gives the closing cost comment its breakdown: the dollars of
+    each model, the agents table and the time line. Unset (or any other value), the
+    comment is one line: dollars, tokens, time and the pull request's size.
 - `allowed_users`: whose labels and comments count (default: your gh account).
 - `max_parallel`: issues worked at once (each may run its app).
 - `interval`: seconds between polls (default 5). A poll that finds nothing new

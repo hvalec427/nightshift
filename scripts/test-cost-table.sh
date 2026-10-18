@@ -10,7 +10,6 @@ set -euo pipefail
 # effort in their frontmatter.
 own_plugin() {
   local d
-  origin_config cost_breakdown=true
   mkdir -p "$NS/plugin/agents"
   for d in issue:low questions:high plan:high build:high; do
     mkdir -p "$NS/plugin/skills/${d%:*}"
@@ -26,6 +25,7 @@ table() { gh_comments o/r "$1" | grep '^|' | sed '/↳/!s/| [0-9][0-9]*s |/| S |
 finish() { gh_state o/r "$1" closed; poll; }
 
 (world
+  origin_config cost_breakdown=true
   own_plugin
   gh_issue o/r 7 alice agent
   runs_do "costs 1 $OPUS 1000 2000 3000 4000; turn $OPUS 5 100 0; skill nightshift:issue; skill nightshift:questions
@@ -66,6 +66,7 @@ finish() { gh_state o/r "$1" closed; poll; }
 # Efforts come from a repo plugin's agents and skills too; a subagent that
 # hadn't finished has only the tokens of its turns so far; an unnamed stage is a plain session.
 (world
+  origin_config cost_breakdown=true
   own_plugin
   plugin other@m
   mkdir -p "$W/other/agents" "$W/other/skills/lint"
@@ -84,6 +85,7 @@ finish() { gh_state o/r "$1" closed; poll; }
 
 # No agents file: no table. Runs before the first record: a note.
 (world
+  origin_config cost_breakdown=true
   own_plugin
   gh_issue o/r 7 alice agent
   runs_do "costs 1 $OPUS 1 1 1 1; skill nightshift:issue; comment questions"
@@ -94,6 +96,7 @@ finish() { gh_state o/r "$1" closed; poll; }
   expect_line "no agents: the headline is there" "$(gh_comments o/r 7)" 'at API prices.* over 1 run$')
 
 (world
+  origin_config cost_breakdown=true
   own_plugin
   gh_issue o/r 7 alice agent
   runs_do "costs 1 $OPUS 1 1 1 1; skill nightshift:issue; skill nightshift:questions; comment questions"
@@ -115,6 +118,7 @@ finish() { gh_state o/r "$1" closed; poll; }
 # included) and what the rows add up to; the time line splits the time from
 # the first run's start to the last one's end.
 (world
+  origin_config cost_breakdown=true
   own_plugin
   gh_issue o/r 7 alice agent
   runs_do "costs 1 $OPUS 1 1 1 1; skill nightshift:issue; comment questions"
@@ -148,6 +152,7 @@ finish() { gh_state o/r "$1" closed; poll; }
 # the run's dollars less those, never below 0. No split, an unfinished
 # subagent or a model the run didn't use: no cost.
 (world
+  origin_config cost_breakdown=true
   own_plugin
   gh_issue o/r 7 alice agent
   runs_do "costs 1 $OPUS 1 1 1 1; skill nightshift:issue; comment questions"
@@ -181,6 +186,7 @@ finish() { gh_state o/r "$1" closed; poll; }
 
 # Zero parts are left out of the time line; one run has none.
 (world
+  origin_config cost_breakdown=true
   own_plugin
   gh_issue o/r 7 alice agent
   runs_do "costs 1 $OPUS 1 1 1 1; skill nightshift:issue; comment questions"
@@ -194,6 +200,7 @@ finish() { gh_state o/r "$1" closed; poll; }
     '**Time:** 1h 15m: 15m working · 1h 0m waiting on you')
 
 (world
+  origin_config cost_breakdown=true
   own_plugin
   gh_issue o/r 7 alice agent
   runs_do "costs 1 $OPUS 1 1 1 1; skill nightshift:issue; comment questions"
@@ -209,6 +216,7 @@ finish() { gh_state o/r "$1" closed; poll; }
   expect "and the total row's time is the working time" "$(table 7 | tail -1)" '| **Total** | – | – | – | 3 | $1.00 | 20m | 3 |')
 
 (world
+  origin_config cost_breakdown=true
   own_plugin
   gh_issue o/r 7 alice agent
   runs_do "costs 1 $OPUS 1 1 1 1; skill nightshift:issue; comment questions"
@@ -218,6 +226,7 @@ finish() { gh_state o/r "$1" closed; poll; }
   expect "its total row" "$(table 7 | tail -1 | sed 's/| [0-9]*s |/| S |/')" '| **Total** | – | – | – | 4 | $1.00 | S | 2 |')
 
 (world
+  origin_config cost_breakdown=true
   own_plugin
   gh_issue o/r 7 alice agent
   touch "$CLAUDE_FAKE/silent"
