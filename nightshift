@@ -141,14 +141,17 @@ auto_merges() { [ "$(repo_option "$1" auto_merge)" != false ]; }
 # branch. A `base_branch` origin doesn't have leaves a line in log dir $3's
 # log, when there is one.
 base_branch() {
-  bb=$(repo_option "$1" base_branch)
-  if [ -n "$bb" ] && ! git -C "$2" rev-parse -q --verify "refs/remotes/origin/$bb" >/dev/null 2>&1; then
-    [ -z "${3:-}" ] || printf "0\t=== base_branch %s isn't on origin: this run starts from %s\n" "$bb" "$(default_branch "$1" "$2")" >>"$3/log"
-    bb=""
+  bb_name=$(repo_option "$1" base_branch)
+  if [ -n "$bb_name" ] && ! origin_has "$2" "$bb_name"; then
+    [ -z "${3:-}" ] || printf "0\t=== base_branch %s isn't on origin: this run starts from %s\n" "$bb_name" "$(default_branch "$1" "$2")" >>"$3/log"
+    bb_name=""
   fi
-  [ -n "$bb" ] || bb=$(default_branch "$1" "$2")
-  printf '%s' "$bb"
+  [ -n "$bb_name" ] || bb_name=$(default_branch "$1" "$2")
+  printf '%s' "$bb_name"
 }
+
+# Whether clone $1 has origin's branch $2.
+origin_has() { git -C "$1" rev-parse -q --verify "refs/remotes/origin/$2" >/dev/null 2>&1; }
 
 allowed_users() {
   u=$(setting allowed_users "")
@@ -2569,7 +2572,7 @@ cmd_doctor() {
     [ -z "$v" ] || printf '  %-7s %s\n' note "$repo: instructions=$v on its repo line is ignored now: copy the file into .nightshift/instructions/ in $repo"
     # A base_branch origin doesn't have: runs fall back to the default branch.
     v=$(repo_option "$repo" base_branch)
-    [ -z "$v" ] || git -C "$clone" rev-parse -q --verify "refs/remotes/origin/$v" >/dev/null 2>&1 ||
+    [ -z "$v" ] || origin_has "$clone" "$v" ||
       printf '  %-7s %s\n' note "$repo: base_branch=$v isn't on origin, so runs use $(default_branch "$repo" "$clone"): push it, or fix base_branch in .nightshift/config"
     # A hint, not a problem: nightshift deletes its own merged branches.
     [ -n "$ghv" ] && [ "$(gh api "repos/$repo" -q .delete_branch_on_merge 2>/dev/null)" = false ] &&

@@ -279,6 +279,16 @@ started"
   expect "as completed" "$(gh_calls "issue close" | tr '\n' ,)" "issue close 7 --repo o/r --reason completed,")
 
 (world
+  origin_file develop.md "on develop" develop
+  built
+  gh_pr_set o/r "$(prn)" baseRefName '"develop"'
+  gh_pr_set o/r "$(prn)" state '"MERGED"'
+  gh issue close 7 --repo o/r --reason completed >/dev/null
+  poll
+  expect "merged into another branch, issue already closed: done" "$(state 7 "done")" "PR merged"
+  expect "merged into another branch, issue already closed: no close call" "$(gh_calls "issue close" | grep -c . || true)" 1)
+
+(world
   built
   gh_pr_set o/r "$(prn)" state '"MERGED"'
   poll

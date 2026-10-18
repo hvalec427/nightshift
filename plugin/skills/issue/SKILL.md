@@ -163,9 +163,9 @@ Other issues are worked on `nightshift/issue-<n>` branches of this same clone: t
 still in progress are local branches, the finished ones open pull requests
 (`gh pr list --state open --json number,headRefName,url`). For each, other than this
 issue's, the files it changes are `git diff --name-only <base branch>...<branch>`
-(fetch first; use `origin/<branch>` when there's no local one; the base branch is the one the
-run prompt names with "This repo's pull requests merge into", else the default branch). Read its diff where it
-touches what this change touches.
+(fetch first; use `origin/<branch>` when there's no local one; the base branch is the
+one the run prompt names with "This repo's pull requests merge into", else the default
+branch). Read its diff where it touches what this change touches.
 
 Two changes **overlap** when they change the same file, or when one relies on something
 the other adds (a function, a flag, a file), even in a different file. Of two that
