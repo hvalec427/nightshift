@@ -13,8 +13,12 @@ nightshift's runs read this file and keep it up to date.
   `nightshift: …` label and the `<!-- nightshift:<stage> -->` marker on each comment.
 - **ticket**: one vertical slice of an approved plan, built and committed on its own.
 - **small issue**: one the issue skill builds straight from the issue, with no plan or **go**:
-  about 20 lines in one or two files, nothing for the user to decide, no merge look trigger,
-  and on a bug a plain cause. A **full process** reply gets it a plan.
+  about 20 lines in one or two files, nothing for the user to decide, no new command or option,
+  no breaking change, nothing security-relevant or touching CI, releases or installing, and on
+  a bug a plain cause. A **full process** reply gets it a plan.
+- **worth knowing**: what the merge skill reports in its closing comment without stopping the
+  merge (a wide blast radius, a new command, a CI change, …), as against a look item, which
+  waits for the user's **merge**.
 - **overlap markers**: `<!-- nightshift:after #N -->` and `<!-- nightshift:overlaps #N -->` in
   a PR body, the order PRs should merge in.
 - **cycle**: open PRs whose after markers lead back to themselves, so none can merge first. The
