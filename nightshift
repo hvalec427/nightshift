@@ -8,6 +8,7 @@
 #   nightshift stop                      stop the service (until `nightshift start`)
 #   nightshift stop <owner/repo>#<n>     stop an issue's running agent
 #   nightshift logs [<owner/repo>#<n>] [-f] [-v…]  what every issue (or one) does, at a level
+#   nightshift top                       a window per issue in progress, tiled: its status and the end of its log, live on a terminal (q quits)
 #   nightshift add <owner/repo> <clone>  watch a repo, using this clone of it, and set up its .nightshift/ (config, CONTEXT.md) to commit
 #   nightshift label <status>            (in a run) set its issue's status label
 #   nightshift build [--carry-on]        (in a run) build the approved plan, in a fresh session if it's the planning one (--carry-on: no approval, the plan has no open choices)
@@ -1742,6 +1743,32 @@ cmd_start() {
   fi
 }
 
+# What `status` says of an issue (its dir $1): its type, its state, what its
+# runs cost.
+issue_text() {
+  d=$1
+  if [ -f "$d/ignored" ]; then what="ignored (labelled by someone else)"
+  elif [ -f "$d/done" ] && [ "$(cat "$d/done")" = "PR merged" ]; then what="done · PR $(cat "$d/pr") merged $(age "$d/done") ago"
+  elif [ -f "$d/done" ]; then what="done · $(cat "$d/done") $(age "$d/done") ago"
+  elif running "$d" && [ -f "$d/updating" ]; then what="PR $(cat "$d/pr") · $(head -1 "$d/updating") $(age "$d/pid") (pid $(cat "$d/pid"))$(heartbeat "$d")"
+  elif running "$d"; then what="$(label_or "$d" running)$(skill_note "$d") $(age "$d/pid") (pid $(cat "$d/pid"))$(heartbeat "$d")"
+  elif [ -f "$d/off" ] && [ -f "$d/interrupted" ]; then what="stopped $(age "$d/off") ago ($(cat "$d/off")) · $(resume_hint "$d")"
+  elif [ -f "$d/off" ] && [ -f "$d/pr" ]; then what="PR $(cat "$d/pr") · $(cat "$d/off")"
+  elif [ -f "$d/off" ]; then what="$(cat "$d/off") $(age "$d/off") ago"
+  elif [ -f "$d/interrupted" ] || [ -f "$d/stalled" ]; then what="queued to resume"
+  elif [ -f "$d/build" ]; then what="queued to build"
+  elif [ -f "$d/update" ]; then what="PR $(cat "$d/pr") · queued: $(head -1 "$d/update")"
+  elif [ -f "$d/pr" ] && [ "$(label_or "$d" "PR open")" = "PR open" ]; then what="PR $(cat "$d/pr")$(after_note "$d")$(skill_note "$d")$(waited "$d" " · waiting ")"
+  elif [ -f "$d/pr" ]; then what="PR $(cat "$d/pr")$(after_note "$d") · $(cat "$d/label")$(skill_note "$d")$(waited "$d" " · ")"
+  elif [ -s "$d/session" ]; then what="$(label_or "$d" "waiting for a reply")$(skill_note "$d")$(waited "$d" " · ")"
+  elif [ "$(label_or "$d" queued)" = proposed ]; then what="proposed: waiting for your comment"
+  else what="queued"
+  fi
+  what="$what$(cost_note "$d")"
+  t=$(cat "$d/type" 2>/dev/null) && [ -n "$t" ] && what="$t · $what"
+  printf '%s' "$what"
+}
+
 # `status [--all]`: done issues only with --all.
 cmd_status() {
   case "$1" in "" | --all) ;; *) usage_error "usage: nightshift status [--all]" ;; esac
@@ -1756,31 +1783,158 @@ cmd_status() {
     name=$(basename "$d")
     n=${name##*_}
     repo=$(echo "${name%_*}" | sed 's/_/\//')
-    if [ -f "$d/ignored" ]; then what="ignored (labelled by someone else)"
-    elif [ -f "$d/done" ] && [ "$(cat "$d/done")" = "PR merged" ]; then what="done · PR $(cat "$d/pr") merged $(age "$d/done") ago"
-    elif [ -f "$d/done" ]; then what="done · $(cat "$d/done") $(age "$d/done") ago"
-    elif running "$d" && [ -f "$d/updating" ]; then what="PR $(cat "$d/pr") · $(head -1 "$d/updating") $(age "$d/pid") (pid $(cat "$d/pid"))$(heartbeat "$d")"
-    elif running "$d"; then what="$(label_or "$d" running)$(skill_note "$d") $(age "$d/pid") (pid $(cat "$d/pid"))$(heartbeat "$d")"
-    elif [ -f "$d/off" ] && [ -f "$d/interrupted" ]; then what="stopped $(age "$d/off") ago ($(cat "$d/off")) · $(resume_hint "$d")"
-    elif [ -f "$d/off" ] && [ -f "$d/pr" ]; then what="PR $(cat "$d/pr") · $(cat "$d/off")"
-    elif [ -f "$d/off" ]; then what="$(cat "$d/off") $(age "$d/off") ago"
-    elif [ -f "$d/interrupted" ] || [ -f "$d/stalled" ]; then what="queued to resume"
-    elif [ -f "$d/build" ]; then what="queued to build"
-    elif [ -f "$d/update" ]; then what="PR $(cat "$d/pr") · queued: $(head -1 "$d/update")"
-    elif [ -f "$d/pr" ] && [ "$(label_or "$d" "PR open")" = "PR open" ]; then what="PR $(cat "$d/pr")$(after_note "$d")$(skill_note "$d")$(waited "$d" " · waiting ")"
-    elif [ -f "$d/pr" ]; then what="PR $(cat "$d/pr")$(after_note "$d") · $(cat "$d/label")$(skill_note "$d")$(waited "$d" " · ")"
-    elif [ -s "$d/session" ]; then what="$(label_or "$d" "waiting for a reply")$(skill_note "$d")$(waited "$d" " · ")"
-    elif [ "$(label_or "$d" queued)" = proposed ]; then what="proposed: waiting for your comment"
-    else what="queued"
-    fi
-    what="$what$(cost_note "$d")"
-    t=$(cat "$d/type" 2>/dev/null) && [ -n "$t" ] && what="$t · $what"
+    what=$(issue_text "$d")
     printf '%-40s %s\n' "$repo#$n" "$what"
   done
   if [ $found -eq 0 ] && [ $hidden -eq 0 ]; then echo "no issues yet"
   elif [ $found -eq 0 ]; then echo "no issues in progress"
   fi
   [ $hidden -eq 0 ] || echo "($hidden done: nightshift status --all)"
+}
+
+# --- top --------------------------------------------------------------------------
+
+# The jq program that tiles `top`'s frame. Input: the issues, as an array of
+# {id, text, log} (log: its last lines, one string); args: w, h (the screen),
+# rev (1: headers in reverse video). Output: the frame, a line per row, each at
+# most w characters (jq counts characters, awk here counts bytes). Windows are
+# at least 40×6, not counting the │ between them: n issues get c columns and
+# ceil(n / c) rows, the c that makes a window closest to 2:1 (a terminal cell
+# is about twice as tall as wide). If none holds them all, the last row says
+# how many more there are, and the first issues that fit have the rows above it.
+TOP_JQ='
+def spaces($n): [range(0; $n)] | map(" ") | join("");
+def untab: split("\t") | reduce .[1:][] as $p ((.[0] // ""); . + spaces(8 - (length % 8)) + $p);
+def clean: untab | gsub("[[:cntrl:]]"; "");
+def fit($w): .[:$w] | . + spaces($w - length);
+def sizes($total; $k): range(0; $k) as $i | ($total / $k | floor) + (if $i < ($total % $k) then 1 else 0 end);
+def rows_of($n; $c): ($n + $c - 1) / $c | floor;
+def abs: if . < 0 then -. else . end;
+def best($n; $w; $h):
+  [range(1; $n + 1) as $c | rows_of($n; $c) as $r
+   | select((($w - $c + 1) / $c | floor) >= 40 and ($h / $r | floor) >= 6)
+   | {c: $c, d: (($w / $c) / ($h / $r) - 2 | abs)}]
+  | if length == 0 then null else (sort_by([.d, .c]) | .[0].c) end;
+def window($i; $w; $h):
+  ($i.id + " · " + ($i.text | clean)) as $head
+  | (if $i.log == "" then ["(nothing logged yet)"] else ($i.log | split("\n") | map(clean)) end) as $lines
+  | ($head | fit($w)) as $hd
+  | [(if $rev == 1 then "\u001b[7m" + $hd + "\u001b[0m" else $hd end)]
+    + (if $h > 1 then ($lines | .[-([$h - 1, ($lines | length)] | min):] | map(fit($w))) else [] end)
+    | . + [range(0; $h - length) | spaces($w)] | .[:$h];
+. as $all | length as $n |
+if $n == 0 then (["no issues in progress"] + [range(1; $h) | ""])
+else
+  (best($n; $w; $h)) as $c_all
+  | (if $c_all != null then {m: $n, h: $h, c: $c_all}
+   else
+     ($h - (if $h >= 2 then 1 else 0 end)) as $hr
+     | ([range($n - 1; 0; -1) | select(best(.; $w; $hr) != null)] | first // 1) as $m
+     | (if $m == $n then $h else $hr end) as $mh
+     | {m: $m, h: $mh, c: (best($m; $w; $mh) // 1)}
+   end) as $p
+  | ($all[:$p.m]) as $shown
+  | $p.c as $c
+  | rows_of($p.m; $c) as $r
+  | [sizes($w - ($c - 1); $c)] as $cw
+  | [sizes($p.h; $r)] as $rh
+  | ([range(0; $r) as $i | range(0; $rh[$i]) as $k
+      | [range(0; $c) as $j | ($i * $c + $j) as $x
+         | if $x < $p.m then window($shown[$x]; $cw[$j]; $rh[$i])[$k] else spaces($cw[$j]) end]
+      | join("│")]) as $body
+  | $body + (if $p.m < $n then ["+\($n - $p.m) more: " + ($all[$p.m:] | map(.id) | join(", ")) | .[:$w]] else [] end)
+  | . + [range(0; $h - length) | ""] | .[:$h]
+end
+| map(if $rev == 1 then . else sub(" +$"; "") end) | .[]'
+
+# The screen's size, as top_cols and top_rows: COLUMNS and LINES, then the
+# terminal's (tput), then 80×24.
+top_size() {
+  top_cols=${COLUMNS:-} top_rows=${LINES:-}
+  case $top_cols in "" | *[!0-9]* | 0) top_cols=$(tput cols 2>/dev/null) ;; esac
+  case $top_cols in "" | *[!0-9]* | 0) top_cols=80 ;; esac
+  case $top_rows in "" | *[!0-9]* | 0) top_rows=$(tput lines 2>/dev/null) ;; esac
+  case $top_rows in "" | *[!0-9]* | 0) top_rows=24 ;; esac
+}
+
+# One frame of `top`, plain text: $2 rows of at most $1 characters, a window
+# for every issue not done or ignored, in the order `status` lists them. $3 = 1
+# (a terminal): headers in reverse video, and every row padded to the full
+# width. Reads the issue dirs and logs afresh, so the live loop calls it per pass.
+top_frame() {
+  for d in "$NS"/issues/*/; do
+    [ -d "$d" ] || continue
+    d=${d%/}
+    [ -f "$d/done" ] || [ -f "$d/ignored" ] && continue
+    name=$(basename "$d")
+    repo=$(echo "${name%_*}" | sed 's/_/\//')
+    text=$(issue_text "$d")
+    lines=$(tail -n "$2" "$d/log" 2>/dev/null | show_level 3)
+    jq -nc --arg id "$repo#${name##*_}" --arg text "$text" --arg log "$lines" '{id: $id, text: $text, log: $log}'
+  done | jq -rs --argjson w "$1" --argjson h "$2" --argjson rev "${3:-0}" "$TOP_JQ"
+}
+
+top_help() {
+  cat <<'HELP'
+usage: nightshift top
+
+A window for every issue in progress, tiled to fit the terminal: its status and
+the end of its log. On a terminal it is live: it redraws every second, fits the
+terminal as it resizes, and q quits. Piped, it prints one frame and exits. The
+size, for one frame, is COLUMNS and LINES, or the terminal's.
+HELP
+}
+
+# Leave the live `top`: the terminal's settings, the cursor, the main screen.
+top_restore() {
+  [ -z "${top_stty:-}" ] || stty "$top_stty" 2>/dev/null
+  top_stty=
+  tput cnorm 2>/dev/null
+  tput rmcup 2>/dev/null
+}
+
+# The live `top`, until q or Q: the alternate screen and a hidden cursor, and
+# every second (the wait for a key, which `stty ... time 10` bounds) the size
+# read again from the terminal, one frame drawn from the top left.
+top_live() {
+  top_stty=$(stty -g)
+  trap top_restore EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  trap 'exit 129' HUP
+  stty -icanon -echo min 0 time 10
+  tput smcup
+  tput civis
+  top_prev=
+  while :; do
+    # The terminal's size by stdin: tput can't ask through a $(...).
+    unset COLUMNS LINES
+    size=$(stty size 2>/dev/null)
+    LINES=${size% *} COLUMNS=${size#* }
+    top_size
+    if [ "${top_cols}×${top_rows}" != "$top_prev" ]; then
+      tput clear
+      top_prev="${top_cols}×${top_rows}"
+    fi
+    tput home
+    printf '%s' "$(top_frame "$top_cols" "$top_rows" 1)"
+    case $(dd bs=1 count=1 2>/dev/null) in q | Q) exit 0 ;; esac
+  done
+}
+
+# `top`: live on a terminal (stdin and stdout both), else one frame, with
+# reverse-video headers if stdout is one.
+cmd_top() {
+  case "${1:-}" in
+  "") ;;
+  -h | --help) top_help; exit 0 ;;
+  *) usage_error "$(top_help | head -1)" ;;
+  esac
+  [ -t 0 ] && [ -t 1 ] && top_live
+  top_size
+  rev=0
+  [ -t 1 ] && rev=1
+  top_frame "$top_cols" "$top_rows" "$rev"
 }
 
 # An issue's `cost` (its dir $1), readable, a word each: its dollars, tokens
@@ -2240,7 +2394,7 @@ cmd_skill() {
   printf '%s\n' "$3" >"$(issue_dir "$1" "$2")/skill"
 }
 
-usage() { sed -n '2,15s/^# \{0,1\}//p' "$SELF"; }
+usage() { sed -n '2,16s/^# \{0,1\}//p' "$SELF"; }
 
 # Sourced for its functions (the tests): stop here.
 [ "${NIGHTSHIFT_LIB:-}" = 1 ] && return 0
@@ -2254,6 +2408,7 @@ status) shift; cmd_status "${1:-}" ;;
 start) cmd_start ;;
 stop) shift; cmd_stop "${1:-}" ;;
 logs) shift; cmd_logs "$@" ;;
+top) shift; cmd_top "$@" ;;
 add) shift; cmd_add "$@" ;;
 label) shift; cmd_label "$*" ;;
 build) shift; cmd_build "$@" ;;
