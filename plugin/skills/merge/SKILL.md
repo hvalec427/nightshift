@@ -61,7 +61,8 @@ needs the user to decide; otherwise tell the user exactly what does, and let the
    judge the blast radius from the diff yourself, and take the wider call. A small issue
    has no plan: the issue and its thread stand in for it, so a decision they didn't settle
    is one the plan didn't cover; being small isn't a look item by itself. Stop only for
-   what needs the user to decide. Any of these is a look item:
+   what needs the user: a decision, or a security-relevant change, which reaches every
+   repo when it's wrong. Any of these is a look item:
    - a review finding left unfixed that the plan didn't settle;
    - a decision made in the build that the plan didn't cover, or a choice the user would
      plausibly make differently;

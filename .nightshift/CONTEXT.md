@@ -16,9 +16,11 @@ nightshift's runs read this file and keep it up to date.
   about 20 lines in one or two files, nothing for the user to decide, no new command or option,
   no breaking change, nothing security-relevant or touching CI, releases or installing, and on
   a bug a plain cause. A **full process** reply gets it a plan.
+- **look item**: what stops the merge skill with a `look` comment until the user replies
+  **merge**: a failed hard gate, an open review finding the plan didn't settle, a decision the
+  plan didn't cover, a security-relevant change, or a request to see it first.
 - **worth knowing**: what the merge skill reports in its closing comment without stopping the
-  merge (a wide blast radius, a new command, a CI change, …), as against a look item, which
-  waits for the user's **merge**.
+  merge (a wide blast radius, a new command, a CI change, …).
 - **overlap markers**: `<!-- nightshift:after #N -->` and `<!-- nightshift:overlaps #N -->` in
   a PR body, the order PRs should merge in.
 - **cycle**: open PRs whose after markers lead back to themselves, so none can merge first. The
