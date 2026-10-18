@@ -92,7 +92,6 @@ rows_of() { sed 's/|$//'; }
 (world
   four
   rm -rf "$(idir 8)" "$(idir 9)" "$(idir 90)"
-  frame 80 24 >"$W/one"
   expect "top: 1 issue at 81×24, 8 windows: a 2×4 grid of 40×6, the issue top left, the other 7 blank" "$(frame 81 24)" "$(rows_of <<'F'
 o/r#7 · bug · queued to build           │|
 line 4                                  │|
@@ -120,7 +119,7 @@ line 8                                  │|
                                         │|
 F
 )"
-  expect "top: 1 issue at 80×24, 8 windows don't fit: 4 stacked windows of 6 rows, 3 blank" "$(cat "$W/one")" "$(rows_of <<'F'
+  expect "top: 1 issue at 80×24, 8 windows don't fit: 4 stacked windows of 6 rows, 3 blank" "$(frame 80 24)" "$(rows_of <<'F'
 o/r#7 · bug · queued to build|
 line 4|
 line 5|
@@ -374,7 +373,7 @@ await() {
 }
 
 # Runs `nightshift top` under a pty (BSD script) sized 40×6 (or $4×$3), TERM=xterm, with $1
-# on its stdin, and, given a signal $2, sends it that once its screen is up.
+# on its stdin (or, for "-", what the caller writes to the fifo $W/in), and, given a signal $2, sends it that once its screen is up.
 # Its screen is in $W/tty (carriage returns dropped), its exit status in $ST
 # ("hung" if it outlasted 20 s), and the terminal's icanon, echo, min and time
 # in $W/before and $W/after, from before it ran and after. Its INT is reset to
@@ -382,11 +381,12 @@ await() {
 live() {
   local pid i top=
   rm -f "$W/st" "$W/before" "$W/after" "$W/sh"
-  printf '%s' "$1" >"$W/in"
-  TERM=xterm script -q /dev/null sh -c 'mode() { stty -a | tr " ;" "\n\n" | grep -x -e icanon -e -icanon -e echo -e -echo; stty -g | tr ":" "\n" | grep -e "^min=" -e "^time="; }
+  # script won't take a fifo as its stdin, but takes a pipe.
+  [ "$1" = - ] || { rm -f "$W/in"; printf '%s' "$1" >"$W/in"; }
+  cat "$W/in" | TERM=xterm script -q /dev/null sh -c 'mode() { stty -a | tr " ;" "\n\n" | grep -x -e icanon -e -icanon -e echo -e -echo; stty -g | tr ":" "\n" | grep -e "^min=" -e "^time="; }
     echo $$ >"$1"; stty cols "$6" rows "$5"; unset COLUMNS LINES; mode >"$2"
     perl -e "\$SIG{INT} = q(DEFAULT); exec @ARGV" "$0" top; echo $? >"$3"; mode >"$4"' \
-    "$ROOT/nightshift" "$W/sh" "$W/before" "$W/st" "$W/after" "${3:-6}" "${4:-40}" <"$W/in" >"$W/tty.raw" 2>&1 &
+    "$ROOT/nightshift" "$W/sh" "$W/before" "$W/st" "$W/after" "${3:-6}" "${4:-40}" >"$W/tty.raw" 2>&1 &
   pid=$!
   if [ -n "${2:-}" ]; then
     # nightshift is the shell's child, and draws once it has the alternate screen.
@@ -454,7 +454,24 @@ headers() { grep -o 'o/r#[0-9]* ·' "$W/tty" | sed '1d; s/^o\/r#//; s/ ·$//' | 
   live " q"
   expect "top, live: Space moves a page" "$(bottoms)" "1–1 2–2 "
   live "${esc}xq"
-  expect "top, live: an Escape sequence that isn't a key is ignored, and q after it quits" "$ST" 0)
+  expect "top, live: an Escape sequence that isn't a key is ignored, and q after it quits" "$ST" 0
+  expect "top, live: the frame's first line, the offset and the page, isn't drawn" "$(grep -c "${esc}\[H[0-9]" "$W/tty" || true)" 0)
+
+(world
+  live q
+  expect_line "top, live: no issues: it says so" "$(cat "$W/tty")" "no issues in progress"
+  expect "top, live: no issues: the frame's first line isn't drawn" "$(grep -c "${esc}\[H[0-9]" "$W/tty" || true)" 0)
+
+# Issues finishing while it's scrolled to the end: the offset stays in range, so k moves at once.
+(world
+  for i in 7 8 9 10; do issue $i; done
+  rm -f "$W/in"
+  mkfifo "$W/in"
+  { printf jjj; sleep 3; touch "$(idir 10)/done"; sleep 3; printf kq; } >"$W/in" &
+  live -
+  wait
+  expect "top, live: an issue finishing at the end scrolls back to the new last, and k goes on from there" \
+    "$(bottoms | tr ' ' '\n' | uniq | tail -3 | tr '\n' ' ')" "4–4 3–3 2–2 ")
 
 (world
   for i in 1 2 3 4 5; do issue $i; done

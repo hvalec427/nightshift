@@ -1811,16 +1811,19 @@ cmd_status() {
 
 # The jq program that tiles `top`'s frame. Input: the issues, as an array of
 # {id, text, log} (log: its last lines, one string); args: w, h (the screen),
-# rev (1: headers in reverse video), off (the first row of windows to show) and live (1: a
-# first line "off page" before the frame, the off used and the rows of windows on a page). Output: the frame, a line per row, each at
-# most w characters (jq counts characters, awk here counts bytes). Windows are
-# at least 40×6, not counting the │ between them. The grid has s windows, the
-# most from max(8, n) down to n that fit: c columns and ceil(s / c) rows, the c
-# that makes a window closest to 2:1 (a terminal cell is about twice as tall as
+# rev (1: headers in reverse video), off (the first row of windows to show) and
+# live (1: the live loop). Output: the frame, a line per row, each at most w
+# characters (jq counts characters, awk here counts bytes). Windows are at
+# least 40×6, not counting the │ between them. The grid has s windows, the most
+# from max(8, n) down to n that fit: c columns and ceil(s / c) rows, the c that
+# makes a window closest to 2:1 (a terminal cell is about twice as tall as
 # wide). Issue x has window x; the spare windows are blank. If not even n fit,
-# the last row is a bottom line and the m windows that fit (s = m) have the rows above it,
-# from row off (kept within 0 ... the last row n issues have, less the rows on a page): the
-# bottom line says how many more there are, or live which issues are shown and the keys.
+# the last row is a bottom line and the m windows that fit (s = m) have the
+# rows above it, from row off (kept within 0 ... the last row n issues have,
+# less the rows on a page): the bottom line says how many more there are, or
+# live which issues are shown and the keys. Live, a first line "off page" comes
+# before the frame: the off used and the rows on a page (0 and 1 when nothing
+# scrolls), for the loop to keep.
 TOP_JQ='
 def spaces($n): [range(0; $n)] | map(" ") | join("");
 def untab: split("\t") | reduce .[1:][] as $p ((.[0] // ""); . + spaces(8 - (length % 8)) + $p);
@@ -1901,9 +1904,10 @@ top_size() {
 # One frame of `top`, plain text: $2 rows of at most $1 cells, a window
 # for every issue not done or ignored, in the order `status` lists them. $3 = 1
 # (a terminal): headers in reverse video, and every row padded to the full
-# width. $4: the first row of windows to show, when they don't all fit (default 0).
-# $5 = 1 (the live loop): a first line "off page", the $4 as kept in range and the rows of
-# windows on a page, and a bottom line with the scroll keys. Reads the issue dirs and logs afresh, so the live loop calls it per pass.
+# width. $4: the first row of windows to show, when they don't all fit (default
+# 0). $5 = 1 (the live loop): a first line "off page", the $4 as kept in range
+# and the rows of windows on a page, and a bottom line with the scroll keys.
+# Reads the issue dirs and logs afresh, so the live loop calls it per pass.
 top_frame() {
   for d in "$NS"/issues/*/; do
     [ -d "$d" ] || continue
@@ -1980,20 +1984,22 @@ top_live() {
     top_head=${top_out%%"$top_nl"*}
     top_off=${top_head% *} top_page=${top_head#* }
     printf '%s' "${top_out#*"$top_nl"}"
-    case $(top_byte) in
+    # An arrow or page key is ESC [ and a letter or digit; the page keys end in ~.
+    top_key=$(top_byte)
+    if [ "$top_key" = "$top_esc" ] && [ "$(top_byte)" = "[" ]; then
+      case $(top_byte) in
+      B) top_key=j ;;
+      A) top_key=k ;;
+      6) top_byte >/dev/null; top_key=" " ;;
+      5) top_byte >/dev/null; top_key=pgup ;;
+      esac
+    fi
+    case $top_key in
     q | Q) exit 0 ;;
     j) top_off=$((top_off + 1)) ;;
     k) top_off=$((top_off - 1)) ;;
     " ") top_off=$((top_off + top_page)) ;;
-    "$top_esc")
-      if [ "$(top_byte)" = "[" ]; then
-        case $(top_byte) in
-        B) top_off=$((top_off + 1)) ;;
-        A) top_off=$((top_off - 1)) ;;
-        6) top_byte >/dev/null; top_off=$((top_off + top_page)) ;;
-        5) top_byte >/dev/null; top_off=$((top_off - top_page)) ;;
-        esac
-      fi ;;
+    pgup) top_off=$((top_off - top_page)) ;;
     esac
   done
 }
