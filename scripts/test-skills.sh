@@ -91,7 +91,11 @@ done <<'EOF'
 ticket sonnet high
 spec-review opus high
 standards-review sonnet medium
+quick-review sonnet medium
 EOF
+
+expect_ok "the review skill starts the quick-review agent for a small change" \
+  grep -q 'nightshift:quick-review' "$SKILLS/review/SKILL.md"
 
 expect "the issue skill is its SKILL.md alone, the stages' guidance in their skills" \
   "$(cd "$SKILLS/issue" && find . -type f)" "./SKILL.md"

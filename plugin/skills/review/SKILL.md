@@ -12,7 +12,9 @@ The build skill sent you here after the last ticket, before the `nightshift:fini
 skill, and the issue skill's rules hold throughout. Adapted from Matt Pocock's
 `code-review` skill (see `THIRD_PARTY.md` in the plugin).
 
-You built the change, so you're the one who can't see what it misses. Two fresh subagents,
+You built the change, so you're the one who can't see what it misses. For a **small**
+change (no `plan` comment on the issue and no `<!-- nightshift:parent #<n> -->` marker in
+its body) one fresh subagent reviews both axes at once, see step 3. Otherwise two fresh subagents,
 without this session's context, review it instead, one per axis: **Spec** (does it do what
 the approved plan asked) and **Standards** (does it follow the repo's conventions). A
 change that follows every standard but does the wrong thing, or the other way round, can't
@@ -41,7 +43,17 @@ nothing to review: say so when you report, and go on.
 Done when the plan is in hand and every such file is on the list, `CODING_STANDARDS.md` and
 `CONTRIBUTING.md` included when they exist.
 
-## 3. Start both reviewers
+## 3. Start the reviewers
+
+**A small change** gets one subagent, `nightshift:quick-review`, started alone in the
+foreground (`run_in_background: false`) without a `model`, instead of the two below. Its
+prompt stands alone, as theirs do: this worktree's path, the diff and log commands, the issue
+and the user's replies, the standards files and conventions you pasted, and that it only
+reads. Its brief combines both axes: each thing the issue asked for, met, partial or missing,
+and where the diff breaks a documented standard (citing the file and the rule). It reports
+under the same 400 words and finding format. The smell baseline is left out. Its findings
+are sorted in step 4 as a Spec and a Standards axis each. A medium or large change and a
+sub-issue (the parent marker in its body) keep both reviewers.
 
 Start both subagents in one message, so they run in parallel, in the foreground
 (`run_in_background: false`): Spec as `nightshift:spec-review`, Standards as
@@ -75,7 +87,7 @@ in the diff, checked against those rules (nothing to say when there's none), the
 smells it spots (the ticket loop doesn't refactor, so this is where refactoring is found),
 and leftovers: debug output, commented-out code, TODOs, stray files, a scratch script.
 
-Done when both reports are back.
+Done when the reports are back (the one report, for a small change).
 
 ## 4. Sort the findings
 
