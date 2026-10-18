@@ -31,6 +31,8 @@ LABELS_NOW='gh api "repos/$NIGHTSHIFT_REPO/issues/$NIGHTSHIFT_ISSUE" --jq ".labe
   expect "stream-json out" "$(run_opt --output-format)" stream-json
   expect "the run knows its issue" "$(grep -E '^NIGHTSHIFT_(ISSUE|REPO)=' "$CLAUDE_FAKE/runs/1/env")" "NIGHTSHIFT_ISSUE=7
 NIGHTSHIFT_REPO=o/r"
+  expect "git's editors are off in a run" "$(grep -E '^GIT_(SEQUENCE_)?EDITOR=' "$CLAUDE_FAKE/runs/1/env")" "GIT_EDITOR=true
+GIT_SEQUENCE_EDITOR=true"
   expect "while it runs: thinking" "$(grep '^nightshift: ' "$CLAUDE_FAKE/runs/1/start")" "nightshift: thinking"
   expect "after questions: needs you" "$(status_label 7)" "needs you"
   expect "its session is kept" "$(state 7 session)" session-1
