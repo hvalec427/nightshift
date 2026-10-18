@@ -1798,10 +1798,10 @@ cmd_status() {
 # {id, text, log} (log: its last lines, one string); args: w, h (the screen),
 # rev (1: headers in reverse video). Output: the frame, a line per row, each at
 # most w characters (jq counts characters, awk here counts bytes). Windows are
-# at least 40×6: n issues get c columns and ceil(n / c) rows, the c that makes
-# a window closest to 2:1 (a terminal cell is about twice as tall as wide). If
-# none holds them all, the last row says how many more there are, and the first
-# issues that fit have the rows above it.
+# at least 40×6, not counting the │ between them: n issues get c columns and
+# ceil(n / c) rows, the c that makes a window closest to 2:1 (a terminal cell
+# is about twice as tall as wide). If none holds them all, the last row says
+# how many more there are, and the first issues that fit have the rows above it.
 TOP_JQ='
 def spaces($n): [range(0; $n)] | map(" ") | join("");
 def untab: split("\t") | reduce .[1:][] as $p ((.[0] // ""); . + spaces(8 - (length % 8)) + $p);
@@ -1812,7 +1812,7 @@ def rows_of($n; $c): ($n + $c - 1) / $c | floor;
 def abs: if . < 0 then -. else . end;
 def best($n; $w; $h):
   [range(1; $n + 1) as $c | rows_of($n; $c) as $r
-   | select(($w / $c | floor) >= 40 and ($h / $r | floor) >= 6)
+   | select((($w - $c + 1) / $c | floor) >= 40 and ($h / $r | floor) >= 6)
    | {c: $c, d: (($w / $c) / ($h / $r) - 2 | abs)}]
   | if length == 0 then null else (sort_by([.d, .c]) | .[0].c) end;
 def window($i; $w; $h):
@@ -1825,14 +1825,16 @@ def window($i; $w; $h):
 . as $all | length as $n |
 if $n == 0 then (["no issues in progress"] + [range(1; $h) | ""])
 else
-  (if best($n; $w; $h) != null then {m: $n, h: $h}
+  (best($n; $w; $h)) as $c_all
+  | (if $c_all != null then {m: $n, h: $h, c: $c_all}
    else
      ($h - (if $h >= 2 then 1 else 0 end)) as $hr
      | ([range($n - 1; 0; -1) | select(best(.; $w; $hr) != null)] | first // 1) as $m
-     | {m: $m, h: (if $m == $n then $h else $hr end)}
+     | (if $m == $n then $h else $hr end) as $mh
+     | {m: $m, h: $mh, c: (best($m; $w; $mh) // 1)}
    end) as $p
   | ($all[:$p.m]) as $shown
-  | (best($p.m; $w; $p.h) // 1) as $c
+  | $p.c as $c
   | rows_of($p.m; $c) as $r
   | [sizes($w - ($c - 1); $c)] as $cw
   | [sizes($p.h; $r)] as $rh
@@ -1841,7 +1843,7 @@ else
          | if $x < $p.m then window($shown[$x]; $cw[$j]; $rh[$i])[$k] else spaces($cw[$j]) end]
       | join("│")]) as $body
   | $body + (if $p.m < $n then ["+\($n - $p.m) more: " + ($all[$p.m:] | map(.id) | join(", ")) | .[:$w]] else [] end)
-  | . + [range(0; $h - length) | ""]
+  | . + [range(0; $h - length) | ""] | .[:$h]
 end
 | map(if $rev == 1 then . else sub(" +$"; "") end) | .[]'
 
