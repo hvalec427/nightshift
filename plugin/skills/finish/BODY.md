@@ -40,7 +40,7 @@ and uses the project's own words for things.
   - **Blast radius,** in one word. Wide when the change reaches past its feature: config,
     the repo's persisted state or data layout (nightshift's `~/.nightshift` layout), an
     installer, a CLI's commands or flags, or what a run can reach. Narrow otherwise. The
-    merge skill takes a wide one as a reason to ask for a look.
+    merge skill names a wide one in its closing comment.
 
 ## Under nightshift
 

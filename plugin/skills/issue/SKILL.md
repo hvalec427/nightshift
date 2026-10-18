@@ -91,9 +91,9 @@ small issue (case 2) has a pull request and no plan, and its later runs take cas
 1. **No plan yet, open decisions.** Decisions that are the user's and that the issue and
    the code don't settle: invoke the `nightshift:questions` skill, which asks them.
 2. **No plan yet, small.** A **small** issue is all of: a few lines (about 20) in one or
-   two files; nothing for the user to decide (the issue already says what to do); none of
-   the merge skill's look triggers (a new command or option, a breaking change, anything
-   security-relevant, CI, releases or installing); and, on a `bug`, a cause already plain
+   two files; nothing for the user to decide (the issue already says what to do); no new
+   command or option, no breaking change, and nothing security-relevant or touching CI,
+   releases or installing; and, on a `bug`, a cause already plain
    from the issue and the code. When in doubt, it isn't small. Decide it on a run with
    no plan yet, and invoke the `nightshift:build` skill in this session (no
    `nightshift build` first: there's no planning conversation to leave behind). It builds
