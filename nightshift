@@ -10,7 +10,7 @@
 #   nightshift logs [<owner/repo>#<n>] [-f] [-v…]  what every issue (or one) does, at a level
 #   nightshift add <owner/repo> <clone>  watch a repo, using this clone of it, and set up its .nightshift/ (config, CONTEXT.md) to commit
 #   nightshift label <status>            (in a run) set its issue's status label
-#   nightshift build                     (in a run) build the approved plan, in a fresh session if it's the planning one
+#   nightshift build [--carry-on]        (in a run) build the approved plan, in a fresh session if it's the planning one (--carry-on: no approval, the plan has no open choices)
 #   nightshift doctor                    check the tools and setup it needs on this machine
 #   nightshift --version                 the version that runs
 #
@@ -19,7 +19,7 @@
 # runs resume), `plan-session` (the planning one, once the build has its own),
 # `sessions` (the ids of sessions left behind for a fresh one, oldest first: see
 # context_full),
-# `build` (the approval, while a fresh build session waits to start),
+# `build` (the approval, or the carry-on line, while a fresh build session waits to start),
 # `seen` (the last comment handed to the agent), `pid` while it runs,
 # `finished` once a run ended, `pr` once it opened one, `off` (why) while it has
 # no label or is closed, `interrupted` (why) if that or the watcher stopping
@@ -58,6 +58,8 @@ SERVICE="${NIGHTSHIFT_LABEL:-com.nightshift.watch}"
 PLIST="$HOME/Library/LaunchAgents/$SERVICE.plist"
 DOMAIN="gui/$(id -u)"
 MARKER="<!-- nightshift -->"
+# What `nightshift build --carry-on` leaves in `build` instead of an approval.
+CARRY_ON="- nightshift: the plan has no open choices, so it's built without waiting for a go."
 LABEL=agent
 # Who gh is logged in as, once `watch` has asked.
 LOGIN=""
@@ -536,7 +538,7 @@ run_agent() {
     # The plan is approved: built in a fresh session, the planning one kept.
     intro=$(build_intro "$repo" "$n" "$dir")
     said=$(cat "$dir/build")
-    mv "$dir/session" "$dir/plan-session"
+    [ ! -f "$dir/session" ] || mv "$dir/session" "$dir/plan-session"
     rm -f "$dir/build"
     resume=""
   elif [ ! -s "$dir/session" ]; then
@@ -742,6 +744,15 @@ fresh_intro() {
 build_intro() {
   fetch_plan "$1" "$2"
   approval=$(cat "$3/build")
+  if [ "$approval" = "$CARRY_ON" ]; then
+    first="The plan has no open choices, so it is built without waiting for a go: build it with the nightshift:build skill. This is a fresh session: the plan holds what was settled before it, so read the thread only for what came after it. A comment of the user's since the plan comes first: see the build skill."
+    sincehead="Since the plan:"
+    approvalhead="The carry-on:"
+  else
+    first="The plan is approved: build it with the nightshift:build skill. This is a fresh session: the plan holds what was settled before it, so read the thread only for what came after it."
+    sincehead="Since the plan, before the approval:"
+    approvalhead="The approval:"
+  fi
   since=""
   if [ -n "$planid" ]; then
     # The approval names its comments, `- @user (comment id):`. Nightshift's
@@ -755,10 +766,9 @@ build_intro() {
         | \"- @\(.user.login) (comment \(.id)):\n\n\(.body[0:3000])\n\"" 2>/dev/null)
   fi
   printf '%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n' \
-    "The plan is approved: build it with the nightshift:build skill. This is a fresh session: the plan holds what was settled before it, so read the thread only for what came after it." \
-    "The issue:" "$issue" "The approved plan:" "$plan"
-  [ -z "$since" ] || printf '%s\n\n%s\n\n' "Since the plan, before the approval:" "$since"
-  printf '%s\n\n%s' "The approval:" "$approval"
+    "$first" "The issue:" "$issue" "The approved plan:" "$plan"
+  [ -z "$since" ] || printf '%s\n\n%s\n\n' "$sincehead" "$since"
+  printf '%s\n\n%s' "$approvalhead" "$approval"
 }
 
 # What a run is told of repo $1's merging: whether to merge its pull requests.
@@ -1492,8 +1502,9 @@ This is an update run: the update skill's job.
 }
 
 # Whether issue dir $1 can still hand off to a build session: it has a
-# planning session, and no build session or pull request yet.
-handoff_ok() { [ -s "$1/session" ] && [ ! -f "$1/plan-session" ] && [ ! -f "$1/pr" ] && [ ! -f "$1/build" ]; }
+# planning session, and no build session or pull request yet. A carry-on ($2
+# `carry`) can come from a first run, whose session is kept only once it ends.
+handoff_ok() { { [ -s "$1/session" ] || [ "${2:-}" = carry ]; } && [ ! -f "$1/plan-session" ] && [ ! -f "$1/pr" ] && [ ! -f "$1/build" ]; }
 
 # Whether the new comments on $1#$2 ($3, the jq filter for them) are a plain
 # "go", replying to a plan: the last nightshift comment.
@@ -2075,9 +2086,18 @@ cmd_label() {
 # the build gets a fresh one, with the comments this run was given (see
 # run_agent), and the run ends; otherwise it builds here.
 cmd_build() {
+  carry=0
+  case "${1:-}" in
+  "") ;;
+  --carry-on) carry=1 ;;
+  *) usage_error "usage: nightshift build [--carry-on]" ;;
+  esac
   [ -n "${NIGHTSHIFT_REPO:-}" ] && [ -n "${NIGHTSHIFT_ISSUE:-}" ] || die "nightshift build only works in a nightshift run"
   bd=$(issue_dir "$NIGHTSHIFT_REPO" "$NIGHTSHIFT_ISSUE")
-  if handoff_ok "$bd" && [ ! -f "$bd/updating" ]; then
+  if [ $carry = 1 ] && handoff_ok "$bd" carry && [ ! -f "$bd/updating" ]; then
+    printf '%s\n' "$CARRY_ON" >"$bd/build"
+    echo "A fresh session builds it, with the issue, the plan and the comments since: end this run now, with no comment."
+  elif [ $carry = 0 ] && handoff_ok "$bd" && [ ! -f "$bd/updating" ]; then
     cp "$bd/news" "$bd/build" 2>/dev/null || : >"$bd/build"
     echo "A fresh session builds it, with the issue, the plan and the approval: end this run now, with no comment."
   else
@@ -2112,7 +2132,7 @@ stop) shift; cmd_stop "${1:-}" ;;
 logs) shift; cmd_logs "$@" ;;
 add) shift; cmd_add "$@" ;;
 label) shift; cmd_label "$*" ;;
-build) cmd_build ;;
+build) shift; cmd_build "$@" ;;
 _skill) shift; cmd_skill "$@" ;;
 doctor) cmd_doctor ;;
 -V | --version | version) echo "nightshift $VERSION" ;;

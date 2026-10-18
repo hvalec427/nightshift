@@ -148,4 +148,63 @@ planned() {
   expect_line "nightshift build: the approval" "$(sed -n '/^The approval:/,$p' <<<"$p")" "^- @alice (comment $id):$"
   expect_line "nightshift build: the approval is not in the section" "$(sed -n '/^Since the plan/,/^The approval:/p' <<<"$p")" "comment $id" no)
 
+# A planning run that carries on: `nightshift build --carry-on` hands off with no
+# approval, and the build starts on the next poll.
+(world
+  planned
+  early=$(gh_comment o/r 7 alice "also handle the empty case")
+  runs_do 'nightshift build --carry-on >"$RUN/said"; [ "$k" = 3 ] || comment progress'
+  poll
+  expect_line "carry-on: the run is told to end" "$(cat "$CLAUDE_FAKE/runs/2/said")" "fresh session.*end this run now, with no comment"
+  expect_ok "carry-on: the build file is the watcher's line" grep -qx -- "- nightshift: the plan has no open choices, so it's built without waiting for a go." "$(idir 7)/build"
+  expect "carry-on: the build waits: queued" "$(status_label 7)" queued
+  late=$(gh_comment o/r 7 alice "actually, stop")
+  poll
+  expect "carry-on: the next poll: the build run, no go needed" "$(runs)" 3
+  p=$(run_prompt)
+  expect "carry-on: a fresh session" "$(run_opt --resume)" ""
+  expect_line "carry-on: the prompt names the carry-on" "$p" "^The plan has no open choices, so it is built without waiting for a go: build it with the nightshift:build skill"
+  expect_line "carry-on: not an approval" "$p" "The plan is approved" no
+  expect_line "carry-on: the plan" "$p" "^T1: the fast path\\.$"
+  expect_line "carry-on: the section" "$p" "^Since the plan:$"
+  expect_line "carry-on: a comment before the run" "$p" "^- @alice (comment $early):$"
+  expect_line "carry-on: a comment posted after the hand-off" "$p" "^- @alice (comment $late):$"
+  expect_line "carry-on: the watcher's line" "$(sed -n '/^The carry-on:/,$p' <<<"$p")" "^- nightshift: the plan has no open choices"
+  expect "carry-on: the planning session is kept" "$(state 7 plan-session)" session-1
+  expect_ok "carry-on: nothing is left pending" test ! -f "$(idir 7)/build"
+  expect "carry-on: the build run is not a reply" "$(state 7 agents | jq -s -c '.[-1].reply')" false
+  expect_no_unexpected)
+
+# The same from a first run, which plans straight away: its session is kept
+# once it ends, and the build still gets a fresh one.
+(world
+  gh_issue o/r 7 alice agent enhancement
+  runs_do 'comment plan "T1: the fast path."; nightshift build --carry-on >"$RUN/said"; [ "$k" = 2 ] || comment progress'
+  poll
+  expect_line "carry-on from a first run: told to end" "$(cat "$CLAUDE_FAKE/runs/1/said")" "fresh session.*end this run now"
+  expect "carry-on from a first run: queued" "$(status_label 7)" queued
+  poll
+  expect "carry-on from a first run: the build run" "$(runs)" 2
+  expect "carry-on from a first run: a fresh session" "$(run_opt --resume)" ""
+  expect_line "carry-on from a first run: the prompt" "$(run_prompt)" "^The plan has no open choices"
+  expect "carry-on from a first run: the planning session is kept" "$(state 7 plan-session)" session-1
+  expect_no_unexpected)
+
+(world
+  planned
+  runs_do 'nightshift build --carry-on >"$RUN/said"'
+  gh_comment o/r 7 alice "build it" >/dev/null
+  echo "https://github.com/o/r/pull/9" >"$(idir 7)/pr"
+  poll
+  expect_line "carry-on with a pull request: no hand-off" "$(cat "$CLAUDE_FAKE/runs/2/said")" "in this session"
+  expect_ok "carry-on with a pull request: nothing pending" test ! -f "$(idir 7)/build")
+
+(world
+  planned
+  runs_do 'nightshift build --nope >"$RUN/said" 2>&1 || echo "status $?" >>"$RUN/said"'
+  gh_comment o/r 7 alice "x" >/dev/null
+  poll
+  expect_line "an unknown flag: usage error" "$(cat "$CLAUDE_FAKE/runs/2/said")" "usage: nightshift build \\[--carry-on\\]"
+  expect_ok "an unknown flag: nothing pending" test ! -f "$(idir 7)/build")
+
 report
