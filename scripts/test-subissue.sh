@@ -70,6 +70,7 @@ body_of() { jq -r .body "$(gh_dir o/r)/issues/$1.json"; }
   expect "links it under the parent" "$(gh_sub_issues o/r 7)" "8"
   expect "it has no blockers" "$(gh_blockers o/r 8)" ""
   expect "the parent's subs: its number" "$(state 7 subs)" "8"
+  expect "linked: no longer in subs-linking" "$(state 7 subs-linking)" ""
   expect "agent comes last, after the link" "$(grep -o 'issue create\|sub_issues\|add-label agent' "$GH_FAKE/calls" | paste -sd, -)" "issue create,sub_issues,add-label agent"
 
   try ns sub-issue --title "S2: on the base" --body-file "$W/body.md"
@@ -107,6 +108,7 @@ body_of() { jq -r .body "$(gh_dir o/r)/issues/$1.json"; }
   expect "can't link: fails with what it managed" "$ST $OUT" "1 nightshift: created #8 (not labelled agent) but couldn't link it under #7"
   expect "the issue exists, without agent" "$(gh_labels o/r 8 | paste -sd, -)" "bug"
   expect "the parent still counts it" "$(state 7 subs)" "8"
+  expect "still linking: the watcher won't start it" "$(state 7 subs-linking)" "8"
   expect "it stopped before the blockers" "$(gh_blockers o/r 8)" ""
   expect_no_unexpected)
 

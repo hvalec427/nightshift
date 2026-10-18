@@ -114,4 +114,21 @@ LONG_AGO="2000-01-01T00:00:00Z"
   expect "a later comment: a resumed run" "$(runs)" 2
   expect_no_unexpected)
 
+# A sub-issue a run is still linking (nightshift sub-issue) isn't started,
+# though all_issues lists it before its blockers are linked.
+(world
+  runs_do 'comment questions'
+  all_on
+  poll
+  mkdir -p "$(idir 5)"
+  echo 8 >"$(idir 5)/subs-linking"
+  gh_issue o/r 8 alice
+  poll
+  expect "a sub-issue still being linked: no run" "$(runs)" 0
+  : >"$(idir 5)/subs-linking"
+  poll
+  expect "linked: its first run" "$(runs)" 1
+  expect_ok "the run is for it" test -f "$(idir 8)/started"
+  expect_no_unexpected)
+
 report

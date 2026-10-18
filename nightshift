@@ -36,7 +36,8 @@
 # for), `log` (readable, live) and `out.jsonl` (the last run's raw stream-json),
 # `subs` (the sub-issues it made, a number a line: see cmd_sub_issue;
 # `subs-noted`, the ones merged it commented on, and `subs-closed`, that it closed
-# itself once they all merged: see check_subs),
+# itself once they all merged: see check_subs; `subs-linking`, the ones
+# cmd_sub_issue hasn't linked yet, which the watcher doesn't start),
 # `cost` (what its runs cost, added up), `usage` (its session's totals at the
 # last result), `agents` (every run's session and subagents, a JSON line each:
 # see AGENTS), `models` (what each model cost it, a line `opus-5-5 3.2` each),
@@ -1627,6 +1628,9 @@ poll_repo() {
   # The ones with open blockers (GitHub counts them in the list), held until
   # they close if they haven't had their first run.
   blocked=$(printf '%s\n' "$issues" | jq -r '.[] | select((.issue_dependencies_summary.blocked_by // 0) > 0) | .number')
+  # And the sub-issues a run is still linking (see cmd_sub_issue): with
+  # all_issues, listed before their blockers are.
+  linking=$(cat "$NS/issues/$(echo "$repo" | tr '/' '_')"_*/subs-linking 2>/dev/null || true)
 
   # Issues no longer labelled (or closed, or held): note which, once, and stop
   # what's running there. Back in the list, the note goes (and a stopped run
@@ -1704,7 +1708,10 @@ poll_repo() {
     [ -s "$d/session" ] || [ -f "$d/started" ] || first_run=1
     # Blocked, never run: held, checked again every poll (its updated isn't
     # recorded), and started once its blockers are closed.
-    if [ $first_run -eq 1 ] && printf '%s\n' "$blocked" | grep -qx "$n"; then
+    if [ $first_run -eq 1 ] && printf '%s\n' "$linking" | grep -qx "$n"; then
+      did="$did, #$n being linked"
+      continue
+    elif [ $first_run -eq 1 ] && printf '%s\n' "$blocked" | grep -qx "$n"; then
       printf '%s\n' "$proposed" | grep -qx "$n" || set_status "$repo" "$n" waiting
       did="$did, #$n blocked"
       continue
@@ -2635,8 +2642,9 @@ cmd_label() {
 # sub-issue of its issue (the parent): the body and the parent marker, labelled
 # the parent's type, linked under the parent, blocked by each issue it goes
 # --after, and noted in the parent's `subs`, and only then labelled `agent`, so
-# the watcher can't start it before its blockers are linked. A step that fails
-# fails it, saying what it managed.
+# the watcher can't start it before its blockers are linked. With all_issues,
+# the label doesn't hold it, so it's in the parent's `subs-linking` until its
+# links are made. A step that fails fails it, saying what it managed.
 cmd_sub_issue() {
   [ -n "${NIGHTSHIFT_REPO:-}" ] && [ -n "${NIGHTSHIFT_ISSUE:-}" ] || die "nightshift sub-issue only works in a nightshift run"
   si_use="usage: nightshift sub-issue --title <title> --body-file <file> [--after <n>]…"
@@ -2666,7 +2674,7 @@ cmd_sub_issue() {
   case "$si_n" in '' | *[!0-9]*) die "couldn't create the sub-issue: nothing was created" ;; esac
   # Noted at once: the parent waits on it however the rest goes.
   si_dir=$(issue_dir "$si_repo" "$si_parent")
-  mkdir -p "$si_dir" && echo "$si_n" >>"$si_dir/subs"
+  mkdir -p "$si_dir" && echo "$si_n" >>"$si_dir/subs" && echo "$si_n" >>"$si_dir/subs-linking"
   si_id=$(gh api "repos/$si_repo/issues/$si_n" --jq .id 2>/dev/null) || si_id=""
   [ -n "$si_id" ] && gh api -X POST "repos/$si_repo/issues/$si_parent/sub_issues" -F "sub_issue_id=$si_id" >/dev/null 2>&1 ||
     die "created #$si_n (not labelled $LABEL) but couldn't link it under #$si_parent"
@@ -2675,6 +2683,7 @@ cmd_sub_issue() {
     [ -n "$si_aid" ] && gh api -X POST "repos/$si_repo/issues/$si_n/dependencies/blocked_by" -F "issue_id=$si_aid" >/dev/null 2>&1 ||
       die "created #$si_n (not labelled $LABEL) and linked it under #$si_parent but couldn't make it wait for #$si_a"
   done
+  { grep -vx "$si_n" "$si_dir/subs-linking" || true; } >"$si_dir/subs-linking.new" && mv "$si_dir/subs-linking.new" "$si_dir/subs-linking"
   gh issue edit "$si_n" --repo "$si_repo" --add-label "$LABEL" >/dev/null 2>&1 ||
     die "created #$si_n and linked it under #$si_parent but couldn't label it $LABEL"
   echo "$si_url"
