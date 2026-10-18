@@ -34,14 +34,16 @@
 # then why),
 # `conflict` (the default branch's commit its pull request was last updated
 # for), `log` (readable, live) and `out.jsonl` (the last run's raw stream-json),
-# `subs` (the sub-issues it made, a number a line: see cmd_sub_issue),
+# `subs` (the sub-issues it made, a number a line: see cmd_sub_issue;
+# `subs-noted`, the ones merged it commented on, and `subs-closed`, that it closed
+# itself once they all merged: see check_subs),
 # `cost` (what its runs cost, added up), `usage` (its session's totals at the
 # last result), `agents` (every run's session and subagents, a JSON line each:
 # see AGENTS), `models` (what each model cost it, a line `opus-5-5 3.2` each),
 # `context` (its last run's context at the end, and the model's window), and
 # `done` (why) once its pull request merged or it closed, when only `log`,
 # `session`, `plan-session`, `sessions`, `seen`, `started`, `pr`, `cost`,
-# `usage`, `agents` and `models` stay
+# `usage`, `agents`, `models`, `subs`, `subs-noted` and `subs-closed` stay
 # (`revived`, the merged pull request a comment brought it back from);
 # `label`, its status label (see STATUSES; `waiting` while open blockers hold its
 # first run, which the watcher checks every poll); `skill`, the last nightshift skill
@@ -295,6 +297,16 @@ set_status() {
   printf '%s\n' "$snew" >"$sd/label"
 }
 
+# Whether issue dir $1 is a parent (it has `subs`) with a sub-issue that isn't
+# done. A sub-issue's dir is its sibling.
+subs_pending() {
+  [ -s "$1/subs" ] || return 1
+  while read -r sp; do
+    [ -f "${1%_*}_$sp/done" ] || return 0
+  done <"$1/subs"
+  return 1
+}
+
 # The status of an issue with nothing running, from its log's last run: how it
 # ended, and the stage of the last comment it posted.
 idle_status() {
@@ -308,7 +320,8 @@ idle_status() {
   case "$ended" in
   stopped*) echo stopped ;;
   failed* | stalled* | *" questions" | *" answer" | *" plan" | *" blocked" | *" look") echo "needs you" ;;
-  *) if [ -f "$1/pr" ]; then echo "PR open"
+  *) if subs_pending "$1"; then echo waiting
+    elif [ -f "$1/pr" ]; then echo "PR open"
     elif [ -s "$1/session" ]; then echo "needs you"
     else echo queued
     fi ;;
@@ -1222,6 +1235,42 @@ check_done() {
   done
 }
 
+# Parents (issue dirs with `subs`) that aren't done: a progress comment for
+# each sub-issue that retired merged since the last poll, once (`subs-noted`
+# holds the ones it counted), and when every sub-issue merged, the parent
+# closed, once (`subs-closed`): check_done retires it as "issue closed" when
+# it sees the close. A sub-issue closed without merging leaves it open.
+check_subs() {
+  for d in "$NS/issues/$(echo "$1" | tr '/' '_')"_*; do
+    [ -s "$d/subs" ] || continue
+    [ -f "$d/done" ] || [ -f "$d/ignored" ] && continue
+    n=${d##*_}
+    total=$(grep -c . "$d/subs")
+    merged=0
+    while read -r s; do
+      [ "$(cat "${d%_*}_$s/done" 2>/dev/null)" = "PR merged" ] || continue
+      merged=$((merged + 1))
+      grep -qx "$s" "$d/subs-noted" 2>/dev/null && continue
+      k=$(($(grep -c . "$d/subs-noted" 2>/dev/null || true) + 1))
+      if gh issue comment "$n" --repo "$1" --body "🤖 **nightshift**: #$s merged ($k of $total)
+
+$MARKER <!-- nightshift:progress -->" >/dev/null 2>&1; then
+        echo "$s" >>"$d/subs-noted"
+      else
+        log "$1#$n: couldn't comment that #$s merged"
+      fi
+    done <"$d/subs"
+    if [ "$merged" -eq "$total" ] && [ ! -f "$d/subs-closed" ]; then
+      if gh issue close "$n" --repo "$1" >/dev/null 2>&1; then
+        touch "$d/subs-closed"
+        log "$1#$n: closed: all $total sub-issues merged"
+      else
+        log "$1#$n: couldn't close it after its sub-issues merged"
+      fi
+    fi
+  done
+}
+
 # A done issue: its worktree goes if it's clean, and after a merge its branch,
 # if all of it was in the pull request (-D: a squash merge leaves its commits
 # off the default branch). Of its state,
@@ -1246,7 +1295,7 @@ retire() {
   # Dated when it closed, if it already had (a merge closes the issue too).
   echo "$5" >"$4/done"
   [ -f "$4/off" ] && touch -r "$4/off" "$4/done"
-  find "$4" -mindepth 1 -maxdepth 1 ! -name "done" ! -name log ! -name session ! -name plan-session ! -name sessions ! -name seen ! -name started ! -name pr ! -name cost ! -name usage ! -name agents ! -name models -exec rm -rf {} +
+  find "$4" -mindepth 1 -maxdepth 1 ! -name "done" ! -name log ! -name session ! -name plan-session ! -name sessions ! -name seen ! -name started ! -name pr ! -name cost ! -name usage ! -name agents ! -name models ! -name subs ! -name subs-noted ! -name subs-closed -exec rm -rf {} +
   comment_cost "$1" "$2" "$4"
   log "$1#$2: done ($5)$gone"
 }
@@ -1379,12 +1428,29 @@ pr_size() {
 # dollars of each model from its `models`, most first, and the size of its pull
 # request, each only if known. Nothing if neither is.
 cost_details() {
-  split=$(awk '$2 > 0 { printf "%s %.6f\n", $1, $2 }' "$2/models" 2>/dev/null | sort -k2,2nr -k1,1 |
-    awk '{ printf "%s%s $%.2f", (n++ ? " · " : ""), $1, $2 }')
+  split=$(models_split "$2/models")
   size=$(pr_size "$1" "$2")
   printf '%s' "$split"
   [ -z "$split" ] || [ -z "$size" ] || printf ' · '
   printf '%s' "$size"
+}
+
+# The dollars of each model in the `models` files given (a model and its
+# dollars a line), a model's summed over them, most first.
+models_split() {
+  cat "$@" 2>/dev/null | awk '$2 > 0 { usd[$1] += $2 } END { for (m in usd) printf "%s %.6f\n", m, usd[m] }' | sort -k2,2nr -k1,1 |
+    awk '{ printf "%s%s $%.2f", (n++ ? " · " : ""), $1, $2 }'
+}
+
+# A parent's cost lines (its repo not needed): its own planning and a line
+# each sub-issue with a cost, from the dirs $1 (the parent's) and its `subs`.
+parent_cost_lines() {
+  p=$(cost_words "$1" | cut -d' ' -f1)
+  [ -z "$p" ] || printf '#%s planning: %s\n' "${1##*_}" "$p"
+  while read -r sp; do
+    p=$(cost_words "${1%_*}_$sp" | cut -d' ' -f1)
+    [ -z "$p" ] || printf '#%s: %s\n' "$sp" "$p"
+  done <"$1/subs"
 }
 
 # What a done issue's runs cost, as a comment on it, if they were counted.
@@ -1393,9 +1459,27 @@ cost_details() {
 # end. None with `cost_comment=false`.
 comment_cost() {
   [ "$(repo_option "$1" cost_comment)" != false ] || return 0
-  words=$(cost_words "$3") || return 0
+  parent=0
+  [ -s "$3/subs" ] && parent=1
+  if [ $parent -eq 1 ]; then
+    words=$(cost_sum "$3") || return 0
+    words=$(printf '%s\n' "$words" | cost_line_words)
+  else
+    words=$(cost_words "$3") || return 0
+  fi
   details="" table=""
-  if [ "$(repo_option "$1" cost_breakdown)" != false ]; then
+  if [ $parent -eq 1 ]; then
+    # A parent: the models summed over its sub-issues, and a line each issue.
+    if [ "$(repo_option "$1" cost_breakdown)" != false ]; then
+      # shellcheck disable=SC2046 # a path each, none with a space
+      details=$(models_split $(cost_files "$3" | sed 's|/cost$|/models|'))
+      [ -z "$details" ] || details="
+$details"
+    fi
+    table="
+$(parent_cost_lines "$3")
+"
+  elif [ "$(repo_option "$1" cost_breakdown)" != false ]; then
     # The models' dollars and the pull request's size, on a line of their own.
     details=$(cost_details "$1" "$3")
     [ -z "$details" ] || details="
@@ -1587,6 +1671,7 @@ poll_repo() {
     echo "$now" >"$pf"
   fi
   check_done "$repo" "$clone"
+  check_subs "$repo"
 
   printf '%s\n' "$open" | {
   count=0 did=""
@@ -2080,8 +2165,31 @@ cmd_top() {
 # with its first run). Fails if there's none.
 cost_words() {
   [ -s "$1/cost" ] || return 1
+  cost_line_words <"$1/cost"
+}
+# The same of a cost line on stdin.
+cost_line_words() {
   awk "$TOK"'
-    { printf "$%.2f %s %s %s %s %d %d %s\n", $1, tok($2 + $3 + $4), tok($2), tok($3), tok($4), $5, $6, $7 }' "$1/cost"
+    { printf "$%.2f %s %s %s %s %d %d %s\n", $1, tok($2 + $3 + $4), tok($2), tok($3), tok($4), $5, $6, $7 }'
+}
+
+# The costs of a parent's dir $1 and its sub-issues' (their dirs are its
+# siblings) added up, as one cost line, the day counting started the earliest
+# of theirs; fails if none is counted.
+cost_sum() {
+  files=$(cost_files "$1")
+  [ -n "$files" ] || return 1
+  printf '%s\n' "$files" | while read -r f; do cat "$f"; echo; done | awk '
+    NF { for (i = 1; i <= 6; i++) t[i] += $i; if ($7 != "-" && (since == "" || $7 < since)) since = $7 }
+    END { printf "%.6f %d %d %d %d %d %s\n", t[1], t[2], t[3], t[4], t[5], t[6], (since == "" ? "-" : since) }'
+}
+
+# The `cost` files of parent dir $1 and its sub-issues, the ones that exist.
+cost_files() {
+  { echo "$1"; while read -r sp; do echo "${1%_*}_$sp"; done <"$1/subs"; } | while read -r cdir; do
+    [ -s "$cdir/cost" ] && echo "$cdir/cost"
+  done
+  return 0
 }
 
 # What an issue's runs (its dir $1) cost, for status, if it's counted, and

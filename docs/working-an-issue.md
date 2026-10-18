@@ -83,7 +83,7 @@ waiting on you:
 | `nightshift: answering` | a run is answering a `question` or `duplicate` issue |
 | `nightshift: needs you` | waiting on your reply: questions, an answer, a plan, blocked, a pull request to look at before it merges, a failed run, or one that stalled twice. It comes off as soon as the watcher sees your reply |
 | `nightshift: PR open` | the pull request is open, nothing running |
-| `nightshift: waiting` | a sub-issue blocked by issues that are still open: held until they close, then its first run starts |
+| `nightshift: waiting` | a sub-issue blocked by issues that are still open: held until they close, then its first run starts; or a parent whose sub-issues are not all done |
 | `nightshift: stopped` | a run was stopped partway |
 
 The watcher sets them as runs start and end, and as a run invokes one of
@@ -107,6 +107,12 @@ Others' comments don't start it. `nightshift status` shows a held one as
 An issue with open blockers (GitHub's "blocked by", as `nightshift sub-issue` sets) that hasn't had
 its first run is held the same way, labelled `nightshift: waiting`: the watcher checks it every
 poll and starts it once its blockers are closed. One already worked on isn't held.
+
+A parent (an issue whose run made sub-issues) is `waiting` until they're all done. Each time a
+sub-issue's pull request merges, the watcher comments `#161 merged (2 of 4)` on the parent, once;
+when the last one has, it closes the parent, which retires as "issue closed" with one cost comment
+that totals the parent and every sub-issue, a line each (and, unless `cost_breakdown=false`, the
+dollars of each model, summed). A sub-issue closed without merging leaves the parent open for you.
 
 nightshift's comments start with **🤖 nightshift** and carry a hidden `<!-- nightshift -->`
 marker, which is how it tells them from yours: it runs as your GitHub account, so

@@ -200,6 +200,9 @@ issue() {
     body=$(opt --body) || body=$(cat "$(opt --body-file)") || unexpected
     id=$(gh_comment "$repo" "$n" "$(cat "$GH_FAKE/user")" "$body")
     echo "https://github.com/$repo/issues/$n#issuecomment-$id" ;;
+  close)
+    gh_state "$repo" "$n" closed
+    echo "✓ Closed issue $repo#$n" ;;
   edit)
     if old=$(opt --remove-label); then
       IFS=, read -ra ls <<<"$old"
