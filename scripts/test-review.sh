@@ -23,7 +23,7 @@ if [ -f "$REVIEW" ]; then
   expect_ok "it has a description" test -n "$(field "$REVIEW" description)"
   expect_line "it briefs a Spec reviewer" "$review_skill" '^### Spec'
   expect_line "it briefs a Standards reviewer" "$review_skill" '^### Standards'
-  expect_line "it reviews against the default branch" "$review_skill" 'git diff <default branch>\.\.\.HEAD'
+  expect_line "it reviews against the base branch" "$review_skill" 'git diff <base branch>\.\.\.HEAD'
   expect_line "it bounds the fixes to one pass" "$review_skill" '^## .*One fix pass$'
   expect_line "it pastes the CLAUDE.md rules in" "$(section "$REVIEW" '^## 2\.')" 'the `CLAUDE\.md` rules'
   expect_line "the Standards reviewer checks a CLAUDE.md change against them" "$(section "$REVIEW" '^### Standards')" 'a `CLAUDE\.md` change in the diff, checked against'

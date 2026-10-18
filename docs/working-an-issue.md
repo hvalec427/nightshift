@@ -154,10 +154,10 @@ otherwise the pull request that opened first does. `nightshift status` shows it 
 `PR <url> · after #10`.
 
 After a merge, each poll looks at the open nightshift pull requests. One that now
-conflicts with the default branch (after any merge, nightshift's or not), or that
-goes after or overlaps the nightshift pull request that just merged, gets a run
-(its issue gets no comment until the run's own). That run rebases it onto the default
-branch, fixes the conflicts, and updates the change to fit what merged, not just to
+conflicts with its base branch (the default branch, or `base_branch`; after any merge,
+nightshift's or not), or that goes after or overlaps the nightshift pull request that
+just merged, gets a run (its issue gets no comment until the run's own). That run
+rebases it onto its base branch, fixes the conflicts, and updates the change to fit what merged, not just to
 apply. It runs the checks again, force-pushes (`--force-with-lease`), and says what changed beyond the
 conflict fixes. A conflict that needs your decision gets a question on the issue
 instead. Meanwhile `status` shows `conflicts, rebasing` or `updating after #10`. So

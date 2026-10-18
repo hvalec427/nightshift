@@ -74,3 +74,7 @@ nightshift's runs read this file and keep it up to date.
 - **all-issues on-time**: the UTC time a poll first read a repo's `all_issues=true`, kept in
   `~/.nightshift/all_issues/<owner>_<repo>` until the option reads off. Only an allowed user's
   unlabelled issues created at or after it are worked; older ones are left alone.
+- **base branch**: the branch a repo's pull requests merge into: `base_branch` in
+  `.nightshift/config` when origin has that branch, else the **default branch** (origin/HEAD's,
+  else GitHub's). New issue branches start from it; the run prompt names it only when it isn't
+  the default branch.

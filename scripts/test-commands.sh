@@ -113,6 +113,11 @@ $SCAFFOLD"
 # test_command: the command that runs the whole test suite (default: runs work it out from the repo's instructions).
 # test_command=npm test
 #
+# base_branch: the branch its pull requests merge into (default: the default branch). Issues branch
+# from it, pull requests target it and nightshift closes an issue itself once its pull request merges.
+# It must exist on origin, else runs use the default branch.
+# base_branch=develop
+#
 # cost_breakdown=false: the closing cost comment is one line of cost, tokens, time and the PR's size
 # (default true: it adds the dollars of each model, a table of the agents that ran and where the time went).
 # cost_breakdown=false
@@ -438,6 +443,23 @@ without() {
   expect_line "doctor: all_issues=true: works its allowed users' new issues" "$OUT" \
     "^  ok      o/r: clone $CLONE, all_issues=true works its allowed users' new issues, PRs merge on their own$"
   expect_line "doctor: all_issues=true: no missing label" "$OUT" "agent. label" no)
+
+(healthy
+  origin_config "base_branch=develop"
+  git -C "$CLONE" fetch -q origin
+  try ns doctor
+  expect "doctor: base_branch not on origin: passes" "$ST" 0
+  expect_line "doctor: base_branch not on origin: a note" "$OUT" \
+    "^  note    o/r: base_branch=develop isn't on origin, so runs use master: push it, or fix base_branch in .nightshift/config$")
+
+(healthy
+  origin_file x.md "on develop" develop
+  origin_config "base_branch=develop"
+  git -C "$CLONE" fetch -q origin
+  expect_line "doctor: base_branch on origin: no note" "$(ns doctor)" "base_branch" no)
+
+(healthy
+  expect_line "doctor: no base_branch: no note" "$(ns doctor)" "base_branch" no)
 
 (healthy
   printf 'repo %s %s auto_merge=false plugins=rn-agent\n' "$REPO" "$CLONE" >"$NS/config"

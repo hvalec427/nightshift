@@ -137,7 +137,7 @@ small issue (case 3) has a pull request and no plan, and its later runs take cas
    request (and hands it to the merge skill when the repo auto-merges). For a **large**
    plan the build makes the sub-issues instead, and a parent whose sub-issues exist is
    not built again: a comment of the user's on it is answered in a `progress` comment.
-7. **An update run:** the watcher's news says the default branch moved under this pull
+7. **An update run:** the watcher's news says the base branch moved under this pull
    request. Invoke the `nightshift:update` skill: it rebases the branch and adapts the
    change to what merged.
 8. **A `look` comment, and the user approved it** ("merge", or anything that clearly
@@ -162,9 +162,10 @@ Done when the run's comment is posted, or the run ended as case 6 says.
 Other issues are worked on `nightshift/issue-<n>` branches of this same clone: the ones
 still in progress are local branches, the finished ones open pull requests
 (`gh pr list --state open --json number,headRefName,url`). For each, other than this
-issue's, the files it changes are `git diff --name-only <default branch>...<branch>`
-(fetch first; use `origin/<branch>` when there's no local one). Read its diff where it
-touches what this change touches.
+issue's, the files it changes are `git diff --name-only <base branch>...<branch>`
+(fetch first; use `origin/<branch>` when there's no local one; the base branch is the
+one the run prompt names with "This repo's pull requests merge into", else the default
+branch). Read its diff where it touches what this change touches.
 
 Two changes **overlap** when they change the same file, or when one relies on something
 the other adds (a function, a flag, a file), even in a different file. Of two that

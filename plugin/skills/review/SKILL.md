@@ -23,10 +23,11 @@ once.
 
 ## 1. Pin the change
 
-`git fetch origin`; the default branch is `origin/` plus
+`git fetch origin`; the base branch is `origin/` plus the branch the run prompt names
+("This repo's pull requests merge into"), else plus the default branch,
 `gh repo view --json defaultBranchRef -q .defaultBranchRef.name`. The change is
-`git diff <default branch>...HEAD` (three dots: against the merge-base), its commits
-`git log --oneline <default branch>..HEAD`. Done when both commands run. An empty diff has
+`git diff <base branch>...HEAD` (three dots: against the merge-base), its commits
+`git log --oneline <base branch>..HEAD`. Done when both commands run. An empty diff has
 nothing to review: say so when you report, and go on.
 
 ## 2. Gather what they review against
