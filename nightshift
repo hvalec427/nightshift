@@ -699,9 +699,12 @@ $intro"
   st=$(idle_status "$dir")
   set_status "$repo" "$n" "$st"
   # With its pull request open, the card waits for the user: Your review. (One
-  # that merged goes to Done, when check_done sees it.)
-  if [ "$st" = "PR open" ] && is_board "$repo" && ! merged_pr "$repo" "$n" "$dir"; then
-    move_card "$repo" "$n" "Your review" || true
+  # that merged goes to Done, when check_done sees it.) A merge run that ended
+  # unmerged, on a look comment or a block, sends the card back from Ready to merge.
+  if is_board "$repo" && ! merged_pr "$repo" "$n" "$dir"; then
+    if [ "$st" = "PR open" ] || { [ "$st" = "needs you" ] && [ -f "$dir/pr" ] && [ "$(board_column "$repo" "$n")" = "ready to merge" ]; }; then
+      move_card "$repo" "$n" "Your review" || true
+    fi
   fi
 }
 
@@ -1664,7 +1667,8 @@ in review
 your review
 ready to merge
 done'
-BOARD_BACK='your review|in progress'
+BOARD_BACK='your review|in progress
+ready to merge|your review'
 
 # Move the card of $1#$2 to the column $3 (matched without regard to case) of its
 # board, as the last list_board read it. Fails, with a line in the log, when the
@@ -1804,9 +1808,12 @@ poll_repo() {
     if [ -n "$board" ] && [ -d "$d" ]; then
       col=$(board_column "$repo" "$n")
       [ "$(cat "$d/column" 2>/dev/null)" = ready ] && [ "$col" = "in progress" ] && handoff_ok "$d" && plan_pending "$repo" "$n" && bmove=1
+      # A card moved into Ready to merge, with a pull request, is a merge approval,
+      # queued until the run starts.
+      [ -s "$d/column" ] && [ "$(cat "$d/column")" != "ready to merge" ] && [ "$col" = "ready to merge" ] && [ -f "$d/pr" ] && [ ! -f "$d/done" ] && touch "$d/merge-move"
       printf '%s\n' "$col" >"$d/column"
     fi
-    [ "$bmove" != 1 ] && [ ! -f "$d/update" ] && [ ! -f "$d/build" ] && [ ! -f "$d/interrupted" ] && [ ! -f "$d/stalled" ] && [ -f "$d/updated" ] && [ "$(cat "$d/updated")" = "$updated" ] && continue
+    [ "$bmove" != 1 ] && [ ! -f "$d/merge-move" ] && [ ! -f "$d/update" ] && [ ! -f "$d/build" ] && [ ! -f "$d/interrupted" ] && [ ! -f "$d/stalled" ] && [ -f "$d/updated" ] && [ "$(cat "$d/updated")" = "$updated" ] && continue
     if [ ! -d "$d" ] && [ -n "$board" ]; then
       # A card in a working column: only people who can write to the project move cards.
       mkdir -p "$d"
@@ -1848,7 +1855,7 @@ $news}" >"$d/build"
     # A reply to an issue that needs you: it no longer does, before its run
     # (or, at capacity, `queued`) sets the next status.
     [ -n "$news" ] && [ "$(cat "$d/label" 2>/dev/null)" = "needs you" ] && set_status "$repo" "$n" ""
-    if [ $first_run -eq 0 ] && [ -z "$news" ] && [ ! -f "$d/interrupted" ] && [ ! -f "$d/stalled" ] && [ ! -f "$d/update" ] && [ ! -f "$d/build" ]; then
+    if [ $first_run -eq 0 ] && [ -z "$news" ] && [ ! -f "$d/interrupted" ] && [ ! -f "$d/stalled" ] && [ ! -f "$d/update" ] && [ ! -f "$d/build" ] && [ ! -f "$d/merge-move" ]; then
       echo "$updated" >"$d/updated"
       continue
     fi
@@ -1860,6 +1867,12 @@ $news}" >"$d/build"
     [ -n "$last" ] && echo "$last" >"$d/seen"
     echo "$updated" >"$d/updated"
     touch "$d/started"
+    if [ -f "$d/merge-move" ]; then
+      rm -f "$d/merge-move"
+      news="- the board: moved to Ready to merge${news:+
+
+$news}"
+    fi
     if [ -f "$d/update" ]; then
       mv "$d/update" "$d/updating"
       news="$news${news:+

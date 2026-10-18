@@ -41,8 +41,9 @@ the pull requests can merge in any order.
    were each marked to merge after the other; #57 goes first (lowest issue), #59 updates on
    top of it." Then what conflicted and how you fixed it, then what changed beyond the
    conflict fixes, and the checks you ran. Post it as a `progress` comment, the run's one
-   comment, only when the repo doesn't auto-merge. When the run prompt says "This repo
-   auto-merges", post nothing and hand that report to the `nightshift:merge` skill,
+   comment, only when the repo doesn't auto-merge and isn't a board. When the run prompt says
+   "This repo auto-merges" or "This repo works from a project board", post nothing and hand
+   that report to the `nightshift:merge` skill,
    invoked with the Skill tool: it puts it at the top of its one closing comment, after
    checking the pull request again and merging it, or saying what needs a look. That's how
    one that goes after another merges once the other has.

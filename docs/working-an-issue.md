@@ -60,14 +60,24 @@ The card then follows the work, one move (a GraphQL mutation) each, only when it
 | A build hands off, or a **go** approves; the build, tdd or update skill starts | In progress |
 | The review, finish or merge skill starts | In review |
 | A run starts on a card in Your review (a change request or an update) | In progress |
-| A run ends with its pull request open | Your review |
+| A run ends with its pull request open, or a merge run ends unmerged | Your review |
 | Its pull request merges | Done |
 
 So a comment on a card in Your review moves it to In progress, and the run ending puts it in
 Your review again. A card only moves forward along Backlog, Ready, In progress, In review, Your
 review, Ready to merge, Done; where you've already moved it past a column, nightshift leaves
-it. The one way back is Your review to In progress. A column the project lacks means no move,
-and a line in the log (`nightshift logs`) says which.
+it. The ways back are Your review to In progress, and Ready to merge to Your review. A column
+the project lacks means no move, and a line in the log (`nightshift logs`) says which.
+
+Nothing merges until you move a card to Ready to merge (or reply **merge**). With a pull
+request open, a run on a board repo still checks it, fixes the failing checks and posts its
+`look` comment (even with nothing to look at), but doesn't merge. Moving the card to Ready to
+merge then starts a run whose news is `- the board: moved to Ready to merge`: the merge
+skill takes it as your **merge** reply, runs its hard gates again (rebasing if the default
+branch moved) and merges, and the merged pull request puts the card in Done. A merge run that
+ends without merging (a gate failed, or something needs you) puts the card back in Your
+review, and its `look` comment says why. A card that was in Ready to merge before nightshift
+saw it, or moved there with no pull request yet, starts nothing.
 
 ## Sessions and worktrees
 

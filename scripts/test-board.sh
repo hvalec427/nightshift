@@ -427,4 +427,69 @@ BUILDS='skill nightshift:build; commit feature.txt; open_pr; skill nightshift:re
   expect "a hand-off that isn't a go: the card is in In progress" "$(gh_card_column "$BOARD" o/r 7)" "In progress"
   expect_no_unexpected)
 
+# A card moved to Ready to merge queues a run whose news says so; the card is Done once merged.
+# The same 'prs' a build leaves: a pull request open, the card in Your review.
+built() {
+  board
+  gh_issue o/r 7 alice
+  gh_card "$BOARD" o/r 7 Ready
+  runs_do "$BUILDS"
+  poll
+}
+(world
+  built
+  expect "a build: the card waits in Your review" "$(gh_card_column "$BOARD" o/r 7)" "Your review"
+  expect_line "the build run's prompt: no merge line of an auto-merging repo" "$(run_prompt)" "This repo auto-merges" no
+  expect_line "and the board line" "$(run_prompt)" "^This repo works from a project board"
+  poll
+  expect "nothing moved: no second run" "$(runs)" 1
+  gh_card_move "$BOARD" o/r 7 "Ready to merge"
+  runs_do 'skill nightshift:merge; cp "$CLAUDE_FAKE/runs/1/pr" "$RUN/pr"; merge_pr; comment done'
+  poll
+  expect "the card moved to Ready to merge: a run" "$(runs)" 2
+  expect "it resumes the session" "$(run_opt --resume)" "session-1"
+  expect_line "its news says the card moved" "$(sed -n '/^New on the issue/,$p' <<<"$(run_prompt)")" "^- the board: moved to Ready to merge$"
+  poll
+  expect "the pull request merged: the card is in Done" "$(gh_card_column "$BOARD" o/r 7)" "Done"
+  poll
+  expect "and no more runs" "$(runs)" 2
+  expect_no_unexpected)
+
+# A merge run that ends with the pull request unmerged sends the card back to Your review.
+(world
+  built
+  gh_card_move "$BOARD" o/r 7 "Ready to merge"
+  runs_do 'skill nightshift:merge; comment look'
+  poll
+  expect "the merge run ended unmerged: the card is back in Your review" "$(gh_card_column "$BOARD" o/r 7)" "Your review"
+  poll
+  expect "and it stays: no third run" "$(runs)" 2
+  expect_no_unexpected)
+
+# A card already in Ready to merge when nightshift first sees it, or one with no pull
+# request yet, starts no merge.
+(world
+  board
+  gh_issue o/r 7 alice
+  gh_card "$BOARD" o/r 7 "Ready to merge"
+  runs_do 'comment progress'
+  poll
+  expect "a first run for a card in Ready to merge" "$(runs)" 1
+  poll
+  expect "and no merge run after it" "$(runs)" 1
+  expect_no_unexpected)
+
+# At capacity, the move waits for a slot and is still noticed.
+(world
+  built
+  gh_card_move "$BOARD" o/r 7 "Ready to merge"
+  set_config max_parallel 0
+  poll
+  expect "no slot: no run" "$(runs)" 1
+  set_config max_parallel 2
+  runs_do 'skill nightshift:merge; cp "$CLAUDE_FAKE/runs/1/pr" "$RUN/pr"; merge_pr; comment done'
+  poll
+  expect "a slot frees: the merge run starts" "$(runs)" 2
+  expect_line "with the news" "$(run_prompt)" "^- the board: moved to Ready to merge$")
+
 report

@@ -89,9 +89,12 @@ The sequence:
    ```
 
    Post it as the `done` comment, the run's one closing comment, only when the repo doesn't
-   auto-merge. With auto-merge (the run prompt says "This repo auto-merges") you post
+   auto-merge and isn't a board. With auto-merge (the run prompt says "This repo
+   auto-merges") or on a project board ("This repo works from a project board") you post
    nothing here: step 6 hands the report on.
-6. **Merge.** When the run prompt says "This repo auto-merges", hand the
+6. **Merge.** When the run prompt says "This repo auto-merges" or "This repo works from a
+   project board" (where the merge skill checks the pull request and stops short of
+   merging, its `look` comment saying so), hand the
    report from step 5, as it stands, to the `nightshift:merge` skill, invoked with the
    Skill tool: it puts it at the top of its one closing comment, then merges the
    pull request (`done`), or posts a `look` comment saying what needs the user. The watcher

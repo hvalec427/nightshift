@@ -112,7 +112,7 @@ small issue (case 2) has a pull request and no plan, and its later runs take cas
    Run `nightshift build` first (`nightshift build --carry-on` for the carry-on): when it
    says a fresh session builds it, end the run there, with no comment. Otherwise invoke
    the `nightshift:build` skill: it builds the tickets test-first and opens the pull
-   request (and hands it to the merge skill when the repo auto-merges).
+   request (and hands it to the merge skill when the repo auto-merges or is a board).
 6. **An update run:** the watcher's news says the default branch moved under this pull
    request. Invoke the `nightshift:update` skill: it rebases the branch and adapts the
    change to what merged.
@@ -120,13 +120,15 @@ small issue (case 2) has a pull request and no plan, and its later runs take cas
    means merge it). When the run prompt says "This repo auto-merges", invoke the
    `nightshift:merge` skill: it runs its hard gates again and merges. With
    `auto_merge=false`, a **merge** reply is a request like any other (the next case), but
-   you don't merge: that's the user's. The same on a project board (the run prompt says
-   "This repo works from a project board"): it never auto-merges, and merging waits for the
-   card in Ready to merge or a **merge** reply.
+   you don't merge: that's the user's. On a project board (the run prompt says "This repo
+   works from a project board") nothing auto-merges: invoke `nightshift:merge` on a
+   **merge** reply, or when the news says "the board: moved to Ready to merge" (a `look`
+   comment before it or not), and it merges.
 8. **A pull request is open, and the user commented.** Do what they ask on this branch,
    check it, commit and push. The pull request updates with the push. Then say what you did
-   in a `progress` comment, only when the repo doesn't auto-merge. When the run prompt says
-   "This repo auto-merges", post nothing and hand what it did to the `nightshift:merge`
+   in a `progress` comment, only when the repo doesn't auto-merge (and isn't a board). When
+   the run prompt says "This repo auto-merges" or "This repo works from a project board",
+   post nothing and hand what it did to the `nightshift:merge`
    skill, invoked with the Skill tool: it puts that at the top of its one closing comment
    and checks the updated pull request again.
    On a small issue (case 2), a reply asking for a plan or "the full process" is a plan
