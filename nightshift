@@ -297,13 +297,19 @@ set_status() {
   printf '%s\n' "$snew" >"$sd/label"
 }
 
+# The dirs of parent dir $1's sub-issues, a line each: a sub-issue's dir is its
+# sibling.
+sub_dirs() {
+  while read -r sp; do echo "${1%_*}_$sp"; done <"$1/subs"
+}
+
 # Whether issue dir $1 is a parent (it has `subs`) with a sub-issue that isn't
-# done. A sub-issue's dir is its sibling.
+# done.
 subs_pending() {
   [ -s "$1/subs" ] || return 1
-  while read -r sp; do
-    [ -f "${1%_*}_$sp/done" ] || return 0
-  done <"$1/subs"
+  for subd in $(sub_dirs "$1"); do
+    [ -f "$subd/done" ] || return 0
+  done
   return 1
 }
 
@@ -1247,8 +1253,9 @@ check_subs() {
     n=${d##*_}
     total=$(grep -c . "$d/subs")
     merged=0
-    while read -r s; do
-      [ "$(cat "${d%_*}_$s/done" 2>/dev/null)" = "PR merged" ] || continue
+    for subd in $(sub_dirs "$d"); do
+      s=${subd##*_}
+      [ "$(cat "$subd/done" 2>/dev/null)" = "PR merged" ] || continue
       merged=$((merged + 1))
       grep -qx "$s" "$d/subs-noted" 2>/dev/null && continue
       k=$(($(grep -c . "$d/subs-noted" 2>/dev/null || true) + 1))
@@ -1259,7 +1266,7 @@ $MARKER <!-- nightshift:progress -->" >/dev/null 2>&1; then
       else
         log "$1#$n: couldn't comment that #$s merged"
       fi
-    done <"$d/subs"
+    done
     if [ "$merged" -eq "$total" ] && [ ! -f "$d/subs-closed" ]; then
       if gh issue close "$n" --repo "$1" >/dev/null 2>&1; then
         touch "$d/subs-closed"
@@ -1447,10 +1454,10 @@ models_split() {
 parent_cost_lines() {
   p=$(cost_words "$1" | cut -d' ' -f1)
   [ -z "$p" ] || printf '#%s planning: %s\n' "${1##*_}" "$p"
-  while read -r sp; do
-    p=$(cost_words "${1%_*}_$sp" | cut -d' ' -f1)
-    [ -z "$p" ] || printf '#%s: %s\n' "$sp" "$p"
-  done <"$1/subs"
+  for subd in $(sub_dirs "$1"); do
+    p=$(cost_words "$subd" | cut -d' ' -f1)
+    [ -z "$p" ] || printf '#%s: %s\n' "${subd##*_}" "$p"
+  done
 }
 
 # What a done issue's runs cost, as a comment on it, if they were counted.
@@ -1459,17 +1466,11 @@ parent_cost_lines() {
 # end. None with `cost_comment=false`.
 comment_cost() {
   [ "$(repo_option "$1" cost_comment)" != false ] || return 0
-  parent=0
-  [ -s "$3/subs" ] && parent=1
-  if [ $parent -eq 1 ]; then
+  details="" table=""
+  if [ -s "$3/subs" ]; then
+    # A parent: the models summed over its sub-issues, and a line each issue.
     words=$(cost_sum "$3") || return 0
     words=$(printf '%s\n' "$words" | cost_line_words)
-  else
-    words=$(cost_words "$3") || return 0
-  fi
-  details="" table=""
-  if [ $parent -eq 1 ]; then
-    # A parent: the models summed over its sub-issues, and a line each issue.
     if [ "$(repo_option "$1" cost_breakdown)" != false ]; then
       # shellcheck disable=SC2046 # a path each, none with a space
       details=$(models_split $(cost_files "$3" | sed 's|/cost$|/models|'))
@@ -1479,19 +1480,22 @@ $details"
     table="
 $(parent_cost_lines "$3")
 "
-  elif [ "$(repo_option "$1" cost_breakdown)" != false ]; then
-    # The models' dollars and the pull request's size, on a line of their own.
-    details=$(cost_details "$1" "$3")
-    [ -z "$details" ] || details="
+  else
+    words=$(cost_words "$3") || return 0
+    if [ "$(repo_option "$1" cost_breakdown)" != false ]; then
+      # The models' dollars and the pull request's size, on a line of their own.
+      details=$(cost_details "$1" "$3")
+      [ -z "$details" ] || details="
 $details"
-    # The agents table, if it has agents: after a blank line.
-    table=$(agents_table "$3")
-    [ -z "$table" ] || table="
+      # The agents table, if it has agents: after a blank line.
+      table=$(agents_table "$3")
+      [ -z "$table" ] || table="
 $table
 "
-  else
-    details=$(pr_size "$1" "$3")
-    [ -z "$details" ] || details=" · $details"
+    else
+      details=$(pr_size "$1" "$3")
+      [ -z "$details" ] || details=" · $details"
+    fi
   fi
   # shellcheck disable=SC2086 # a word each
   set -- "$1" "$2" $words
@@ -2174,19 +2178,19 @@ cost_line_words() {
 }
 
 # The costs of a parent's dir $1 and its sub-issues' (their dirs are its
-# siblings) added up, as one cost line, the day counting started the earliest
-# of theirs; fails if none is counted.
+# siblings) added up, as one cost line, the day counting started the latest
+# of theirs (the sum is whole only from then); fails if none is counted.
 cost_sum() {
   files=$(cost_files "$1")
   [ -n "$files" ] || return 1
   printf '%s\n' "$files" | while read -r f; do cat "$f"; echo; done | awk '
-    NF { for (i = 1; i <= 6; i++) t[i] += $i; if ($7 != "-" && (since == "" || $7 < since)) since = $7 }
+    NF { for (i = 1; i <= 6; i++) t[i] += $i; if ($7 != "-" && (since == "" || $7 > since)) since = $7 }
     END { printf "%.6f %d %d %d %d %d %s\n", t[1], t[2], t[3], t[4], t[5], t[6], (since == "" ? "-" : since) }'
 }
 
 # The `cost` files of parent dir $1 and its sub-issues, the ones that exist.
 cost_files() {
-  { echo "$1"; while read -r sp; do echo "${1%_*}_$sp"; done <"$1/subs"; } | while read -r cdir; do
+  for cdir in "$1" $(sub_dirs "$1"); do
     [ -s "$cdir/cost" ] && echo "$cdir/cost"
   done
   return 0

@@ -21,7 +21,7 @@ parent() {
   runs_do "$RUNS"
   poll
   poll
-  echo "2.5 10 20 30 600 3 -" >"$(idir 7)/cost"
+  echo "2.5 10 20 30 600 3 2026-09-20" >"$(idir 7)/cost"
   echo "1.5 100 200 300 60 2 -" >"$(idir 8)/cost"
   echo "0.5 1 2 3 90 1 2026-10-02" >"$(idir 9)/cost"
   printf '%s 2.0\n%s 0.5\n' "${OPUS#claude-}" "${HAIKU#claude-}" | sed 's/-2025[0-9]*//' >"$(idir 7)/models"
