@@ -26,8 +26,10 @@
 # stopped a run, `stop` while a run stopped by hand ends, `stalled` once a run
 # ended while building, updating or merging without commenting (see
 # stalled_run), until the run that resumes it ends (stalling again asks the
-# user), `after` (the issues its open pull request goes after), `update` while
-# an update run waits and `updating` while it runs (its status, then why),
+# user), `after` (the issues its open pull request goes after), `cycle` (the
+# issues in the loop of after markers it broke as the lowest: see check_cycles),
+# `update` while an update run waits and `updating` while it runs (its status,
+# then why),
 # `conflict` (the default branch's commit its pull request was last updated
 # for), `log` (readable, live) and `out.jsonl` (the last run's raw stream-json),
 # `cost` (what its runs cost, added up), `usage` (its session's totals at the
@@ -1081,6 +1083,92 @@ check_prs() {
       queue_update "$repo" "$n" "updating after ${rel%% *}" \
         "$rel merged, and this pull request $how, so I'm rebasing it onto $base and updating it to fit what merged."
     fi
+  done
+  check_cycles "$repo" "$open" "$prs"
+}
+
+# Open nightshift pull requests that go after each other in a loop, so none can
+# merge first: the lowest issue of each cycle gets an update run that turns its
+# after markers on the cycle into overlaps markers (once per cycle: `cycle`
+# holds its members). $3 is open_prs's lines. An after on a pull request that
+# isn't open is no edge. The awk finds the cycles (no tsort: BSD and GNU report
+# them differently), a line each: the members, sorted, the lowest, the one it
+# goes after, and the cycle's edges in words.
+check_cycles() {
+  printf '%s\n' "$3" | awk '
+    # Breadth-first from s: seen is what s reaches, par the way there, and back
+    # the first node found going after s (the end of a shortest loop to s).
+    function bfs(s,   h, t, u, k, v) {
+      split("", seen); split("", par); split("", q)
+      h = 1; t = 1; q[1] = s
+      while (h <= t) {
+        u = q[h++]
+        for (k = 1; k <= deg[u]; k++) {
+          v = adj[u, k]
+          if (v == s && !back) { back = u }
+          if (v in seen) continue
+          seen[v] = 1; par[v] = u; q[++t] = v
+        }
+      }
+    }
+    NF >= 4 { node[$1] = 1; after[$1] = $4 }
+    END {
+      for (n in node) {
+        m = split(after[n], a, ",")
+        for (k = 1; k <= m; k++) if (a[k] in node && a[k] != n) adj[n, ++deg[n]] = a[k]
+        ids[++cnt] = n
+      }
+      for (i = 2; i <= cnt; i++) {
+        v = ids[i]
+        for (j = i - 1; j >= 1 && ids[j] + 0 > v + 0; j--) ids[j + 1] = ids[j]
+        ids[j + 1] = v
+      }
+      for (i = 1; i <= cnt; i++) {
+        n = ids[i]; back = ""
+        bfs(n); if (!(n in seen)) continue
+        for (k in seen) reach[n, k] = 1
+      }
+      for (i = 1; i <= cnt; i++) {
+        low = ids[i]
+        if (!reach[low, low]) continue
+        members = ""; first = 1
+        for (j = 1; j <= cnt; j++) {
+          o = ids[j]
+          if (reach[low, o] && reach[o, low]) {
+            if (j < i) { first = 0; break }
+            members = members (members == "" ? "" : ",") o
+          }
+        }
+        if (!first) continue
+        back = ""; bfs(low)
+        len = 0
+        for (u = back; u != low; u = par[u]) path[++len] = u
+        # path holds the way back, from the last before low to the first after it.
+        text = ""
+        from = low
+        for (k = len; k >= 0; k--) {
+          to = (k == 0 ? low : path[k])
+          if (k == len) text = "#" from "\047s pull request goes after #" to
+          else text = text (k == 0 ? " and " : ", ") "#" from "\047s after #" to
+          from = to
+        }
+        # Members off that loop are named too, so the run turns every after
+        # marker on the cycle.
+        split("", onpath); onpath[low] = 1
+        for (k = 1; k <= len; k++) onpath[path[k]] = 1
+        m = split(members, mem, ","); rest = ""
+        for (k = 1; k <= m; k++) if (!(mem[k] in onpath)) rest = rest (rest == "" ? "" : ", ") "#" mem[k]
+        if (rest != "") text = text " (the cycle takes in " rest " too)"
+        print members "|" low "|" path[len] "|" text
+      }
+    }' | while IFS='|' read -r members low next edges; do
+    d=$(issue_dir "$1" "$low")
+    [ -d "$d" ] && printf '%s\n' "$2" | grep -q "^$low " || continue
+    if [ -f "$d/ignored" ] || [ -f "$d/update" ]; then continue; fi
+    [ "$(cat "$d/cycle" 2>/dev/null)" != "$members" ] || continue
+    echo "$members" >"$d/cycle"
+    queue_update "$1" "$low" "cycle with #$next, going first" \
+      "$edges, a cycle: this one goes first (the lowest issue), so I'm turning its after markers on the cycle into overlaps markers and merging it."
   done
 }
 

@@ -116,6 +116,74 @@ prn() { echo "${PR##*/}"; }
   poll
   expect "another merge it doesn't go after: no update run" "$(runs)" 1)
 
+# A cycle of after markers among open pull requests: the lowest issue goes first.
+# Each argument is an issue and the issues its pull request goes after
+# (comma-separated, or -), e.g. 5:7 7:5; they're built in one poll.
+cycle_world() {
+  set_config max_parallel 9
+  body='case $NIGHTSHIFT_ISSUE in'
+  for spec in "$@"; do
+    i=${spec%%:*} a=${spec#*:}
+    gh_issue o/r "$i" alice agent
+    m="Closes #$i."
+    if [ "$a" != - ]; then
+      for t in $(echo "$a" | tr , ' '); do m="$m <!-- nightshift:after #$t -->"; done
+    fi
+    body="$body $i) PR_BODY='$m' ;;"
+  done
+  runs_do "$body esac; label building; commit feature.txt; open_pr \"\$PR_BODY\"; comment done"
+  poll
+  runs_do 'comment progress'
+}
+
+(world
+  cycle_world 5:7 7:5
+  expect "two issues going after each other, built: two runs" "$(runs)" 2
+  poll
+  expect "a poll: one update run" "$(runs)" 3
+  expect_line "for the lowest" "$(run_prompt)" "working GitHub issue #5 "
+  expect_line "the run is told why" "$(run_prompt)" "^- the watcher: #5's pull request goes after #7 and #7's after #5, a cycle: this one goes first (the lowest issue), so I'm turning its after markers on the cycle into overlaps markers and merging it\.$"
+  expect_line "the watch log says so" "$(cat "$NS/watch.log")" "o/r#5: pull request cycle with #7, going first$"
+  expect "the cycle is noted" "$(state 5 cycle)" "5,7"
+  expect_ok "not for the other" test ! -f "$(idir 7)/cycle"
+  poll
+  expect "the same cycle: no second run" "$(runs)" 3)
+
+(world
+  cycle_world 9:5 5:7 7:9
+  expect "three issues in a ring, built: three runs" "$(runs)" 3
+  poll
+  expect "a poll: one update run" "$(runs)" 4
+  expect_line "the run is told, edge by edge" "$(run_prompt)" "^- the watcher: #5's pull request goes after #7, #7's after #9 and #9's after #5, a cycle: this one goes first"
+  expect_line "the watch log says so" "$(cat "$NS/watch.log")" "o/r#5: pull request cycle with #7, going first$"
+  expect "the cycle is noted" "$(state 5 cycle)" "5,7,9"
+  expect_ok "the others aren't" test ! -f "$(idir 7)/cycle" -a ! -f "$(idir 9)/cycle")
+
+(world
+  cycle_world 7:5 5:-
+  poll
+  expect "a chain without a loop: no update run" "$(runs)" 2
+  expect_ok "no cycle noted" test ! -f "$(idir 5)/cycle")
+
+(world
+  cycle_world 7:5 5:3
+  poll
+  expect "an after on a pull request that isn't open: no update run" "$(runs)" 2
+  expect_ok "no cycle noted" test ! -f "$(idir 5)/cycle")
+
+(world
+  cycle_world 5:7 7:5 8:5
+  poll
+  expect "a pull request that goes after a cycle isn't in it" "$(state 5 cycle)" "5,7"
+  expect "and one update run" "$(runs)" 4)
+
+(world
+  cycle_world 5:7,9 7:5 9:7
+  poll
+  expect "a cycle wider than its shortest loop: all its members" "$(state 5 cycle)" "5,7,9"
+  expect_line "each named for the run" "$(run_prompt)" "#7's after #5 (the cycle takes in #9 too), a cycle: this one goes first"
+  expect "and one update run" "$(runs)" 4)
+
 # Retired.
 (world
   built
