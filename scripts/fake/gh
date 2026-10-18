@@ -76,12 +76,64 @@ etagged() {
   printf '%s\n' "$body" | out
 }
 
+# The value of GraphQL variable $1, given as -f/-F $1=value (empty if not given).
+gql_var() {
+  local i
+  for ((i = 0; i < ${#OPTS[@]}; i += 2)); do
+    case "${OPTS[i]}" in -f | -F) [ "${OPTS[i + 1]%%=*}" = "$1" ] && { printf '%s' "${OPTS[i + 1]#*=}"; return 0; } ;; esac
+  done
+  return 1
+}
+
+# `gh api graphql`: nightshift's named operations (the query's `query Name` or
+# `mutation Name`), answered from the projects in $GH_FAKE (see github.sh). One
+# it doesn't know, or called without the variables it takes, is unexpected.
+graphql() {
+  local op p
+  op=$(gql_var query | sed -n -E 's/^[[:space:]]*(query|mutation)[[:space:]]+([A-Za-z]+).*/\2/p' | head -1)
+  case "$op" in
+  NightshiftBoard)
+    p="$(gql_var owner)/$(gql_var number)"
+    case "$p" in /* | */) unexpected ;; esac
+    [ -f "$(gh_project_dir "$p")/project.json" ] ||
+      { echo "gh: Could not resolve to a ProjectV2 with the number ${p#*/}. (repositoryOwner.projectV2)" >&2; exit 1; }
+    board_page "$p" | out ;;
+  *) unexpected ;;
+  esac
+}
+
+# Project $1 as the board query answers it, on one page: its id, Status field
+# and options, and its cards, an issue's read from the fake repo as it is now.
+board_page() {
+  local d r n issues="{}"
+  d=$(gh_project_dir "$1")
+  while IFS=' ' read -r r n; do
+    [ -f "$(gh_dir "$r")/issues/$n.json" ] &&
+      issues=$(jq -c --arg k "$r#$n" --slurpfile i "$(gh_dir "$r")/issues/$n.json" '.[$k] = $i[0]' <<<"$issues")
+  done < <(jq -r '.[] | select(.repo) | "\(.repo) \(.number)"' "$d/items.json")
+  jq -c --slurpfile items "$d/items.json" --argjson issues "$issues" '
+    . as $p | {data: {repositoryOwner: {projectV2: {
+      id: .id,
+      field: {id: .field.id, options: .field.options},
+      items: {pageInfo: {hasNextPage: false, endCursor: null}, nodes: [
+        $items[0][] | . as $i
+        | (first($p.field.options[] | select(.id == $i.option)) // null) as $o
+        | {id: .id,
+           fieldValueByName: (if $o then {name: $o.name, optionId: $o.id} else null end),
+           content: (if .draft then {__typename: "DraftIssue", id: .draft.id, title: .draft.title}
+             else $issues[$i.repo + "#\($i.number)"] as $s
+             | if $s then {__typename: "Issue", number: $s.number, updatedAt: $s.updated_at, state: ($s.state | ascii_upcase),
+                 repository: {nameWithOwner: $i.repo}, author: {login: $s.user.login}, labels: {nodes: $s.labels}}
+               else null end end)}]}}}}}' "$d/project.json"
+}
+
 D=""
 in_repo() { D=$(gh_dir "$1"); [ -d "$D" ] || not_found; }
 
 api() {
   local path=${POS[1]:-} method r owner name rest n f
   method=$(opt -X || opt --method) || method=GET
+  [ "$path" = graphql ] && { graphql; return; }
   [ "$path" = user ] && { jq -n --arg l "$(cat "$GH_FAKE/user")" '{login: $l}' | out; return; }
   owner=$(echo "$path" | cut -d/ -f2) name=$(echo "$path" | cut -d/ -f3)
   r="$owner/$name" rest=${path#repos/"$r"}

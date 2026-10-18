@@ -127,3 +127,80 @@ gh_pr_set() {
     --argjson n "$2" --arg k "$3" --argjson v "$4"
   gh_unlock
 }
+
+# --- a project board ----------------------------------------------------------------
+# Projects (v2), in projects/<owner>_<number>/ of $GH_FAKE, which the fake gh
+# answers nightshift's GraphQL operations from (`gh api graphql`, see
+# scripts/fake/gh): project.json, the project's id and its Status field with
+# its options ({id, field: {id, options: [{id, name}]}}), and items.json, its
+# cards in order: {id, repo, number, option} for an issue and {id, draft:
+# {id, title}, option} for a draft, `option` the id of the card's Status
+# option (null: none). An issue card is read live from the issue's own file.
+# A project is named by "<owner>/<number>" in the functions below.
+
+# A project's directory.
+gh_project_dir() { printf '%s/projects/%s' "$GH_FAKE" "$(echo "$1" | tr '/' '_')"; }
+
+# Project $1 (<owner>/<number>) with Status columns $2.. (default: the seven
+# nightshift uses), and no cards.
+gh_project() {
+  local p=$1 d cols
+  shift
+  [ $# -gt 0 ] || set -- Backlog Ready "In progress" "In review" "Your review" "Ready to merge" Done
+  d=$(gh_project_dir "$p")
+  mkdir -p "$d"
+  cols=$(printf '%s\n' "$@" | jq -R -s -c 'split("\n")[:-1]')
+  jq -n -c --arg id "PVT_$(echo "$p" | tr '/' '_')" --argjson cols "$cols" '
+    {id: $id, field: {id: ($id + "_status"), options: [range(0; $cols | length) as $i | {id: ($id + "_opt\($i)"), name: $cols[$i]}]}}' >"$d/project.json"
+  echo '[]' >"$d/items.json"
+}
+
+# The id of project $1's Status option named $2 (case-insensitive), or null.
+gh_option() {
+  jq -c --arg n "$2" '[.field.options[] | select(.name | ascii_downcase == ($n | ascii_downcase)) | .id][0]' "$(gh_project_dir "$1")/project.json"
+}
+
+# Issue $3 of repo $2 as a card of project $1, in column $4.
+gh_card() {
+  local d
+  d=$(gh_project_dir "$1")
+  gh_lock
+  gh_edit "$d/items.json" '. + [{id: ("PVTI_" + ($r | gsub("/"; "_")) + "_\($n)"), repo: $r, number: $n, option: $o}]' \
+    --arg r "$2" --argjson n "$3" --argjson o "$(gh_option "$1" "$4")"
+  gh_unlock
+}
+
+# A draft card titled $2 in column $3 of project $1: prints its item id.
+gh_draft() {
+  local d id
+  d=$(gh_project_dir "$1")
+  gh_lock
+  id="PVTI_draft_$(gh_tick)"
+  gh_edit "$d/items.json" '. + [{id: $id, draft: {id: ("DI_" + $id), title: $t}, option: $o}]' \
+    --arg id "$id" --arg t "$2" --argjson o "$(gh_option "$1" "$3")"
+  gh_unlock
+  echo "$id"
+}
+
+# Card of issue $3 of repo $2 (project $1) in column $4.
+gh_card_move() {
+  gh_lock
+  gh_edit "$(gh_project_dir "$1")/items.json" 'map(if .repo == $r and .number == $n then .option = $o else . end)' \
+    --arg r "$2" --argjson n "$3" --argjson o "$(gh_option "$1" "$4")"
+  gh_unlock
+}
+
+# Issue $3 of repo $2 taken off project $1.
+gh_card_remove() {
+  gh_lock
+  gh_edit "$(gh_project_dir "$1")/items.json" 'map(select((.repo == $r and .number == $n) | not))' --arg r "$2" --argjson n "$3"
+  gh_unlock
+}
+
+# The Status column of issue $3 of repo $2 on project $1: its name, or nothing
+# when it has none or isn't on the board.
+gh_card_column() {
+  jq -r --arg r "$2" --argjson n "$3" --slurpfile p "$(gh_project_dir "$1")/project.json" '
+    first(.[] | select(.repo == $r and .number == $n)).option as $o
+    | $p[0].field.options[] | select(.id == $o) | .name' "$(gh_project_dir "$1")/items.json"
+}

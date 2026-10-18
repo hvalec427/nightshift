@@ -39,6 +39,11 @@ interval=5
   - `test_command`: the command that runs the whole test suite (`test_command=npm test`).
     Where a run may run the suite, its prompt names the command; unset, the run works it
     out from the repo's instructions.
+  - `project`: a GitHub project (v2) board, `project=https://github.com/users/me/projects/5`
+    (an organisation's is `…/orgs/acme/projects/5`; a trailing `/views/2` is ignored).
+    The repo is then worked from the board, not the `agent` label: see
+    [Working from a project board](working-an-issue.md#working-from-a-project-board).
+    `gh` needs the `project` scope (`gh auth refresh -s project`). Unset, nothing changes.
   - `cost_breakdown=false` keeps the closing cost comment to one line: dollars, tokens,
     time and the pull request's size. Unset (or any other value), it has the breakdown
     too: the dollars of each model, the agents table and the time line.

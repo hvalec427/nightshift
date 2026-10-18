@@ -13,6 +13,31 @@
 | Add the label back, remove `invalid`/`wontfix`, or reopen it | Picks up the stopped run where it left off |
 | Merge its pull request, or close the issue | It's done: a last comment says what its runs cost (dollars at API prices, tokens, time) and the pull request's size (`PR +412 −37 in 9 files`), and, unless `.nightshift/config` has `cost_breakdown=false`, the dollars of each model and every agent that ran in a table (`cost_comment=false` leaves the comment out): a row a run (`plan run`), in the order they ran, with the subagents it started under it; each row's model, effort, skills, tokens (a subagent's: those of its turns), cost, time and tool calls; a subagent's cost is an estimate (`~$0.30`: the tokens of its turns at its model's average rate in that run, `–` when unknown) and a run's row is the rest of the run's cost, so the rows add up to the total row (unless the estimates overshoot the run's cost). Under it, the time from the first run to the last: how much the agent worked, how long it waited on you, and other waits (queued, an update); `nightshift status` leaves it out, and its state and branch are cleaned up |
 
+## Working from a project board
+
+A repo whose `.nightshift/config` has `project=<a GitHub project's URL>` (see
+[Config](config.md#config)) is worked from that board in place of the `agent` label. Each
+poll reads the project's cards with one GraphQL query (`gh api graphql`, with the
+`project` scope: `gh auth refresh -s project`). The project's `Status` field is its
+columns, matched by name without regard to case:
+
+| Column | nightshift |
+|---|---|
+| Backlog | nothing: the card is left alone |
+| Ready | works the issue: a first run asks its questions or posts the plan |
+| In progress, In review, Your review, Ready to merge | works it too |
+| Done | nothing |
+
+Only issues of the repo count: its cards in a column other than Backlog and Done, open.
+An issue of the repo that isn't on the board, or is in Backlog or Done, is off, as if its
+label were removed: a run in flight stops (`nightshift status` says `moved to Backlog`),
+and moving the card back to a working column picks it up where it left off. An issue
+labelled `agent` that isn't on the board is ignored. Everything else works as for a
+labelled issue: your comments (from `allowed_users`) are the news, `invalid` and `wontfix`
+hold it, and the status labels follow the runs. A card in a working column starts work
+without the label check: only people who can write to the project can move cards.
+Cards of other repos, pull requests and drafts are skipped.
+
 ## Sessions and worktrees
 
 Each issue gets its own worktree (in the repo's clone, `.claude/worktrees/issue-<n>`,
