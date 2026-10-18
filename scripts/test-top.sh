@@ -250,14 +250,15 @@ sp() { printf "%$1s" ''; }
 (world
   issue 7
   issue 8
-  printf '0\t%s\n' "ünï·😀·😀 and some text" "☀☀ sun" \
+  printf '0\t%s\n' "ünï·😀·😀 and some text" "✗ fail ✓ pass ☀" "⭐⌚ star" \
     "🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖" "x🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖" \
     "·······················································································" >"$(idir 7)/log"
   f=$(frame 81 12)
-  expect "top: multibyte characters are a cell each, emoji two: the window is 40 cells wide on every row" \
-    "$(printf '%s\n' "$f" | sed -n '2,6p' | sed 's/│.*/│/')" \
+  expect "top: multibyte characters are a cell each, emoji two (✗ ✓ ☀ one): the window is 40 cells wide on every row" \
+    "$(printf '%s\n' "$f" | sed -n '2,7p' | sed 's/│.*/│/')" \
     "ünï·😀·😀 and some text$(sp 17)│
-☀☀ sun$(sp 32)│
+✗ fail ✓ pass ☀$(sp 25)│
+⭐⌚ star$(sp 31)│
 🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖│
 x🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖 │
 ········································│"
