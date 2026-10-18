@@ -16,6 +16,24 @@ nightshift's runs read this file and keep it up to date.
   about 20 lines in one or two files, nothing for the user to decide, no new command or option,
   no breaking change, nothing security-relevant or touching CI, releases or installing, and on
   a bug a plain cause. A **full process** reply gets it a plan.
+- **size**: how much process an issue gets, one of small, medium or large, decided by the issue
+  skill on its first run (an issue that is a `question` or `duplicate` has none) and named in
+  that run's comment. A **small**, **medium** or **large** reply before the build starts switches
+  it.
+- **medium issue**: any issue that is neither small nor large: questions if it has any, a plan,
+  a **go** (or a carry-on), one pull request, two reviewers.
+- **large issue**: one that touches many areas, adds several features, or changes how things
+  work. It always asks its questions first, its plan always waits for **go**, and the plan is
+  split into **sub-issues** instead of one build.
+- **sub-issue**: an issue a large plan's build made with `nightshift sub-issue`, a few of the
+  plan's tickets with the part of the spec they need. Its body carries
+  `<!-- nightshift:parent #<n> -->`; it is built from that body with no questions, plan or
+  **go**, and merged as its own pull request. It starts once the sub-issues it is blocked by
+  (GitHub's "blocked by") have closed.
+- **parent**: the large issue whose sub-issues these are, kept in its dir's `subs`. It opens no
+  pull request; it closes when every sub-issue has merged, with one cost comment that totals them.
+- **waiting**: the `nightshift: waiting` status: a sub-issue held for open blockers before its
+  first run, or a parent with sub-issues not yet all merged.
 - **look item**: what stops the merge skill with a `look` comment until the user replies
   **merge**: a failed hard gate, an open review finding the plan didn't settle, a decision the
   plan didn't cover, a security-relevant change, or a request to see it first.

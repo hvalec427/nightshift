@@ -1,6 +1,6 @@
 ---
 name: build
-description: Build an issue's approved plan ticket by ticket, test-first, then open its pull request. Started by the issue skill when the user approved the plan, or for a small issue, and by the plan skill when the plan has no open choices.
+description: Build an issue's approved plan ticket by ticket, test-first, then open its pull request. Started by the issue skill when the user approved the plan, or for a small issue or a sub-issue, and by the plan skill when the plan has no open choices.
 user-invocable: false
 model: sonnet
 effort: high
@@ -23,18 +23,49 @@ ticket files are written:
 - one that stops the build: one `blocked` comment saying you stopped as asked; end the run;
 - anything else (a remark, a question the plan answers): build on.
 
-**A small issue** (the issue skill's case 2, no `plan` comment): the issue and the user's
+**A small issue** (the issue skill's case 3, no `plan` comment): the issue and the user's
 replies are the plan, and it is one ticket. Write no ticket files (skip step 1) and build
 it yourself (step 2); the review, finish, report and merge are as below. The report opens
 with: "Treated as small: built straight from the issue, with no plan. Reply **full
 process** to get a plan instead."
 
+**A large plan** (the plan lists sub-issues `S1`, `S2`, …) on **go** builds nothing itself:
+it makes the sub-issues, each a pull request of its own, and ends. Write no ticket files,
+and run no review, finish or merge: the parent gets no branch work and no pull request.
+
+- **Create the sub-issues** in dependency order (a blocker before what it blocks), each
+  with `nightshift sub-issue --title "S<k>: <title>" --body-file <file> [--after <n>]…`,
+  one `--after` per blocker, with the number that blocker's command printed. Write the
+  body file under `$TMPDIR` (`mktemp "${TMPDIR:-/tmp}/x.XXXXXX"`) and remove it after.
+  The body stands alone, since the sub-issue builds from it: the problem and solution
+  in a line each, the spec's decisions and testing decisions that sub-issue needs, then
+  its tickets in full (blockers and acceptance criteria), and any reply of the user's
+  after the plan that changed them. Sub-issues with no unmerged blocker start right away,
+  in parallel; the watcher holds the rest as `waiting`.
+- **One `progress` comment** on the parent, the run's only one: a line per sub-issue
+  (`- #161 S1: <title>`, with `after #160` when blocked), and that each builds as its
+  blockers merge and the parent closes after the last merge. Then end the run.
+
+A resumed build lists what exists first (`gh api repos/<repo>/issues/<n>/sub_issues`) and
+creates only the `S<k>` titles missing among the open ones, so a retry makes no duplicates.
+When `nightshift sub-issue` fails after creating the issue, it closes that issue, saying
+why, and drops it from the parent: run it again for that sub-issue, once. Failing again,
+or failing to close it (it says so), post one `blocked` comment saying what it said, and
+end the run.
+
+**A sub-issue** (the issue skill's case 1: the parent marker in its body, no pull request
+yet) is built from its body, which is the approved plan: the user approved it on the
+parent. Ask nothing and wait for no **go**. Step 1 writes the body's tickets to their files
+(there is no `plan` comment), and the rest is as below: the tickets, the review (by both
+reviewers), the pull request, the report and the merge. The report opens with "Sub-issue of
+#<parent>."
+
 The sequence:
 
 1. **Ticket files.** Before the first ticket, write each ticket of the latest `plan`
-   comment to `.nightshift/tickets/T<n>.md` in this worktree: its text, blockers and
-   acceptance criteria, plus the spec's decisions it needs, and any reply of the user's
-   after the plan that changed it. A resumed build rewrites them, since the plan may have
+   comment (a sub-issue's: of its body) to `.nightshift/tickets/T<n>.md` in this worktree:
+   its text, blockers and acceptance criteria, plus the spec's decisions it needs, and any
+   reply of the user's after the plan that changed it. A resumed build rewrites them, since the plan may have
    been revised. The plan comment stays the source; the files are a working copy, never
    committed (the CLI keeps `.nightshift/tickets/` out of git) and gone with the
    worktree. Done when every ticket of the latest plan has its file.
@@ -107,9 +138,9 @@ the subagent can read itself unpasted.
 - the ticket's ID (T2, say) and where its text lives: the file
   `.nightshift/tickets/T<n>.md` in the worktree. The ticket, its blockers, its acceptance
   criteria and the spec's decisions it needs are there, not pasted. The issue number and
-  the repo are for a question the file leaves open: the latest `plan` comment has the
-  rest. When it's a retry after a `blocked` comment, add the user's answer and what the
-  last attempt left in the worktree;
+  the repo are for a question the file leaves open: the latest `plan` comment (a
+  sub-issue's: its body) has the rest. When it's a retry after a `blocked` comment, add
+  the user's answer and what the last attempt left in the worktree;
 - this worktree's absolute path, and the commits so far (the tickets already committed in
   it: `git log --oneline` against the default branch shows them);
 - for the second ticket on, the replies of the earlier tickets: what each delivered and what

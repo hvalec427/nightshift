@@ -155,6 +155,7 @@ No setting changes them: `model=` and `effort=` in the config are ignored, and
 | Ticket builder (agent `ticket`) | sonnet | high |
 | Spec reviewer (agent `spec-review`) | opus | high |
 | Standards reviewer (agent `standards-review`) | sonnet | medium |
+| Quick reviewer (agent `quick-review`, a small change's only reviewer) | sonnet | medium |
 | `answer`, `finish` | sonnet | medium |
 
 Each run's line in `nightshift logs` shows the models it used, the main one first.

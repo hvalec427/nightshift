@@ -55,10 +55,10 @@ Stop a background task by its PID or with TaskStop, never by a name pattern like
 `pkill -f` or `killall`: a run's command line holds its prompt, so a pattern matches other
 runs too.
 
-Send git, `gh` and `nightshift label` as one plain command per Bash call: no env prefix,
-pipe, `$(…)`, `&&` or `;`. A run is allowed `Bash(git *)`, `Bash(gh pr *)`,
-`Bash(gh issue *)`, `Bash(gh api *)` and `Bash(nightshift label *)`, which match only a
-plain command; anything around it goes to the auto mode classifier, which can deny it (a
+Send git, `gh`, `nightshift label` and `nightshift sub-issue` as one plain command per Bash
+call: no env prefix, pipe, `$(…)`, `&&` or `;`. A run is allowed `Bash(git *)`,
+`Bash(gh pr *)`, `Bash(gh issue *)`, `Bash(gh api *)`, `Bash(nightshift label *)` and
+`Bash(nightshift sub-issue *)`, which match only a plain command; anything around it goes to the auto mode classifier, which can deny it (a
 `gh pr merge` chained to anything reads as a merge without review). Write a comment or a
 pull request body to a file with the Write tool first, then pass it with `--body-file`;
 read with a plain `gh … --json … -q …`, not a pipe. The editors are already off in a run
