@@ -79,6 +79,39 @@ LIST="api -i.*repos/o/r/issues?labels=agent"
   poll
   expect "proposed, the label removed: its first run" "$(runs)" 1)
 
+# A sub-issue waiting on open blockers: no run until they close.
+(world
+  gh_issue o/r 7 alice agent
+  gh_set_blocked_by o/r 7 2
+  poll
+  poll
+  expect "open blockers, first run: no run" "$(runs)" 0
+  expect "its status: waiting" "$(status_label 7)" waiting
+  expect "its updated isn't recorded" "$(state 7 updated)" ""
+  gh_comment o/r 7 alice "hello" >/dev/null
+  poll
+  expect "a comment while blocked: still no run" "$(runs)" 0
+  gh_set_blocked_by o/r 7 1
+  poll
+  expect "one blocker still open: no run" "$(runs)" 0
+  gh_set_blocked_by o/r 7 0
+  poll
+  expect "no open blockers: its first run" "$(runs)" 1
+  expect_line "the comment made while it waited reaches the run" "$(run_prompt)" "^hello$"
+  expect_line "its status: waiting no more" "$(status_label 7)" "^waiting$" no)
+
+# Blockers matter only before the first run.
+(world
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  expect "a first run" "$(runs)" 1
+  gh_set_blocked_by o/r 7 1
+  gh_comment o/r 7 alice "1 yes" >/dev/null
+  poll
+  expect "worked on already: a comment still starts a run" "$(runs)" 2
+  expect_line "its status: not waiting" "$(status_label 7)" "^waiting$" no)
+
 # The pull requests: every 30 s at most.
 (world
   unset NIGHTSHIFT_PR_INTERVAL

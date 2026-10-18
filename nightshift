@@ -43,7 +43,8 @@
 # `session`, `plan-session`, `sessions`, `seen`, `started`, `pr`, `cost`,
 # `usage`, `agents` and `models` stay
 # (`revived`, the merged pull request a comment brought it back from);
-# `label`, its status label (see STATUSES); `skill`, the last nightshift skill
+# `label`, its status label (see STATUSES; `waiting` while open blockers hold its
+# first run, which the watcher checks every poll); `skill`, the last nightshift skill
 # its session invoked (see SKILL_STATUSES); `type`, its type label as the
 # last run left it (see TYPES); and per repo, `merged/<owner>_<repo>`, the
 # merged nightshift pull requests seen, `labels/<owner>_<repo>`, the
@@ -249,6 +250,7 @@ updating|1D76DB|nightshift is updating its pull request after a merge
 merging|1D76DB|nightshift is checking its pull request and merging it
 answering|1D76DB|nightshift is answering the question
 needs you|D93F0B|nightshift is waiting on your reply
+waiting|BFBFBF|nightshift is waiting on other issues
 PR open|0E8A16|its pull request is open
 stopped|BFBFBF|nightshift was stopped partway'
 
@@ -1534,6 +1536,10 @@ poll_repo() {
   # The ones a run filed (`nightshift: proposed`), held until you comment.
   proposed=$(printf '%s\n' "$issues" | jq -r '.[] | select(any(.labels[]; .name == "nightshift: proposed")) | .number')
 
+  # The ones with open blockers (GitHub counts them in the list), held until
+  # they close if they haven't had their first run.
+  blocked=$(printf '%s\n' "$issues" | jq -r '.[] | select((.issue_dependencies_summary.blocked_by // 0) > 0) | .number')
+
   # Issues no longer labelled (or closed, or held): note which, once, and stop
   # what's running there. Back in the list, the note goes (and a stopped run
   # resumes, below).
@@ -1605,13 +1611,20 @@ poll_repo() {
       mkdir -p "$d"
     fi
     [ -f "$d/ignored" ] && { echo "$updated" >"$d/updated"; continue; }
+    first_run=0
+    [ -s "$d/session" ] || [ -f "$d/started" ] || first_run=1
+    # Blocked, never run: held, checked again every poll (its updated isn't
+    # recorded), and started once its blockers are closed.
+    if [ $first_run -eq 1 ] && printf '%s\n' "$blocked" | grep -qx "$n"; then
+      printf '%s\n' "$proposed" | grep -qx "$n" || set_status "$repo" "$n" waiting
+      did="$did, #$n blocked"
+      continue
+    fi
     seen=$(cat "$d/seen" 2>/dev/null || echo 0)
     filter=".[] | select(.id > $seen and (.user.login as \$u | $allowed | index(\$u)) and (.body | contains(\"$MARKER\") | not))"
     news=$(gh api --paginate "repos/$repo/issues/$n/comments?per_page=100" \
       --jq "$filter | \"- @\(.user.login) (comment \(.id)):\n\n\(.body[0:3000])\n\"" 2>>"$NS/watch.log")
     last=$(gh api --paginate "repos/$repo/issues/$n/comments?per_page=100" --jq "$filter | .id" 2>/dev/null | tail -1)
-    first_run=0
-    [ -s "$d/session" ] || [ -f "$d/started" ] || first_run=1
     # Proposed, never run and not commented on: held, its status kept.
     if [ $first_run -eq 1 ] && [ -z "$news" ] && printf '%s\n' "$proposed" | grep -qx "$n"; then
       echo "$updated" >"$d/updated"
