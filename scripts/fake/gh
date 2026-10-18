@@ -36,7 +36,7 @@ while [ $# -gt 0 ]; do
   -H | --header) hdr=$2; shift ;;
   -R | --repo) repo=$2; shift ;;
   --json | -X | --method | --state | --limit | --head | --base | --title | --body | --body-file | \
-    --add-label | --remove-label | --label | --color | --description | -F | -f) OPTS+=("$1" "$2"); shift ;;
+    --add-label | --remove-label | --label | --color | --description | --comment | -F | -f) OPTS+=("$1" "$2"); shift ;;
   --paginate | --force | --version) OPTS+=("$1" "") ;;
   -*) unexpected ;;
   *) POS+=("$1") ;;
@@ -201,6 +201,7 @@ issue() {
     id=$(gh_comment "$repo" "$n" "$(cat "$GH_FAKE/user")" "$body")
     echo "https://github.com/$repo/issues/$n#issuecomment-$id" ;;
   close)
+    if body=$(opt --comment); then gh_comment "$repo" "$n" "$(cat "$GH_FAKE/user")" "$body" >/dev/null; fi
     gh_state "$repo" "$n" closed
     echo "✓ Closed issue $repo#$n" ;;
   edit)

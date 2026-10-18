@@ -2644,7 +2644,9 @@ cmd_label() {
 # --after, and noted in the parent's `subs`, and only then labelled `agent`, so
 # the watcher can't start it before its blockers are linked. With all_issues,
 # the label doesn't hold it, so it's in the parent's `subs-linking` until its
-# links are made. A step that fails fails it, saying what it managed.
+# links are made. A step that fails after the issue was created closes it,
+# saying why, and drops it from `subs` (see sub_issue_drop), so the run can make
+# it again.
 cmd_sub_issue() {
   [ -n "${NIGHTSHIFT_REPO:-}" ] && [ -n "${NIGHTSHIFT_ISSUE:-}" ] || die "nightshift sub-issue only works in a nightshift run"
   si_use="usage: nightshift sub-issue --title <title> --body-file <file> [--after <n>]…"
@@ -2677,16 +2679,32 @@ cmd_sub_issue() {
   mkdir -p "$si_dir" && echo "$si_n" >>"$si_dir/subs" && echo "$si_n" >>"$si_dir/subs-linking"
   si_id=$(gh api "repos/$si_repo/issues/$si_n" --jq .id 2>/dev/null) || si_id=""
   [ -n "$si_id" ] && gh api -X POST "repos/$si_repo/issues/$si_parent/sub_issues" -F "sub_issue_id=$si_id" >/dev/null 2>&1 ||
-    die "created #$si_n (not labelled $LABEL) but couldn't link it under #$si_parent"
+    sub_issue_drop "couldn't link it under #$si_parent"
   for si_a in $si_after; do
     si_aid=$(gh api "repos/$si_repo/issues/$si_a" --jq .id 2>/dev/null) || si_aid=""
     [ -n "$si_aid" ] && gh api -X POST "repos/$si_repo/issues/$si_n/dependencies/blocked_by" -F "issue_id=$si_aid" >/dev/null 2>&1 ||
-      die "created #$si_n (not labelled $LABEL) and linked it under #$si_parent but couldn't make it wait for #$si_a"
+      sub_issue_drop "couldn't make it wait for #$si_a"
   done
   { grep -vx "$si_n" "$si_dir/subs-linking" || true; } >"$si_dir/subs-linking.new" && mv "$si_dir/subs-linking.new" "$si_dir/subs-linking"
   gh issue edit "$si_n" --repo "$si_repo" --add-label "$LABEL" >/dev/null 2>&1 ||
-    die "created #$si_n and linked it under #$si_parent but couldn't label it $LABEL"
+    sub_issue_drop "couldn't label it $LABEL"
   echo "$si_url"
+}
+
+# A sub-issue cmd_sub_issue created but couldn't finish, $1 why: closed with a
+# comment saying so, and out of the parent's `subs` and `subs-linking`, so the
+# run makes it again; it fails either way. Not closed, it stays in both, so
+# the watcher holds it, until it's closed by hand.
+sub_issue_drop() {
+  if gh issue close "$si_n" --repo "$si_repo" --comment "🤖 **nightshift**: closed: nightshift made this sub-issue of #$si_parent but $1, so the run makes it again.
+
+$MARKER" >/dev/null 2>&1; then
+    for si_f in subs subs-linking; do
+      { grep -vx "$si_n" "$si_dir/$si_f" || true; } >"$si_dir/$si_f.new" && mv "$si_dir/$si_f.new" "$si_dir/$si_f"
+    done
+    die "created #$si_n but $1: closed it and dropped it from #$si_parent's sub-issues; run it again"
+  fi
+  die "created #$si_n but $1, and couldn't close it: close #$si_n by hand (the watcher holds it until then)"
 }
 
 # `build`: a run about to build the approved plan. In the planning session,

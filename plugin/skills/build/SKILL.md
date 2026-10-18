@@ -47,9 +47,11 @@ and run no review, finish or merge: the parent gets no branch work and no pull r
   blockers merge and the parent closes after the last merge. Then end the run.
 
 A resumed build lists what exists first (`gh api repos/<repo>/issues/<n>/sub_issues`) and
-creates only the `S<k>` titles missing, so a retry makes no duplicates. When
-`nightshift sub-issue` fails, it says what it managed (a sub-issue created but not linked
-or not labelled, say): post one `blocked` comment saying that, and end the run.
+creates only the `S<k>` titles missing among the open ones, so a retry makes no duplicates.
+When `nightshift sub-issue` fails after creating the issue, it closes that issue, saying
+why, and drops it from the parent: run it again for that sub-issue, once. Failing again,
+or failing to close it (it says so), post one `blocked` comment saying what it said, and
+end the run.
 
 **A sub-issue** (the issue skill's case 1: the parent marker in its body, no pull request
 yet) is built from its body, which is the approved plan: the user approved it on the

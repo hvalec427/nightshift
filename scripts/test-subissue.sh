@@ -26,6 +26,9 @@ parent() {
   export NIGHTSHIFT_REPO=o/r NIGHTSHIFT_ISSUE=7
 }
 
+# Whether issue $1 is open or closed on GitHub.
+gh_state_of() { jq -r .state "$(gh_dir o/r)/issues/$1.json"; }
+
 # Issue $1's body.
 body_of() { jq -r .body "$(gh_dir o/r)/issues/$1.json"; }
 
@@ -102,39 +105,56 @@ body_of() { jq -r .body "$(gh_dir o/r)/issues/$1.json"; }
   expect "and wrote no subs" "$(state 7 subs)" ""
   expect_no_unexpected)
 
+# A step that fails after the issue exists: the issue is closed, saying why,
+# and dropped from subs, so the run can make it again.
 (parent
   echo 'api -X POST repos/o/r/issues/7/sub_issues*' >"$GH_FAKE/fail"
   try ns sub-issue --title T --body-file "$W/body.md" --after 7
-  expect "can't link: fails with what it managed" "$ST $OUT" "1 nightshift: created #8 (not labelled agent) but couldn't link it under #7"
-  expect "the issue exists, without agent" "$(gh_labels o/r 8 | paste -sd, -)" "bug"
-  expect "the parent still counts it" "$(state 7 subs)" "8"
-  expect "still linking: the watcher won't start it" "$(state 7 subs-linking)" "8"
-  expect "it stopped before the blockers" "$(gh_blockers o/r 8)" ""
+  expect "can't link: fails, says what it did" "$ST $OUT" "1 nightshift: created #8 but couldn't link it under #7: closed it and dropped it from #7's sub-issues; run it again"
+  expect "the stray issue is closed" "$(gh_state_of 8)" "closed"
+  expect_line "with a comment saying why" "$(gh_comments o/r 8)" "closed: nightshift made this sub-issue of #7 but couldn't link it under #7, so the run makes it again"
+  expect "it never got agent" "$(gh_labels o/r 8 | paste -sd, -)" "bug"
+  expect "the parent doesn't count it" "$(state 7 subs)" ""
+  expect "nor holds it as linking" "$(state 7 subs-linking)" ""
   expect_no_unexpected)
 
 (parent
   ns sub-issue --title A --body-file "$W/body.md" >/dev/null
   echo 'api -X POST repos/o/r/issues/9/dependencies/blocked_by*' >"$GH_FAKE/fail"
   try ns sub-issue --title B --body-file "$W/body.md" --after 8
-  expect "can't block: fails with what it managed" "$ST $OUT" "1 nightshift: created #9 (not labelled agent) and linked it under #7 but couldn't make it wait for #8"
-  expect "it has no agent label" "$(gh_labels o/r 9 | paste -sd, -)" "bug"
-  expect "it is linked" "$(gh_sub_issues o/r 7 | paste -sd, -)" "8,9"
-  expect "the parent counts both" "$(state 7 subs | paste -sd, -)" "8,9"
+  expect "can't block: fails, says what it did" "$ST $OUT" "1 nightshift: created #9 but couldn't make it wait for #8: closed it and dropped it from #7's sub-issues; run it again"
+  expect "the stray issue is closed" "$(gh_state_of 9)" "closed"
+  expect "the parent counts only the good one" "$(state 7 subs)" "8"
+  expect "the good one is still open" "$(gh_state_of 8)" "open"
+  rm "$GH_FAKE/fail"
+  try ns sub-issue --title B --body-file "$W/body.md" --after 8
+  expect "made again: a new issue" "$ST $OUT" "0 https://github.com/o/r/issues/10"
+  expect "the parent counts it" "$(state 7 subs | paste -sd, -)" "8,10"
+  expect "it waits for #8" "$(gh_blockers o/r 10)" "8"
   expect_no_unexpected)
 
 (parent
   echo 'issue edit *' >"$GH_FAKE/fail"
   try ns sub-issue --title T --body-file "$W/body.md" --after 7
-  expect "can't label: fails with what it managed" "$ST $OUT" "1 nightshift: created #8 and linked it under #7 but couldn't label it agent"
-  expect "it waits for #7 all the same" "$(gh_blockers o/r 8)" "7"
-  expect "it has no agent label" "$(gh_labels o/r 8)" "bug"
+  expect "can't label: fails, says what it did" "$ST $OUT" "1 nightshift: created #8 but couldn't label it agent: closed it and dropped it from #7's sub-issues; run it again"
+  expect "the stray issue is closed" "$(gh_state_of 8)" "closed"
+  expect "the parent doesn't count it" "$(state 7 subs)" ""
   expect_no_unexpected)
 
 (parent
   try ns sub-issue --title T --body-file "$W/body.md" --after 99
-  expect "an --after that isn't an issue: fails" "$ST" "1"
-  expect_line "and says what it managed" "$OUT" "^nightshift: created #8 (not labelled agent) and linked it under #7 but couldn't make it wait for #99"
-  expect "the parent counts it" "$(state 7 subs)" "8")
+  expect "an --after that isn't an issue: fails, says what it did" "$ST $OUT" "1 nightshift: created #8 but couldn't make it wait for #99: closed it and dropped it from #7's sub-issues; run it again"
+  expect "the stray issue is closed" "$(gh_state_of 8)" "closed")
+
+# The close fails too: the issue stays in subs and subs-linking, so the watcher
+# holds it, and the run is told to close it by hand.
+(parent
+  printf '%s\n' 'api -X POST repos/o/r/issues/7/sub_issues*' 'issue close *' >"$GH_FAKE/fail"
+  try ns sub-issue --title T --body-file "$W/body.md"
+  expect "can't close either: fails, says so" "$ST $OUT" "1 nightshift: created #8 but couldn't link it under #7, and couldn't close it: close #8 by hand (the watcher holds it until then)"
+  expect "it stays open" "$(gh_state_of 8)" "open"
+  expect "the parent still lists it" "$(state 7 subs)" "8"
+  expect "held as linking" "$(state 7 subs-linking)" "8")
 
 # --- the fake -----------------------------------------------------------------------------
 
