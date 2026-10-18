@@ -91,6 +91,7 @@ api() {
   "GET ") out <"$D/repo.json" ;;
   "GET /issues?"*)
     # With labels=, the issues with that label; without, every issue, newest first.
+    case "$rest" in *labels=* | *sort=created*) ;; *) unexpected ;; esac
     l=$(echo "$rest" | sed -n 's/.*labels=\([^&]*\).*/\1/p') s=$(echo "$rest" | sed -n 's/.*state=\([^&]*\).*/\1/p')
     for f in "$D"/issues/*.json; do
       case "${f##*/}" in *.*.json) ;; *) cat "$f" ;; esac

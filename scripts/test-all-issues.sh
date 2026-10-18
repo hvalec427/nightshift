@@ -7,17 +7,17 @@ set -euo pipefail
 
 # The option, committed to o/r's default branch. A poll fetches it.
 all_on() { origin_config "all_issues=true"; }
-LONG_AGO=2000-01-01T00:00:00Z
+LONG_AGO="2000-01-01T00:00:00Z"
 
 (world
   runs_do 'comment questions'
   all_on
   poll
-  expect "the option on: the on-time is recorded" "$(cat "$NS/all_issues/o_r" | grep -c '^20[0-9-]*T[0-9:]*Z$')" 1
+  expect "the option on: the on-time is recorded" "$(grep -c '^20[0-9-]*T[0-9:]*Z$' "$NS/all_issues/o_r")" 1
   gh_issue o/r 7 alice
   gh_issue o/r 8 mallory
   gh_issue o/r 6 alice
-  gh_created o/r 6 $LONG_AGO
+  gh_created o/r 6 "$LONG_AGO"
   poll
   expect "an allowed user's new unlabelled issue: a run" "$(runs)" 1
   expect_ok "the run is for that issue" test -f "$(idir 7)/started"
@@ -52,7 +52,7 @@ LONG_AGO=2000-01-01T00:00:00Z
   poll
   expect "the option off: no run" "$(runs)" 0
   all_on
-  gh_created o/r 7 $LONG_AGO
+  gh_created o/r 7 "$LONG_AGO"
   poll
   expect "on again: the on-time is new, so an older issue stays alone" "$(runs)" 0
   expect_no_unexpected)
@@ -88,6 +88,17 @@ LONG_AGO=2000-01-01T00:00:00Z
   gh_label_remove o/r 8 alice wontfix
   poll
   expect_ok "wontfix gone: back on" test ! -f "$(idir 8)/off"
+  expect_no_unexpected)
+
+(world
+  runs_do 'comment questions'
+  all_on
+  poll
+  gh_issue o/r 7 alice
+  poll
+  origin_config "# all_issues=true"
+  poll
+  expect "the option off: a worked unlabelled issue is off, and says why" "$(state 7 off)" "all_issues turned off"
   expect_no_unexpected)
 
 (world

@@ -1514,9 +1514,9 @@ poll_repo() {
   # Each labelled issue, and the label that holds it (`invalid` or `wontfix`;
   # `-`, none). A held one isn't worked: it's off, as if unlabelled.
   issues=$(list_issues "$repo" 2>>"$NS/watch.log") || { log "$repo: couldn't list issues"; return; }
-  # With all_issues=true, too the open issues of an allowed user from the
-  # option's on-time on, labelled or not: `extra` are the ones the label didn't
-  # list, whose author is the check (below).
+  # With all_issues=true, an allowed user's open issues from the option's
+  # on-time on count too, labelled or not: `extra` are the ones the label
+  # didn't list, whose author is the check (below).
   extra=""
   all_since=$(all_issues_since "$repo" "$clone")
   if [ -n "$all_since" ]; then
@@ -1549,6 +1549,8 @@ poll_repo() {
     hold=$(printf '%s\n' "$held" | awk -v n="$n" '$1 == n { print $2 }')
     if [ "$state" = closed ]; then why="issue closed"
     elif [ -n "$hold" ]; then why="$hold label added"
+    elif [ -f "$d/unlabelled" ] && [ -z "$all_since" ]; then why="all_issues turned off"
+    elif [ -f "$d/unlabelled" ]; then why="not among the newest 100 open issues"
     else why="label removed"
     fi
     echo "$why" >"$d/off"
@@ -1588,7 +1590,7 @@ poll_repo() {
     [ ! -f "$d/update" ] && [ ! -f "$d/build" ] && [ ! -f "$d/interrupted" ] && [ ! -f "$d/stalled" ] && [ -f "$d/updated" ] && [ "$(cat "$d/updated")" = "$updated" ] && continue
     if [ ! -d "$d" ] && printf '%s\n' "$extra" | grep -qx "$n"; then
       # Unlabelled, by an allowed user: the author is the check.
-      mkdir -p "$d"
+      mkdir -p "$d" && touch "$d/unlabelled"
     elif [ ! -d "$d" ]; then
       # Only a label added by an allowed user starts work.
       by=$(gh api --paginate "repos/$repo/issues/$n/events" \
@@ -2430,7 +2432,8 @@ cmd_add() {
   grep -q "^repo $repo " "$CONFIG" && die "$repo is already watched"
   echo "repo $repo $clone" >>"$CONFIG"
   # With all_issues=true on the default branch already, the repo needs no agent label.
-  [ "$(repo_option "$repo" all_issues)" = true ] && all=1 || all=""
+  all=""
+  [ "$(repo_option "$repo" all_issues)" = true ] && all=1
   [ -n "$all" ] || gh label create "$LABEL" --repo "$repo" --color 5319E7 --description "nightshift works this issue" >/dev/null 2>&1 || true
   ensure_labels "$repo" || true
   if auto_merges "$repo"; then merging="PRs merge on their own (auto_merge=false in .nightshift/config turns it off)"
