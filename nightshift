@@ -1560,6 +1560,9 @@ poll_repo() {
     if [ -n "$news" ] && handoff_ok "$d" && approves "$repo" "$n" "$filter"; then
       printf '%s' "$news" >"$d/build"
     fi
+    # A reply to an issue that needs you: it no longer does, before its run
+    # (or, at capacity, `queued`) sets the next status.
+    [ -n "$news" ] && [ "$(cat "$d/label" 2>/dev/null)" = "needs you" ] && set_status "$repo" "$n" ""
     if [ $first_run -eq 0 ] && [ -z "$news" ] && [ ! -f "$d/interrupted" ] && [ ! -f "$d/stalled" ] && [ ! -f "$d/update" ] && [ ! -f "$d/build" ]; then
       echo "$updated" >"$d/updated"
       continue

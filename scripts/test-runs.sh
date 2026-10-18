@@ -159,4 +159,20 @@ resumed_label() {
   poll
   expect "a run that posts nothing: needs you" "$(status_label 7)" "needs you")
 
+# A reply to a run that needs you: the label goes as the watcher sees it,
+# before the run sets its own.
+(world
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  runs_do "$LABELS_NOW"'start"'
+  : >"$GH_FAKE/calls"
+  gh_comment o/r 7 alice "yes, both" >/dev/null
+  poll
+  expect "a reply: needs you removed first, nothing added" \
+    "$(gh_calls '^issue edit' | head -1)" "issue edit 7 --repo o/r --remove-label nightshift: needs you"
+  expect "then the run's own status" "$(gh_calls '^issue edit' | sed -n 2p)" "issue edit 7 --repo o/r --add-label nightshift: thinking"
+  expect "while it runs: thinking" "$(grep '^nightshift: ' "$CLAUDE_FAKE/runs/2/start")" "nightshift: thinking"
+  expect_no_unexpected)
+
 report

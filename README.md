@@ -156,7 +156,7 @@ waiting on you:
 | `nightshift: updating` | a run is updating the pull request after a merge |
 | `nightshift: merging` | a run is checking the pull request and merging it |
 | `nightshift: answering` | a run is answering a `question` or `duplicate` issue |
-| `nightshift: needs you` | waiting on your reply: questions, an answer, a plan, blocked, a pull request to look at before it merges, a failed run, or one that stalled twice |
+| `nightshift: needs you` | waiting on your reply: questions, an answer, a plan, blocked, a pull request to look at before it merges, a failed run, or one that stalled twice. It comes off as soon as the watcher sees your reply |
 | `nightshift: PR open` | the pull request is open, nothing running |
 | `nightshift: stopped` | a run was stopped partway |
 

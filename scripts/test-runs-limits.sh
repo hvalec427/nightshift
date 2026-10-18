@@ -43,6 +43,25 @@ set -euo pipefail
   expect "the next poll starts it" "$(runs)" 2
   expect "both done: needs you" "$(status_label 7),$(status_label 8)" "needs you,needs you")
 
+# A reply to an issue that needs you, at capacity: it waits, queued.
+(world
+  set_config max_parallel 1
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  gh_issue o/r 8 alice agent
+  runs_do 'hold'
+  "$ROOT/nightshift" once &
+  bg=$!
+  wait_for "$CLAUDE_FAKE/runs/2/waiting"
+  gh_comment o/r 7 alice "yes, both" >/dev/null
+  poll
+  expect "a reply at capacity: no run yet" "$(runs)" 2
+  expect "a reply at capacity: queued" "$(status_label 7)" queued
+  touch "$CLAUDE_FAKE/runs/2/go"
+  wait "$bg"
+  expect_no_unexpected)
+
 # What a run is isolated from.
 (world
   gh_issue o/r 7 alice agent
