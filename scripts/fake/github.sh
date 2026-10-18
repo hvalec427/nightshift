@@ -3,8 +3,9 @@
 # changes, and what a test sets up through the same functions. Per repo, in
 # repos/<owner>_<repo>/: repo.json, labels (a name a line), pulls.json (newest
 # first, as gh lists them), origin (the path of its git remote) and per issue
-# issues/<n>.json, <n>.comments.json and <n>.events.json. `user` is who gh is
-# logged in as; `clock` counts, for ids and update times.
+# issues/<n>.json (created_at: now, or gh_created), <n>.comments.json and
+# <n>.events.json. `user` is who gh is logged in as; `clock` counts, for ids
+# and update times.
 
 # A repo's directory.
 gh_dir() { printf '%s/repos/%s' "$GH_FAKE" "$(echo "$1" | tr '/' '_')"; }
@@ -46,13 +47,16 @@ gh_issue() {
   shift 3
   d=$(gh_dir "$repo")
   gh_lock
-  printf '{"number":%s,"state":"open","title":"Issue %s","user":{"login":"%s"},"labels":[],"updated_at":"t%s"}\n' \
-    "$n" "$n" "$by" "$(gh_tick)" >"$d/issues/$n.json"
+  printf '{"number":%s,"state":"open","title":"Issue %s","user":{"login":"%s"},"labels":[],"created_at":"%s","updated_at":"t%s"}\n' \
+    "$n" "$n" "$by" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(gh_tick)" >"$d/issues/$n.json"
   echo '[]' >"$d/issues/$n.comments.json"
   echo '[]' >"$d/issues/$n.events.json"
   gh_unlock
   for l in "$@"; do gh_label_add "$repo" "$n" "$by" "$l"; done
 }
+
+# Issue $2 was opened at $3 (UTC, 2026-01-01T00:00:00Z); gh_issue says now.
+gh_created() { gh_edit "$(gh_dir "$1")/issues/$2.json" '.created_at = $t' --arg t "$3"; }
 
 # Mark issue $2 updated now.
 gh_touch() { gh_edit "$(gh_dir "$1")/issues/$2.json" '.updated_at = $t' --arg t "t$(gh_tick)"; }
