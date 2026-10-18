@@ -21,6 +21,9 @@ nightshift's runs read this file and keep it up to date.
   lowest issue goes first, turning its after markers on the cycle into overlaps markers.
 - **heartbeat**: what `nightshift status` shows of a running issue's run, from its `log`: its
   latest step (the last tool call, a subagent's too) and its last activity (the log's last change).
+- **top**: `nightshift top`, the dashboard: a window per issue not done or ignored, tiled to
+  fit the terminal, each with its status text and the end of its log at the `all` level; one
+  frame as plain text when stdout isn't a terminal.
 - **world**: a test's throwaway machine from `world()` in `scripts/test-lib.sh`, with the
   fakes in `scripts/fake/`.
 - **full_suite**: the `.nightshift/config` option for where a repo's whole test suite runs:

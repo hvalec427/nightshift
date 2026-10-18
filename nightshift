@@ -8,6 +8,7 @@
 #   nightshift stop                      stop the service (until `nightshift start`)
 #   nightshift stop <owner/repo>#<n>     stop an issue's running agent
 #   nightshift logs [<owner/repo>#<n>] [-f] [-v…]  what every issue (or one) does, at a level
+#   nightshift top                       a window per issue in progress, tiled: its status and the end of its log
 #   nightshift add <owner/repo> <clone>  watch a repo, using this clone of it, and set up its .nightshift/ (config, CONTEXT.md) to commit
 #   nightshift label <status>            (in a run) set its issue's status label
 #   nightshift build [--carry-on]        (in a run) build the approved plan, in a fresh session if it's the planning one (--carry-on: no approval, the plan has no open choices)
@@ -1791,6 +1792,109 @@ cmd_status() {
   [ $hidden -eq 0 ] || echo "($hidden done: nightshift status --all)"
 }
 
+# --- top --------------------------------------------------------------------------
+
+# The jq program that tiles `top`'s frame. Input: the issues, as an array of
+# {id, text, log} (log: its last lines, one string); args: w, h (the screen),
+# rev (1: headers in reverse video). Output: the frame, a line per row, each at
+# most w characters (jq counts characters, awk here counts bytes). Windows are
+# at least 40×6: n issues get c columns and ceil(n / c) rows, the c that makes
+# a window closest to 2:1 (a terminal cell is about twice as tall as wide). If
+# none holds them all, the last row says how many more there are, and the first
+# issues that fit have the rows above it.
+TOP_JQ='
+def spaces($n): [range(0; $n)] | map(" ") | join("");
+def untab: split("\t") | reduce .[1:][] as $p ((.[0] // ""); . + spaces(8 - (length % 8)) + $p);
+def clean: untab | gsub("[[:cntrl:]]"; "");
+def fit($w): .[:$w] | . + spaces($w - length);
+def sizes($total; $k): range(0; $k) as $i | ($total / $k | floor) + (if $i < ($total % $k) then 1 else 0 end);
+def rows_of($n; $c): ($n + $c - 1) / $c | floor;
+def abs: if . < 0 then -. else . end;
+def best($n; $w; $h):
+  [range(1; $n + 1) as $c | rows_of($n; $c) as $r
+   | select(($w / $c | floor) >= 40 and ($h / $r | floor) >= 6)
+   | {c: $c, d: (($w / $c) / ($h / $r) - 2 | abs)}]
+  | if length == 0 then null else (sort_by([.d, .c]) | .[0].c) end;
+def window($i; $w; $h):
+  ($i.id + " · " + ($i.text | clean)) as $head
+  | (if $i.log == "" then ["(nothing logged yet)"] else ($i.log | split("\n") | map(clean)) end) as $lines
+  | ($head | fit($w)) as $hd
+  | [(if $rev == 1 then "\u001b[7m" + $hd + "\u001b[0m" else $hd end)]
+    + (if $h > 1 then ($lines | .[-([$h - 1, ($lines | length)] | min):] | map(fit($w))) else [] end)
+    | . + [range(0; $h - length) | spaces($w)] | .[:$h];
+. as $all | length as $n |
+if $n == 0 then (["no issues in progress"] + [range(1; $h) | ""])
+else
+  (if best($n; $w; $h) != null then {m: $n, h: $h}
+   else
+     ($h - (if $h >= 2 then 1 else 0 end)) as $hr
+     | ([range($n - 1; 0; -1) | select(best(.; $w; $hr) != null)] | first // 1) as $m
+     | {m: $m, h: (if $m == $n then $h else $hr end)}
+   end) as $p
+  | ($all[:$p.m]) as $shown
+  | (best($p.m; $w; $p.h) // 1) as $c
+  | rows_of($p.m; $c) as $r
+  | [sizes($w - ($c - 1); $c)] as $cw
+  | [sizes($p.h; $r)] as $rh
+  | ([range(0; $r) as $i | range(0; $rh[$i]) as $k
+      | [range(0; $c) as $j | ($i * $c + $j) as $x
+         | if $x < $p.m then window($shown[$x]; $cw[$j]; $rh[$i])[$k] else spaces($cw[$j]) end]
+      | join("│")]) as $body
+  | $body + (if $p.m < $n then ["+\($n - $p.m) more: " + ($all[$p.m:] | map(.id) | join(", ")) | .[:$w]] else [] end)
+  | . + [range(0; $h - length) | ""]
+end
+| map(if $rev == 1 then . else sub(" +$"; "") end) | .[]'
+
+# The screen's size, as top_cols and top_rows: COLUMNS and LINES, then the
+# terminal's (tput), then 80×24.
+top_size() {
+  top_cols=${COLUMNS:-} top_rows=${LINES:-}
+  case $top_cols in "" | *[!0-9]* | 0) top_cols=$(tput cols 2>/dev/null) ;; esac
+  case $top_cols in "" | *[!0-9]* | 0) top_cols=80 ;; esac
+  case $top_rows in "" | *[!0-9]* | 0) top_rows=$(tput lines 2>/dev/null) ;; esac
+  case $top_rows in "" | *[!0-9]* | 0) top_rows=24 ;; esac
+}
+
+# One frame of `top`, plain text: $2 rows of at most $1 characters, a window
+# for every issue not done or ignored, in the order `status` lists them. $3 = 1
+# (a terminal): headers in reverse video, and every row padded to the full
+# width. Reads the issue dirs and logs afresh, so the live loop calls it per pass.
+top_frame() {
+  for d in "$NS"/issues/*/; do
+    [ -d "$d" ] || continue
+    d=${d%/}
+    [ -f "$d/done" ] || [ -f "$d/ignored" ] && continue
+    name=$(basename "$d")
+    repo=$(echo "${name%_*}" | sed 's/_/\//')
+    text=$(issue_text "$d")
+    lines=$(tail -n "$2" "$d/log" 2>/dev/null | show_level 3)
+    jq -nc --arg id "$repo#${name##*_}" --arg text "$text" --arg log "$lines" '{id: $id, text: $text, log: $log}'
+  done | jq -rs --argjson w "$1" --argjson h "$2" --argjson rev "${3:-0}" "$TOP_JQ"
+}
+
+top_help() {
+  cat <<'HELP'
+usage: nightshift top
+
+A window for every issue in progress, tiled to fit the terminal: its status and
+the end of its log. Piped, it prints one frame and exits. The size is COLUMNS
+and LINES, or the terminal's.
+HELP
+}
+
+# `top`: one frame, with reverse-video headers on a terminal.
+cmd_top() {
+  case "${1:-}" in
+  "") ;;
+  -h | --help) top_help; exit 0 ;;
+  *) usage_error "$(top_help | head -1)" ;;
+  esac
+  top_size
+  rev=0
+  [ -t 1 ] && rev=1
+  top_frame "$top_cols" "$top_rows" "$rev"
+}
+
 # An issue's `cost` (its dir $1), readable, a word each: its dollars, tokens
 # (all, in, out and cache), seconds, runs and the day counting started (-:
 # with its first run). Fails if there's none.
@@ -2248,7 +2352,7 @@ cmd_skill() {
   printf '%s\n' "$3" >"$(issue_dir "$1" "$2")/skill"
 }
 
-usage() { sed -n '2,15s/^# \{0,1\}//p' "$SELF"; }
+usage() { sed -n '2,16s/^# \{0,1\}//p' "$SELF"; }
 
 # Sourced for its functions (the tests): stop here.
 [ "${NIGHTSHIFT_LIB:-}" = 1 ] && return 0
@@ -2262,6 +2366,7 @@ status) shift; cmd_status "${1:-}" ;;
 start) cmd_start ;;
 stop) shift; cmd_stop "${1:-}" ;;
 logs) shift; cmd_logs "$@" ;;
+top) shift; cmd_top "$@" ;;
 add) shift; cmd_add "$@" ;;
 label) shift; cmd_label "$*" ;;
 build) shift; cmd_build "$@" ;;
