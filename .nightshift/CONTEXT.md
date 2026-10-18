@@ -53,3 +53,6 @@ nightshift's runs read this file and keep it up to date.
 - **open choice**: a decision in a plan that the issue and the user's answers don't settle, and
   that the user might make differently (an assumption in place of an answer counts). A plan with
   none carries on to the build without waiting for a go.
+- **all-issues on-time**: the UTC time a poll first read a repo's `all_issues=true`, kept in
+  `~/.nightshift/all_issues/<owner>_<repo>` until the option reads off. Only an allowed user's
+  unlabelled issues created at or after it are worked; older ones are left alone.
