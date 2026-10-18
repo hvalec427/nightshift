@@ -1514,6 +1514,15 @@ BOARD_QUERY='query NightshiftBoard($owner: String!, $number: Int!, $endCursor: S
   }
 }'
 
+# The GraphQL document that turns a draft card into an issue of a repository
+# (`repo` is the repository's node id), keeping the card. To try it by hand:
+#   gh api graphql -f query='…' -f item=<PVTI_…> -f repo=<R_…>
+CONVERT_DRAFT='mutation NightshiftConvertDraft($item: ID!, $repo: ID!) {
+  convertProjectV2DraftIssueItemToIssue(input: {itemId: $item, repositoryId: $repo}) {
+    item { id }
+  }
+}'
+
 # The columns whose cards nightshift works, lower case, as a jq array; the
 # others (Backlog, Done, a card with none) it leaves alone.
 BOARD_WORKING='["ready", "in progress", "in review", "your review", "ready to merge"]'
@@ -1529,19 +1538,33 @@ fetch_settings() {
   echo "$now" >"$ff"
 }
 
+# The "<owner> <number>" of project option value $1, a user or organisation
+# project's URL (a trailing /views/N is ignored); nothing for anything else.
+parse_board() {
+  printf '%s\n' "$1" | sed -n -E 's#^https://github\.com/(users|orgs)/([^/]+)/projects/([0-9]+)(/views/[0-9]+)?/?$#\2 \3#p'
+}
+
 # Repo $1's board ($2: its clone) from its `project=`, as "<owner> <number>"; nothing without
-# one. The option takes a user or organisation project's URL (a trailing
-# /views/N is ignored); anything else fails, with a note in the log.
+# one. Anything but a project's URL fails, with a note in the log.
 repo_board() {
   fetch_settings "$1" "$2"
   rb=$(repo_option "$1" project)
   [ -n "$rb" ] || return 0
-  rb=$(printf '%s\n' "$rb" | sed -n -E 's#^https://github\.com/(users|orgs)/([^/]+)/projects/([0-9]+)(/views/[0-9]+)?/?$#\2 \3#p')
+  rb=$(parse_board "$rb")
   if [ -z "$rb" ]; then
     log "$1: project= in .nightshift/config isn't a project URL (https://github.com/users/<login>/projects/<n>)"
     return 1
   fi
   printf '%s\n' "$rb"
+}
+
+# The first repo in the config whose `project=` is the board $1 (owner) $2 (number):
+# the one that turns the board's drafts into issues.
+board_first_repo() {
+  repos | while read -r bfr bfc; do
+    fetch_settings "$bfr" "$bfc"
+    [ "$(parse_board "$(repo_option "$bfr" project)" | tr 'A-Z' 'a-z')" = "$(printf '%s %s' "$1" "$2" | tr 'A-Z' 'a-z')" ] && { echo "$bfr"; break; }
+  done
 }
 
 # Read the board $2 (its owner) $3 (its number) for repo $1 into its board.json,
@@ -1567,6 +1590,26 @@ list_board() {
     [.items[] | select(.type == "Issue" and (.repo | ascii_downcase) == ($r | ascii_downcase) and .state == "OPEN"
         and ((.status // "") | ascii_downcase | IN($work[])))
       | { number, updated_at, labels: [.labels[] | { name: . }] }]' "$bf"
+}
+
+# Turn the draft cards in Ready of repo $1's board (as the last list_board
+# read it) into issues of $1, when $1 is the first repo naming that board ($2
+# its owner, $3 its number). Prints a line for each one converted. A draft
+# that fails is logged, and tried again next poll.
+convert_drafts() {
+  cdf="$NS/poll/$(echo "$1" | tr '/' '_').board.json"
+  cdl=$(jq -r '.items[] | select(.type == "DraftIssue" and ((.status // "") | ascii_downcase) == "ready") | "\(.id)\t\(.title)"' "$cdf")
+  [ -n "$cdl" ] || return 0
+  [ "$(board_first_repo "$2" "$3")" = "$1" ] || return 0
+  cdr=$(gh api "repos/$1" --jq .node_id 2>>"$NS/watch.log") || { log "$1: couldn't read the repository to turn its drafts into issues"; return 0; }
+  printf '%s\n' "$cdl" | while IFS=$(printf '\t') read -r cdi cdt; do
+    if gh api graphql -f query="$CONVERT_DRAFT" -f item="$cdi" -f repo="$cdr" >/dev/null 2>>"$NS/watch.log"; then
+      log "$1: turned the draft \"$cdt\" into an issue"
+      echo "$cdi"
+    else
+      log "$1: couldn't turn the draft \"$cdt\" into an issue"
+    fi
+  done
 }
 
 # Repo $1's issues on its board that are not worked, a line each: the number
@@ -1610,6 +1653,9 @@ poll_repo() {
   if [ -n "$board" ]; then
     # shellcheck disable=SC2086 # the owner and the number
     issues=$(list_board "$repo" $board 2>>"$NS/watch.log") || { log "$repo: couldn't read the board"; return; }
+    # Drafts in Ready become issues, which the board is then read for again.
+    # shellcheck disable=SC2086
+    [ -z "$(convert_drafts "$repo" $board)" ] || issues=$(list_board "$repo" $board 2>>"$NS/watch.log") || { log "$repo: couldn't read the board"; return; }
     boff=$(board_off "$repo")
   else
     issues=$(list_issues "$repo" 2>>"$NS/watch.log") || { log "$repo: couldn't list issues"; return; }

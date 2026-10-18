@@ -35,7 +35,7 @@ gh_repo() {
   d=$(gh_dir "$1")
   mkdir -p "$d/issues"
   echo "$2" >"$d/origin"
-  printf '{"default_branch":"master","delete_branch_on_merge":false}\n' >"$d/repo.json"
+  jq -n -c --arg r "$1" '{default_branch: "master", delete_branch_on_merge: false, full_name: $r, node_id: ("R_" + ($r | gsub("/"; "_")))}' >"$d/repo.json"
   echo '[]' >"$d/pulls.json"
   : >"$d/labels"
 }
@@ -136,6 +136,7 @@ gh_pr_set() {
 # cards in order: {id, repo, number, option} for an issue and {id, draft:
 # {id, title}, option} for a draft, `option` the id of the card's Status
 # option (null: none). An issue card is read live from the issue's own file.
+# A repo's node id (repo.json) is R_<owner>_<repo>.
 # A project is named by "<owner>/<number>" in the functions below.
 
 # A project's directory.
@@ -203,4 +204,25 @@ gh_card_column() {
   jq -r --arg r "$2" --argjson n "$3" --slurpfile p "$(gh_project_dir "$1")/project.json" '
     first(.[] | select(.repo == $r and .number == $n)).option as $o
     | $p[0].field.options[] | select(.id == $o) | .name' "$(gh_project_dir "$1")/items.json"
+}
+
+# The draft card $2 (its item id) of project $1 turned into an issue in repo $3,
+# titled as the draft, opened by the logged-in user: the card keeps its item id
+# and column, and becomes an issue card. Prints the issue's number.
+gh_draft_convert() {
+  local d n f title
+  d=$(gh_project_dir "$1")
+  title=$(jq -r --arg i "$2" '.[] | select(.id == $i and .draft) | .draft.title' "$d/items.json")
+  [ -n "$title" ] || return 1
+  n=1
+  for f in "$(gh_dir "$3")"/issues/*.json; do
+    case "${f##*/}" in *.*.json) ;; *) [ -f "$f" ] && n=$((n + 1)) ;; esac
+  done
+  gh_issue "$3" "$n" "$(cat "$GH_FAKE/user")"
+  gh_edit "$(gh_dir "$3")/issues/$n.json" '.title = $t' --arg t "$title"
+  gh_lock
+  gh_edit "$d/items.json" 'map(if .id == $i then {id, repo: $r, number: $n, option} else . end)' \
+    --arg i "$2" --arg r "$3" --argjson n "$n"
+  gh_unlock
+  echo "$n"
 }

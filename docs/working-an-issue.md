@@ -36,7 +36,13 @@ labelled `agent` that isn't on the board is ignored. Everything else works as fo
 labelled issue: your comments (from `allowed_users`) are the news, `invalid` and `wontfix`
 hold it, and the status labels follow the runs. A card in a working column starts work
 without the label check: only people who can write to the project can move cards.
-Cards of other repos, pull requests and drafts are skipped.
+Cards of other repos and pull requests are skipped.
+
+A draft card has no issue to talk in. One in Ready is turned into an issue of the repo
+(titled as the draft, the card kept in Ready) and then worked like any card; a draft in any
+other column is left alone. When several repos in `~/.nightshift/config` name the same
+project, the first one listed turns its drafts into issues. A conversion that fails is
+logged and tried again on the next poll.
 
 ## Sessions and worktrees
 

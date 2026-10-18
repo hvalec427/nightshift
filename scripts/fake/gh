@@ -98,6 +98,22 @@ graphql() {
     [ -f "$(gh_project_dir "$p")/project.json" ] ||
       { echo "gh: Could not resolve to a ProjectV2 with the number ${p#*/}. (repositoryOwner.projectV2)" >&2; exit 1; }
     board_page "$p" | out ;;
+  NightshiftConvertDraft)
+    # The draft card is found in whichever project has it, the repo by its node id.
+    local item rid f r
+    item=$(gql_var item) rid=$(gql_var repo) r=""
+    for f in "$GH_FAKE"/repos/*/repo.json; do
+      [ -f "$f" ] && [ "$(jq -r .node_id "$f")" = "$rid" ] && r=$(jq -r .full_name "$f")
+    done
+    [ -n "$r" ] || { echo "gh: Could not resolve to a Repository with the id $rid. (repositoryId)" >&2; exit 1; }
+    for f in "$GH_FAKE"/projects/*/items.json; do
+      [ -f "$f" ] && jq -e --arg i "$item" 'any(.[]; .id == $i and .draft)' "$f" >/dev/null || continue
+      p=$(basename "$(dirname "$f")")
+      gh_draft_convert "${p%_*}/${p##*_}" "$item" "$r" >/dev/null || exit 1
+      jq -n -c --arg i "$item" '{data: {convertProjectV2DraftIssueItemToIssue: {item: {id: $i}}}}' | out
+      return
+    done
+    echo "gh: Could not resolve to a DraftIssue item with the id $item. (itemId)" >&2; exit 1 ;;
   *) unexpected ;;
   esac
 }

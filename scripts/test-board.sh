@@ -12,6 +12,8 @@ board() {
   origin_config "project=https://github.com/users/alice/projects/5"
 }
 QUERY="graphql .*query NightshiftBoard"
+# How many issues repo $1 has on the fake GitHub.
+issue_count() { find "$(gh_dir "$1")/issues" -name '[0-9]*.json' ! -name '*.*.json' | wc -l | tr -d ' '; }
 
 # With no project=, the label list is read, and no board.
 (world
@@ -124,6 +126,66 @@ QUERY="graphql .*query NightshiftBoard"
   poll
   expect "a column of its own: no run" "$(state 7 started)" ""
   expect "a column in lower case: a run" "$(runs)" 1)
+
+# A draft card in Ready becomes an issue in the repo, which is worked; drafts in
+# other columns are left alone.
+(world
+  board
+  d1=$(gh_draft "$BOARD" "Add a dark mode" Ready)
+  d2=$(gh_draft "$BOARD" "Some idea" Backlog)
+  d3=$(gh_draft "$BOARD" "Being built" "In progress")
+  poll
+  expect "the Ready draft is an issue now" "$(jq -r .title "$(gh_dir o/r)/issues/1.json")" "Add a dark mode"
+  expect "and its card is still in Ready" "$(gh_card_column "$BOARD" o/r 1)" "Ready"
+  expect "the card kept its item id" "$(jq -r '.[0].id' "$(gh_project_dir "$BOARD")/items.json")" "$d1"
+  expect "a run started on the new issue" "$(runs)" 1
+  expect_ok "on issue 1" test -f "$(idir 1)/started"
+  expect "the other drafts are still drafts" "$(jq '[.[] | select(.draft)] | length' "$(gh_project_dir "$BOARD")/items.json")" 2
+  expect "Backlog and In progress drafts: no issue" "$(issue_count o/r)" 1
+  expect_no_unexpected
+  : "$d2$d3")
+
+# A converted draft is converted once: the next poll makes no second issue.
+(world
+  board
+  gh_draft "$BOARD" "Add a dark mode" Ready >/dev/null
+  runs_do 'comment questions'
+  poll
+  poll
+  expect "one issue, not two" "$(issue_count o/r)" 1
+  expect "the convert mutation ran once" "$(gh_calls "graphql .*mutation NightshiftConvertDraft" | wc -l | tr -d ' ')" 1)
+
+# A conversion that fails is logged and tried again on the next poll.
+(world
+  board
+  gh_draft "$BOARD" "Add a dark mode" Ready >/dev/null
+  echo "*NightshiftConvertDraft*" >"$GH_FAKE/fail"
+  poll
+  expect "no conversion: no run" "$(runs)" 0
+  expect_line "the log says which draft" "$(cat "$NS/watch.log")" "o/r: couldn't turn the draft \"Add a dark mode\" into an issue"
+  rm "$GH_FAKE/fail"
+  poll
+  expect "converted on the next poll: a run" "$(runs)" 1)
+
+# Two repos name the project: the first in the config converts the drafts.
+two() {
+  board
+  git clone -q "$ORIGIN" "$W/clone2" 2>/dev/null
+  gh_repo x/y "$ORIGIN"
+  printf 'repo %s %s\n' "$1" "$2" >"$NS/config"
+  printf 'repo %s %s\n' "$3" "$4" >>"$NS/config"
+  gh_draft "$BOARD" "Add a dark mode" Ready >/dev/null
+  poll
+}
+(world
+  two o/r "$CLONE" x/y "$W/clone2"
+  expect "the first repo converts it" "$(issue_count o/r)" 1
+  expect "the second doesn't" "$(issue_count x/y)" 0
+  expect "one conversion" "$(gh_calls "mutation NightshiftConvertDraft" | wc -l | tr -d ' ')" 1)
+(world
+  two x/y "$W/clone2" o/r "$CLONE"
+  expect "listed first, x/y converts it" "$(issue_count x/y)" 1
+  expect "o/r doesn't" "$(issue_count o/r)" 0)
 
 # A project= that isn't a project's URL: nothing is worked, and the log says so.
 (world
