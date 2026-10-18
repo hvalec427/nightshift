@@ -257,6 +257,13 @@ wait_for() {
   [ -e "$1" ]
 }
 
+# Wait until the issue $1's log has a line with $2 (10s at most).
+wait_log() {
+  local i=0 f
+  f="$(idir "$1")/log"
+  while ! grep -qF -- "$2" "$f" 2>/dev/null && [ $i -lt 100 ]; do sleep 0.1; i=$((i + 1)); done
+}
+
 # Wait until the issue $1 has no run going (10s at most).
 wait_idle() {
   local i=0 d

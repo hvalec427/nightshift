@@ -196,7 +196,7 @@ no issues yet")
   bg=$!
   wait_for "$CLAUDE_FAKE/runs/1/waiting"
   expect_line "status: a run going, its type, label and pid" "$(ns status)" \
-    "^o/r#7  *bug · thinking [0-9]*s (pid $(state 7 pid))$"
+    "^o/r#7  *bug · thinking [0-9]*s (pid $(state 7 pid)) · last activity [0-9]*s ago$"
   ns stop o/r#7 >/dev/null
   wait "$bg"
   gh_issue o/r 8 bob agent
@@ -216,7 +216,7 @@ no issues yet")
   wait_for "$CLAUDE_FAKE/runs/1/waiting"
   wait_for "$(idir 7)/skill"
   expect_line "status: a run going, its skill" "$(ns status)" \
-    "^o/r#7  *planning · nightshift:plan [0-9]*s (pid $(state 7 pid))$"
+    "^o/r#7  *planning · nightshift:plan [0-9]*s (pid $(state 7 pid)) · now: Skill: nightshift:plan · last activity [0-9]*s ago$"
   ns stop o/r#7 >/dev/null
   wait "$bg"
   runs_do 'skill nightshift:questions; comment questions'
@@ -226,6 +226,60 @@ no issues yet")
   echo https://github.com/o/r/pull/1 >"$(idir 7)/pr"
   echo "PR open" >"$(idir 7)/label"
   expect_line "status: a pull request, the skill it ended in" "$(ns status)" "^o/r#7  *PR https://github.com/o/r/pull/1 · nightshift:questions · waiting [0-9]*s · spent ")
+
+(world
+  gh_issue o/r 7 alice agent
+  runs_do 'tool_use "bash scripts/test-runs.sh"; say "running the tests"; hang'
+  "$ROOT/nightshift" once &
+  bg=$!
+  wait_for "$CLAUDE_FAKE/runs/1/waiting"
+  wait_log 7 "running the tests"
+  expect_line "status: a run's heartbeat, its last tool call and activity" "$(ns status)" \
+    "^o/r#7  *thinking [0-9]*s (pid $(state 7 pid)) · now: Bash: bash scripts/test-runs.sh · last activity [0-9]*s ago$"
+  touch -t "$(date -v-5M +%Y%m%d%H%M.%S)" "$(idir 7)/log"
+  expect_line "status: a quiet run, in minutes" "$(ns status)" " · last activity 5m ago$"
+  echo https://github.com/o/r/pull/1 >"$(idir 7)/pr"
+  echo "rebasing" >"$(idir 7)/updating"
+  expect_line "status: an update run's heartbeat" "$(ns status)" \
+    "^o/r#7  *PR https://github.com/o/r/pull/1 · rebasing [0-9]*s (pid $(state 7 pid)) · now: Bash: bash scripts/test-runs.sh · last activity 5m ago$"
+  rm "$(idir 7)/log"
+  expect_line "status: no log, no heartbeat" "$(ns status)" "(pid $(state 7 pid))$"
+  ns stop o/r#7 >/dev/null
+  wait "$bg")
+
+(world
+  gh_issue o/r 7 alice agent
+  runs_do 'tool_use "git status"; agent a1 nightshift:ticket T1; tool_use "bash scripts/test.sh review runs && shellcheck -S warning nightshift install.sh" a1; hang'
+  "$ROOT/nightshift" once &
+  bg=$!
+  wait_for "$CLAUDE_FAKE/runs/1/waiting"
+  wait_log 7 shellcheck
+  expect_line "status: a subagent's tool call, cut to 60 characters" "$(ns status)" \
+    " · now: Bash: bash scripts/test.sh review runs && shellcheck -S war… · last activity [0-9]*s ago$"
+  ns stop o/r#7 >/dev/null
+  wait "$bg"
+  runs_do 'say "back on it"; hang'
+  gh_comment o/r 7 alice "go on" >/dev/null
+  "$ROOT/nightshift" once &
+  bg=$!
+  wait_for "$CLAUDE_FAKE/runs/2/waiting"
+  wait_log 7 "back on it"
+  expect_line "status: the next run, no tool call yet: not the last run's" "$(ns status)" \
+    "(pid $(state 7 pid)) · last activity [0-9]*s ago · spent "
+  ns stop o/r#7 >/dev/null
+  wait "$bg")
+
+(world
+  gh_issue o/r 7 alice agent
+  runs_do 'tool_use "echo ······························································"; hang'
+  "$ROOT/nightshift" once &
+  bg=$!
+  wait_for "$CLAUDE_FAKE/runs/1/waiting"
+  wait_log 7 "echo ·"
+  expect_line "status: a step cut by characters, not bytes" "$(ns status)" \
+    " · now: Bash: echo ················································… · last activity [0-9]*s ago$"
+  ns stop o/r#7 >/dev/null
+  wait "$bg")
 
 # --- logs -------------------------------------------------------------------------
 

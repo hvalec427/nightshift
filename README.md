@@ -184,7 +184,7 @@ on GitHub they're yours. It only acts on the label when you added it, and only o
 comments from you (`allowed_users` below).
 
 ```sh
-nightshift status                   # the service, the issues in progress, what each is doing and in which skill (or why it stopped), for how long, what it spent so far, its context size, and merge order
+nightshift status                   # the service, the issues in progress, what each is doing and in which skill (or why it stopped), for how long, a running one's heartbeat (its latest step and last activity), what it spent so far, its context size, and merge order
 nightshift status --all             # the done ones too: when their pull request merged, or the issue closed
 nightshift start                    # run the service: nightshift watch, in the background whenever you're logged in
 nightshift stop                     # stop the service, and the runs in flight (they resume when it starts again), until nightshift start
