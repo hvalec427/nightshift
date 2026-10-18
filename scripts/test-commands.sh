@@ -445,6 +445,23 @@ without() {
   expect_line "doctor: all_issues=true: no missing label" "$OUT" "agent. label" no)
 
 (healthy
+  origin_config "base_branch=develop"
+  git -C "$CLONE" fetch -q origin
+  try ns doctor
+  expect "doctor: base_branch not on origin: passes" "$ST" 0
+  expect_line "doctor: base_branch not on origin: a note" "$OUT" \
+    "^  note    o/r: base_branch=develop isn't on origin, so runs use master: push it, or fix base_branch in .nightshift/config$")
+
+(healthy
+  origin_file x.md "on develop" develop
+  origin_config "base_branch=develop"
+  git -C "$CLONE" fetch -q origin
+  expect_line "doctor: base_branch on origin: no note" "$(ns doctor)" "base_branch" no)
+
+(healthy
+  expect_line "doctor: no base_branch: no note" "$(ns doctor)" "base_branch" no)
+
+(healthy
   printf 'repo %s %s auto_merge=false plugins=rn-agent\n' "$REPO" "$CLONE" >"$NS/config"
   try ns doctor
   expect "doctor: options on a repo line: ignored, only a note" "$ST" 0

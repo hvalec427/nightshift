@@ -2567,6 +2567,10 @@ cmd_doctor() {
     done
     v=$(repo_line_option "$repo" instructions)
     [ -z "$v" ] || printf '  %-7s %s\n' note "$repo: instructions=$v on its repo line is ignored now: copy the file into .nightshift/instructions/ in $repo"
+    # A base_branch origin doesn't have: runs fall back to the default branch.
+    v=$(repo_option "$repo" base_branch)
+    [ -z "$v" ] || git -C "$clone" rev-parse -q --verify "refs/remotes/origin/$v" >/dev/null 2>&1 ||
+      printf '  %-7s %s\n' note "$repo: base_branch=$v isn't on origin, so runs use $(default_branch "$repo" "$clone"): push it, or fix base_branch in .nightshift/config"
     # A hint, not a problem: nightshift deletes its own merged branches.
     [ -n "$ghv" ] && [ "$(gh api "repos/$repo" -q .delete_branch_on_merge 2>/dev/null)" = false ] &&
       printf '  %-7s %s\n' hint "$repo: GitHub keeps merged branches (\"Automatically delete head branches\" is off); nightshift deletes its own, and for the rest: gh repo edit $repo --delete-branch-on-merge"
