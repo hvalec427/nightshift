@@ -326,4 +326,105 @@ planned() {
   expect_line "no board: the merge line" "$(run_prompt)" "^This repo auto-merges"
   expect_line "no board: no board line" "$(run_prompt)" "project board" no)
 
+# The card follows the work: the build skill moves it to In progress, the review
+# skill to In review, and a run ending with its pull request open to Your review.
+MOVES="mutation NightshiftMoveCard"
+moves() { gh_calls "$MOVES" | wc -l | tr -d ' '; }
+BUILDS='skill nightshift:build; commit feature.txt; open_pr; skill nightshift:review; skill nightshift:finish; comment done'
+(world
+  board
+  gh_issue o/r 7 alice
+  gh_card "$BOARD" o/r 7 Ready
+  runs_do "$BUILDS"
+  poll
+  expect "the work done: the card is in Your review" "$(gh_card_column "$BOARD" o/r 7)" "Your review"
+  expect "a move for each column it passed through" "$(moves)" 3
+  expect "in that order" "$(grep -o 'card moved to .*' "$NS/watch.log" | paste -sd, -)" "card moved to In progress,card moved to In review,card moved to Your review"
+  poll
+  expect "nothing new: no more moves" "$(moves)" 3
+
+  # A comment on a card in Your review: it goes to In progress, and round again.
+  gh_comment o/r 7 alice "please rename it" >/dev/null
+  runs_do 'comment progress'
+  poll
+  expect "a comment in Your review: a run" "$(runs)" 2
+  expect "and back in Your review after it" "$(gh_card_column "$BOARD" o/r 7)" "Your review"
+  expect "In progress and Your review again" "$(grep -o 'card moved to .*' "$NS/watch.log" | tail -2 | paste -sd, -)" "card moved to In progress,card moved to Your review"
+  expect_no_unexpected)
+
+# A run that starts on a card in Your review has it in In progress while it works.
+(world
+  board
+  gh_issue o/r 7 alice
+  gh_card "$BOARD" o/r 7 Ready
+  runs_do "$BUILDS"
+  poll
+  gh_comment o/r 7 alice "please rename it" >/dev/null
+  runs_do 'hang'
+  "$ROOT/nightshift" once &
+  bg=$!
+  wait_for "$CLAUDE_FAKE/runs/2/waiting"
+  expect "the run on a change request: the card is in In progress" "$(gh_card_column "$BOARD" o/r 7)" "In progress"
+  kill "$(cat "$(idir 7)/pid")"
+  wait "$bg" || true)
+
+# Nothing moves a card back: one in Ready to merge stays there as a skill sets a status.
+(world
+  board
+  gh_issue o/r 7 alice
+  gh_card "$BOARD" o/r 7 "Ready to merge"
+  runs_do 'skill nightshift:build; skill nightshift:review; comment progress'
+  poll
+  expect "the run happened" "$(runs)" 1
+  expect "a card ahead of the skill's column: it stays" "$(gh_card_column "$BOARD" o/r 7)" "Ready to merge"
+  expect "and nothing moved it" "$(moves)" 0
+  expect_no_unexpected)
+
+# A board with no In review column: the log says so, the card stays, the run goes on.
+(world
+  gh_project "$BOARD" Backlog Ready "In progress" "Your review" Done
+  origin_config "project=https://github.com/users/alice/projects/5"
+  gh_issue o/r 7 alice
+  gh_card "$BOARD" o/r 7 Ready
+  runs_do "$BUILDS"
+  poll
+  expect_line "no In review column: the log says so" "$(cat "$NS/watch.log")" "o/r#7: the board has no In review column: card not moved"
+  expect "the card went on to Your review" "$(gh_card_column "$BOARD" o/r 7)" "Your review")
+
+# A merged pull request moves its card to Done.
+(world
+  board
+  gh_issue o/r 7 alice
+  gh_card "$BOARD" o/r 7 Ready
+  runs_do "$BUILDS"
+  poll
+  gh_pr_set o/r "$(state 7 pr | sed 's|.*/||')" state '"MERGED"'
+  gh_state o/r 7 closed
+  poll
+  expect "merged: the card is in Done" "$(gh_card_column "$BOARD" o/r 7)" "Done"
+  expect "the issue is done" "$(state 7 "done")" "PR merged"
+  poll
+  expect "nothing more to move" "$(moves)" 4
+  expect_no_unexpected)
+
+# A run that merges its own pull request leaves its card for Done, not Your review.
+(world
+  board
+  gh_issue o/r 7 alice
+  gh_card "$BOARD" o/r 7 "In review"
+  runs_do 'skill nightshift:merge; commit feature.txt; open_pr; merge_pr; comment done'
+  poll
+  expect "a merging run: the card isn't sent to Your review" "$(gh_card_column "$BOARD" o/r 7)" "In review"
+  poll
+  expect "the merged pull request: Done" "$(gh_card_column "$BOARD" o/r 7)" "Done")
+
+# A hand-off through the planning run's `nightshift build` moves the card to In progress.
+(world
+  planned
+  gh_comment o/r 7 alice "looks good, build it" >/dev/null
+  runs_do 'nightshift build >"$RUN/said"'
+  poll
+  expect "a hand-off that isn't a go: the card is in In progress" "$(gh_card_column "$BOARD" o/r 7)" "In progress"
+  expect_no_unexpected)
+
 report

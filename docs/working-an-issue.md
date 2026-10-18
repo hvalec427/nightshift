@@ -53,6 +53,22 @@ nothing. A board repo never builds without one of these: `auto_merge` is ignored
 never carries on by itself, nothing counts as a small issue, and nothing merges outside the
 card being in Ready to merge or a **merge** reply.
 
+The card then follows the work, one move (a GraphQL mutation) each, only when it changes:
+
+| When | The card goes to |
+|---|---|
+| A build hands off, or a **go** approves; the build, tdd or update skill starts | In progress |
+| The review, finish or merge skill starts | In review |
+| A run starts on a card in Your review (a change request or an update) | In progress |
+| A run ends with its pull request open | Your review |
+| Its pull request merges | Done |
+
+So a comment on a card in Your review moves it to In progress, and the run ending puts it in
+Your review again. A card only moves forward along Backlog, Ready, In progress, In review, Your
+review, Ready to merge, Done; where you've already moved it past a column, nightshift leaves
+it. The one way back is Your review to In progress. A column the project lacks means no move,
+and a line in the log (`nightshift logs`) says which.
+
 ## Sessions and worktrees
 
 Each issue gets its own worktree (in the repo's clone, `.claude/worktrees/issue-<n>`,

@@ -252,17 +252,18 @@ PR open|0E8A16|its pull request is open
 stopped|BFBFBF|nightshift was stopped partway'
 
 # The status each of nightshift's skills sets as a run invokes it, a line
-# each: the skill (without `nightshift:`) and its status. Others set none.
-SKILL_STATUSES='questions|thinking
-plan|planning
-diagnose|thinking
-build|building
-tdd|building
-review|building
-finish|building
-update|updating
-merge|merging
-answer|answering'
+# each: the skill (without `nightshift:`), its status and, on a project board,
+# the column its card moves to. Others set none.
+SKILL_STATUSES='questions|thinking|
+plan|planning|
+diagnose|thinking|
+build|building|In progress
+tdd|building|In progress
+review|building|In review
+finish|building|In review
+update|updating|In progress
+merge|merging|In review
+answer|answering|'
 
 # Create the status labels in a repo (or update their colours), once per
 # version of STATUSES.
@@ -602,6 +603,10 @@ $intro"
   elif [ -n "$last" ]; then set_status "$repo" "$n" "$last"
   else set_status "$repo" "$n" thinking
   fi
+  # A run on a card in Your review is a change request or an update: the card goes back to In progress.
+  if [ "$(board_column "$repo" "$n")" = "your review" ] && is_board "$repo"; then
+    move_card "$repo" "$n" "In progress" || true
+  fi
   log "$repo#$n: run starting"
   t0=$(date +%s)
   printf '\n0\t=== %s run\n' "$(date '+%Y-%m-%d %H:%M:%S')" >>"$dir/log"
@@ -691,7 +696,13 @@ $intro"
       git -C "$clone" worktree remove --force "$wt" 2>>"$dir/log" && rm -f "$dir/worktree"
     fi
   fi
-  set_status "$repo" "$n" "$(idle_status "$dir")"
+  st=$(idle_status "$dir")
+  set_status "$repo" "$n" "$st"
+  # With its pull request open, the card waits for the user: Your review. (One
+  # that merged goes to Done, when check_done sees it.)
+  if [ "$st" = "PR open" ] && is_board "$repo" && ! merged_pr "$repo" "$n" "$dir"; then
+    move_card "$repo" "$n" "Your review" || true
+  fi
 }
 
 # The pull request of $1#$2's branch, if it has one, into issue dir $3's `pr`
@@ -1216,7 +1227,9 @@ check_done() {
         why="issue closed"
       fi
     fi
-    [ -n "$why" ] && retire "$repo" "$n" "$clone" "$d" "$why"
+    [ -n "$why" ] || continue
+    retire "$repo" "$n" "$clone" "$d" "$why"
+    [ "$why" != "PR merged" ] || ! is_board "$repo" || move_card "$repo" "$n" Done || true
   done
 }
 
@@ -1642,10 +1655,22 @@ board_column() {
     "$NS/poll/$(echo "$1" | tr '/' '_').board.json" 2>/dev/null
 }
 
+# The route a card takes, in order, in lower case, and the moves back along it
+# that are allowed, a line each: from and to.
+BOARD_ROUTE='backlog
+ready
+in progress
+in review
+your review
+ready to merge
+done'
+BOARD_BACK='your review|in progress'
+
 # Move the card of $1#$2 to the column $3 (matched without regard to case) of its
 # board, as the last list_board read it. Fails, with a line in the log, when the
 # board has no such column or card, or the mutation fails; does nothing when the
-# card is there already. On success the card is that column in board.json and in
+# card is there already, or past it on the route (BOARD_ROUTE) unless the move
+# back is one of BOARD_BACK. On success the card is that column in board.json and in
 # the issue's `column`, so the move isn't taken for the user's.
 move_card() {
   mcf="$NS/poll/$(echo "$1" | tr '/' '_').board.json"
@@ -1655,7 +1680,14 @@ move_card() {
   mci=$(jq -r --arg r "$1" --argjson n "$2" '[.items[] | select(.type == "Issue" and (.repo | ascii_downcase) == ($r | ascii_downcase) and .number == $n)][0].id // empty' "$mcf")
   if [ -z "$mci" ]; then log "$1#$2: not on the board: card not moved"; return 1; fi
   mcn=${mcc#*"$(printf '\t')"}
-  [ "$(board_column "$1" "$2")" != "$(printf '%s' "$mcn" | tr 'A-Z' 'a-z')" ] || return 0
+  mcf2=$(board_column "$1" "$2") mct=$(printf '%s' "$mcn" | tr 'A-Z' 'a-z')
+  [ "$mcf2" != "$mct" ] || return 0
+  mcr=$(printf '%s\n' "$BOARD_ROUTE" | grep -nxF "$mct" | cut -d: -f1)
+  mcq=$(printf '%s\n' "$BOARD_ROUTE" | grep -nxF "$mcf2" | cut -d: -f1)
+  if [ -n "$mcr" ] && [ -n "$mcq" ] && [ "$mcr" -lt "$mcq" ] && ! printf '%s\n' "$BOARD_BACK" | grep -qxF "$mcf2|$mct"; then
+    log_at 3 "$1#$2: the card is in $mcf2, past $mcn: not moved back"
+    return 0
+  fi
   if ! gh api graphql -f query="$MOVE_CARD" -f project="$(jq -r .project "$mcf")" -f item="$mci" \
     -f field="$(jq -r .field "$mcf")" -f option="${mcc%%"$(printf '\t')"*}" >/dev/null 2>>"$NS/watch.log"; then
     log "$1#$2: couldn't move the card to $mcn"
@@ -2709,6 +2741,8 @@ cmd_build() {
     echo "A fresh session builds it, with the issue, the plan and the comments since: end this run now, with no comment."
   elif [ $carry = 0 ] && handoff_ok "$bd" && [ ! -f "$bd/updating" ]; then
     cp "$bd/news" "$bd/build" 2>/dev/null || : >"$bd/build"
+    # The card follows the approval.
+    ! is_board "$NIGHTSHIFT_REPO" || move_card "$NIGHTSHIFT_REPO" "$NIGHTSHIFT_ISSUE" "In progress" || true
     echo "A fresh session builds it, with the issue, the plan and the approval: end this run now, with no comment."
   else
     echo "Build it in this session: invoke the nightshift:build skill."
@@ -2716,7 +2750,10 @@ cmd_build() {
 }
 
 # The status a skill (`nightshift:<name>`) sets, if any (see SKILL_STATUSES).
-skill_status() { printf '%s\n' "$SKILL_STATUSES" | sed -n "s/^${1#nightshift:}|//p"; }
+skill_status() { printf '%s\n' "$SKILL_STATUSES" | sed -n "s/^${1#nightshift:}|\([^|]*\)|.*/\1/p"; }
+
+# The board column a skill's card moves to, if any (see SKILL_STATUSES).
+skill_column() { printf '%s\n' "$SKILL_STATUSES" | sed -n "s/^${1#nightshift:}|[^|]*|//p"; }
 
 # `_skill <repo> <n> nightshift:<name>`: a run invoked the skill; keep it, and
 # set the status it maps to.
@@ -2724,6 +2761,9 @@ cmd_skill() {
   s=$(skill_status "$3")
   [ -z "$s" ] || set_status "$1" "$2" "$s"
   printf '%s\n' "$3" >"$(issue_dir "$1" "$2")/skill"
+  # On a board, the card goes with it.
+  sc=$(skill_column "$3")
+  [ -z "$sc" ] || ! is_board "$1" || move_card "$1" "$2" "$sc" || true
 }
 
 usage() { sed -n '2,16s/^# \{0,1\}//p' "$SELF"; }
