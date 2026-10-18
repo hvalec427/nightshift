@@ -8,7 +8,7 @@
 #   nightshift stop                      stop the service (until `nightshift start`)
 #   nightshift stop <owner/repo>#<n>     stop an issue's running agent
 #   nightshift logs [<owner/repo>#<n>] [-f] [-v…]  what every issue (or one) does, at a level
-#   nightshift top                       at least 8 windows, one per issue in progress, tiled: its status and the end of its log, live on a terminal (q quits)
+#   nightshift top                       at least 8 windows, one per issue in progress, tiled: its status and the end of its log, live on a terminal (q quits, j/k scroll)
 #   nightshift add <owner/repo> <clone>  watch a repo, using this clone of it, and set up its .nightshift/ (config, CONTEXT.md) to commit
 #   nightshift label <status>            (in a run) set its issue's status label
 #   nightshift build [--carry-on]        (in a run) build the approved plan, in a fresh session if it's the planning one (--carry-on: no approval, the plan has no open choices)
@@ -1811,14 +1811,16 @@ cmd_status() {
 
 # The jq program that tiles `top`'s frame. Input: the issues, as an array of
 # {id, text, log} (log: its last lines, one string); args: w, h (the screen),
-# rev (1: headers in reverse video). Output: the frame, a line per row, each at
+# rev (1: headers in reverse video), off (the first row of windows to show) and live (1: a
+# first line "off page" before the frame, the off used and the rows of windows on a page). Output: the frame, a line per row, each at
 # most w characters (jq counts characters, awk here counts bytes). Windows are
 # at least 40×6, not counting the │ between them. The grid has s windows, the
 # most from max(8, n) down to n that fit: c columns and ceil(s / c) rows, the c
 # that makes a window closest to 2:1 (a terminal cell is about twice as tall as
 # wide). Issue x has window x; the spare windows are blank. If not even n fit,
-# the last row says how many more there are, and the first issues that fit (m
-# windows, s = m) have the rows above it.
+# the last row is a bottom line and the m windows that fit (s = m) have the rows above it,
+# from row off (kept within 0 ... the last row n issues have, less the rows on a page): the
+# bottom line says how many more there are, or live which issues are shown and the keys.
 TOP_JQ='
 def spaces($n): [range(0; $n)] | map(" ") | join("");
 def untab: split("\t") | reduce .[1:][] as $p ((.[0] // ""); . + spaces(8 - (length % 8)) + $p);
@@ -1858,7 +1860,7 @@ def window($i; $w; $h):
     + (if $h > 1 then ($lines | .[-([$h - 1, ($lines | length)] | min):] | map(fit($w))) else [] end)
     | . + [range(0; $h - length) | spaces($w)] | .[:$h];
 . as $all | length as $n |
-if $n == 0 then (["no issues in progress"] + [range(1; $h) | ""])
+if $n == 0 then (["no issues in progress"] + [range(1; $h) | ""] | if $live == 1 then ["0 1"] + . else . end)
 else
   ([range([8, $n] | max; $n - 1; -1) | select(best(.; $w; $h) != null)] | first) as $s
   | (if $s != null then {s: $s, m: $n, h: $h, c: best($s; $w; $h)}
@@ -1868,17 +1870,21 @@ else
      | (if $m == $n then $h else $hr end) as $mh
      | {s: $m, m: $m, h: $mh, c: (best($m; $w; $mh) // 1)}
    end) as $p
-  | ($all[:$p.m]) as $shown
   | $p.c as $c
+  | (if $p.m < $n then ([[$off, rows_of($n; $c) - rows_of($p.m; $c)] | min, 0] | max) else 0 end) as $o
+  | ($all[$o * $c:$o * $c + $p.m]) as $shown
   | rows_of($p.s; $c) as $r
   | [sizes($w - ($c - 1); $c)] as $cw
   | [sizes($p.h; $r)] as $rh
   | ([range(0; $r) as $i | range(0; $rh[$i]) as $k
       | [range(0; $c) as $j | ($i * $c + $j) as $x
-         | if $x < $p.m then window($shown[$x]; $cw[$j]; $rh[$i])[$k] else spaces($cw[$j]) end]
+         | if $x < ($shown | length) then window($shown[$x]; $cw[$j]; $rh[$i])[$k] else spaces($cw[$j]) end]
       | join("│")]) as $body
-  | $body + (if $p.m < $n then ["+\($n - $p.m) more: " + ($all[$p.m:] | map(.id) | join(", ")) | .[:$w]] else [] end)
+  | $body + (if $p.m == $n then []
+      elif $live == 1 then ["issues \($o * $c + 1)–\($o * $c + ($shown | length)) of \($n) · ↑↓ j k scroll · q quits" | fit($w)]
+      else ["+\($n - $p.m) more: " + ($all[$p.m:] | map(.id) | join(", ")) | .[:$w]] end)
   | . + [range(0; $h - length) | ""] | .[:$h]
+  | if $live == 1 then ["\($o) \(if $p.m < $n then rows_of($p.m; $c) else 1 end)"] + . else . end
 end
 | map(if $rev == 1 then . else sub(" +$"; "") end) | .[]'
 
@@ -1895,7 +1901,9 @@ top_size() {
 # One frame of `top`, plain text: $2 rows of at most $1 cells, a window
 # for every issue not done or ignored, in the order `status` lists them. $3 = 1
 # (a terminal): headers in reverse video, and every row padded to the full
-# width. Reads the issue dirs and logs afresh, so the live loop calls it per pass.
+# width. $4: the first row of windows to show, when they don't all fit (default 0).
+# $5 = 1 (the live loop): a first line "off page", the $4 as kept in range and the rows of
+# windows on a page, and a bottom line with the scroll keys. Reads the issue dirs and logs afresh, so the live loop calls it per pass.
 top_frame() {
   for d in "$NS"/issues/*/; do
     [ -d "$d" ] || continue
@@ -1906,7 +1914,8 @@ top_frame() {
     text=$(issue_text "$d")
     lines=$(tail -n "$2" "$d/log" 2>/dev/null | show_level 3)
     jq -nc --arg id "$repo#${name##*_}" --arg text "$text" --arg log "$lines" '{id: $id, text: $text, log: $log}'
-  done | jq -rs --argjson w "$1" --argjson h "$2" --argjson rev "${3:-0}" "$TOP_JQ"
+  done | jq -rs --argjson w "$1" --argjson h "$2" --argjson rev "${3:-0}" \
+    --argjson off "${4:-0}" --argjson live "${5:-0}" "$TOP_JQ"
 }
 
 top_help() {
@@ -1917,6 +1926,8 @@ A grid of at least 8 windows (the most that fit, never fewer than the issues in
 progress), tiled to fit the terminal: a window for every issue in progress, with
 its status and the end of its log, and the spare windows blank. On a terminal it
 is live: it redraws every second, fits the terminal as it resizes, and q quits.
+When the windows don't all fit, j or the down arrow scrolls the grid down a row of
+windows, k or the up arrow up a row, Space or PgDn down a page, and PgUp up a page.
 Piped, it prints one frame and exits. The size, for one frame, is COLUMNS and
 LINES, or the terminal's.
 HELP
@@ -1930,9 +1941,16 @@ top_restore() {
   tput rmcup 2>/dev/null
 }
 
+# One byte of the terminal, "" after the wait `stty ... time 10` bounds.
+top_byte() { dd bs=1 count=1 2>/dev/null; }
+
 # The live `top`, until q or Q: the alternate screen and a hidden cursor, and
-# every second (the wait for a key, which `stty ... time 10` bounds) the size
-# read again from the terminal, one frame drawn from the top left.
+# every second (the wait for a key, which `stty ... time 10` bounds) or at a key
+# the size read again from the terminal, one frame drawn from the top left. The
+# keys scroll the windows by rows, top_off the first row shown: j and ↓ (ESC [ B)
+# one down, k and ↑ (ESC [ A) one up, Space and PgDn (ESC [ 6 ~) a page down,
+# PgUp (ESC [ 5 ~) a page up. jq keeps top_off in range and says what it kept
+# in the frame's first line, with the rows on a page.
 top_live() {
   top_stty=$(stty -g)
   trap top_restore EXIT
@@ -1943,6 +1961,10 @@ top_live() {
   tput smcup
   tput civis
   top_prev=
+  top_off=0
+  top_esc=$(printf '\033')
+  top_nl='
+'
   while :; do
     # The terminal's size by stdin: tput can't ask through a $(...).
     unset COLUMNS LINES
@@ -1954,8 +1976,25 @@ top_live() {
       top_prev="${top_cols}×${top_rows}"
     fi
     tput home
-    printf '%s' "$(top_frame "$top_cols" "$top_rows" 1)"
-    case $(dd bs=1 count=1 2>/dev/null) in q | Q) exit 0 ;; esac
+    top_out=$(top_frame "$top_cols" "$top_rows" 1 "$top_off" 1)
+    top_head=${top_out%%"$top_nl"*}
+    top_off=${top_head% *} top_page=${top_head#* }
+    printf '%s' "${top_out#*"$top_nl"}"
+    case $(top_byte) in
+    q | Q) exit 0 ;;
+    j) top_off=$((top_off + 1)) ;;
+    k) top_off=$((top_off - 1)) ;;
+    " ") top_off=$((top_off + top_page)) ;;
+    "$top_esc")
+      if [ "$(top_byte)" = "[" ]; then
+        case $(top_byte) in
+        B) top_off=$((top_off + 1)) ;;
+        A) top_off=$((top_off - 1)) ;;
+        6) top_byte >/dev/null; top_off=$((top_off + top_page)) ;;
+        5) top_byte >/dev/null; top_off=$((top_off - top_page)) ;;
+        esac
+      fi ;;
+    esac
   done
 }
 

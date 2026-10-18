@@ -31,7 +31,8 @@ nightshift's runs read this file and keep it up to date.
   never fewer than the issues), a window per issue not done or ignored and the spare ones
   blank, tiled to fit the terminal, each with its status text and the end of its log at the
   `all` level; one frame as plain text when stdout isn't a terminal, and on a terminal live:
-  redrawn every second on the alternate screen until `q`.
+  redrawn every second on the alternate screen until `q`. When the issues don't all fit, the
+  grid scrolls by rows of windows (`j`/`k`, ↑↓, Space, PgDn/PgUp), a bottom line saying which.
 - **world**: a test's throwaway machine from `world()` in `scripts/test-lib.sh`, with the
   fakes in `scripts/fake/`.
 - **full_suite**: the `.nightshift/config` option for where a repo's whole test suite runs:

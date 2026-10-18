@@ -373,7 +373,7 @@ await() {
   return 1
 }
 
-# Runs `nightshift top` under a pty (BSD script) sized 40×6, TERM=xterm, with $1
+# Runs `nightshift top` under a pty (BSD script) sized 40×6 (or $4×$3), TERM=xterm, with $1
 # on its stdin, and, given a signal $2, sends it that once its screen is up.
 # Its screen is in $W/tty (carriage returns dropped), its exit status in $ST
 # ("hung" if it outlasted 20 s), and the terminal's icanon, echo, min and time
@@ -384,9 +384,9 @@ live() {
   rm -f "$W/st" "$W/before" "$W/after" "$W/sh"
   printf '%s' "$1" >"$W/in"
   TERM=xterm script -q /dev/null sh -c 'mode() { stty -a | tr " ;" "\n\n" | grep -x -e icanon -e -icanon -e echo -e -echo; stty -g | tr ":" "\n" | grep -e "^min=" -e "^time="; }
-    echo $$ >"$1"; stty cols 40 rows 6; unset COLUMNS LINES; mode >"$2"
+    echo $$ >"$1"; stty cols "$6" rows "$5"; unset COLUMNS LINES; mode >"$2"
     perl -e "\$SIG{INT} = q(DEFAULT); exec @ARGV" "$0" top; echo $? >"$3"; mode >"$4"' \
-    "$ROOT/nightshift" "$W/sh" "$W/before" "$W/st" "$W/after" <"$W/in" >"$W/tty.raw" 2>&1 &
+    "$ROOT/nightshift" "$W/sh" "$W/before" "$W/st" "$W/after" "${3:-6}" "${4:-40}" <"$W/in" >"$W/tty.raw" 2>&1 &
   pid=$!
   if [ -n "${2:-}" ]; then
     # nightshift is the shell's child, and draws once it has the alternate screen.
@@ -426,5 +426,52 @@ live() {
   expect "top, live: HUP ends it with status 129" "$ST" 129
   expect_line "top, live: HUP shows the cursor again" "$(cat "$W/tty")" "${esc}\[?25h"
   expect "top, live: HUP restores the terminal's settings" "$(cat "$W/after")" "$(cat "$W/before")")
+
+# Scrolling, at 40×6 (one 5-row window above the bottom line: a page is one issue) and 40×17
+# (two 8-row windows: a page is two). The bottom lines it drew, in order, and the headers,
+# less the first frame: BSD script sends a ^D first, which redraws it before the first key.
+bottoms() { grep -o 'issues [0-9–]* of [0-9]*' "$W/tty" | sed '1d; s/^issues //; s/ of .*//' | tr '\n' ' '; }
+headers() { grep -o 'o/r#[0-9]* ·' "$W/tty" | sed '1d; s/^o\/r#//; s/ ·$//' | tr '\n' ' '; }
+(world
+  for i in 7 8 9; do issue $i; done
+  live q
+  expect "top, live: more issues than fit: the first one, and its place in the bottom line" "$(bottoms)|$(headers)" "1–1 |7 "
+  expect_line "top, live: the bottom line is cut to the width" "$(cat "$W/tty")" "^issues 1–1 of 3 · ↑↓ j k scroll · q quit${esc}"
+  live jq
+  expect "top, live: j shows the next issue" "$(bottoms)|$(headers)" "1–1 2–2 |7 8 "
+  live jjjjq
+  expect "top, live: j stops at the last issue" "$(bottoms)|$(headers)" "1–1 2–2 3–3 3–3 3–3 |7 8 9 9 9 "
+  live jjkq
+  expect "top, live: k goes back one" "$(bottoms)" "1–1 2–2 3–3 2–2 "
+  live kkq
+  expect "top, live: k stops at the first issue" "$(bottoms)" "1–1 1–1 1–1 "
+  live jjjkkkkq
+  expect "top, live: the offset stays in range, so k comes straight back from the end" "$(bottoms)" "1–1 2–2 3–3 3–3 2–2 1–1 1–1 1–1 "
+  live "${esc}[B${esc}[B${esc}[Aq"
+  expect "top, live: the down and up arrows scroll too" "$(bottoms)" "1–1 2–2 3–3 2–2 "
+  live "${esc}[6~${esc}[6~${esc}[5~q"
+  expect "top, live: PgDn and PgUp move a page" "$(bottoms)" "1–1 2–2 3–3 2–2 "
+  live " q"
+  expect "top, live: Space moves a page" "$(bottoms)" "1–1 2–2 "
+  live "${esc}xq"
+  expect "top, live: an Escape sequence that isn't a key is ignored, and q after it quits" "$ST" 0)
+
+(world
+  for i in 1 2 3 4 5; do issue $i; done
+  live jq "" 17
+  expect "top, live: 5 issues in 2-window pages: j moves a row of one window" "$(bottoms)" "1–2 2–3 "
+  live " q" "" 17
+  expect "top, live: Space moves a page of two rows" "$(bottoms)" "1–2 3–4 "
+  live "   q" "" 17
+  expect "top, live: and stops at the last page" "$(bottoms)" "1–2 3–4 4–5 4–5 "
+  live "${esc}[6~${esc}[5~q" "" 17
+  expect "top, live: PgUp moves a page back" "$(bottoms)" "1–2 3–4 1–2 ")
+
+# 81×11: two 40-wide windows side by side above the bottom line, so a row is two issues.
+(world
+  for i in 1 2 3 4 5; do issue $i; done
+  live jjjjq "" 11 81
+  expect_line "top, live: the bottom line names the keys, padded to the width" "$(cat "$W/tty")" "^issues 1–2 of 5 · ↑↓ j k scroll · q quits \{40\}${esc}"
+  expect "top, live: j moves a row of the grid, two issues, and the last row has the one left" "$(bottoms)" "1–2 3–4 5–5 5–5 5–5 ")
 
 report
