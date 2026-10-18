@@ -1806,7 +1806,13 @@ TOP_JQ='
 def spaces($n): [range(0; $n)] | map(" ") | join("");
 def untab: split("\t") | reduce .[1:][] as $p ((.[0] // ""); . + spaces(8 - (length % 8)) + $p);
 def clean: untab | gsub("[[:cntrl:]]"; "");
-def fit($w): .[:$w] | . + spaces($w - length);
+# A code point'"'"'s cells on a terminal: emoji (U+1F000 up, U+2600-U+27BF) take two.
+def cells: if . >= 126976 or (. >= 9728 and . <= 10175) then 2 else 1 end;
+# Cut to $w cells, before the first character that would pass it, then pad.
+def fit($w): reduce explode[] as $c ({s: [], n: 0, full: false};
+    if .full then . elif .n + ($c | cells) > $w then .full = true
+    else .s += [$c] | .n += ($c | cells) end)
+  | (.s | implode) + spaces($w - .n);
 def sizes($total; $k): range(0; $k) as $i | ($total / $k | floor) + (if $i < ($total % $k) then 1 else 0 end);
 def rows_of($n; $c): ($n + $c - 1) / $c | floor;
 def abs: if . < 0 then -. else . end;
@@ -1857,7 +1863,7 @@ top_size() {
   case $top_rows in "" | *[!0-9]* | 0) top_rows=24 ;; esac
 }
 
-# One frame of `top`, plain text: $2 rows of at most $1 characters, a window
+# One frame of `top`, plain text: $2 rows of at most $1 cells, a window
 # for every issue not done or ignored, in the order `status` lists them. $3 = 1
 # (a terminal): headers in reverse video, and every row padded to the full
 # width. Reads the issue dirs and logs afresh, so the live loop calls it per pass.

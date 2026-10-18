@@ -243,19 +243,30 @@ F
   expect "top: an issue with no log yet" "$(frame 40 6 | tr '\n' '|')" \
     "o/r#7 · queued|(nothing logged yet)|||||")
 
-# --- characters, not bytes ----------------------------------------------------------------
+# --- cells, not characters ----------------------------------------------------------------
+
+# $1 spaces.
+sp() { printf "%$1s" ''; }
 
 (world
   issue 7
   issue 8
-  printf '0\t%s\n' "ünï·😀·😀 and some text" "·······················································································" >"$(idir 7)/log"
+  printf '0\t%s\n' "ünï·😀·😀 and some text" "☀☀ sun" \
+    "🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖" "x🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖" \
+    "·······················································································" >"$(idir 7)/log"
   f=$(frame 81 12)
-  expect "top: multibyte characters keep the columns: a │ after 40 characters on every row" \
-    "$(printf '%s\n' "$f" | sed 's/│.*//' | jq -R length | sort -u)" 40
-  expect "top: a multibyte log line is shown whole, then cut at the window's width" "$(printf '%s\n' "$f" | sed -n '2p;3p' | sed 's/│.*//')" \
-    "$(cell 40 'ünï·😀·😀 and some text')
-········································"
-  expect "top: no row passes the width" "$(within 81 "$f" && echo yes)" yes)
+  expect "top: multibyte characters are a cell each, emoji two: the window is 40 cells wide on every row" \
+    "$(printf '%s\n' "$f" | sed -n '2,6p' | sed 's/│.*/│/')" \
+    "ünï·😀·😀 and some text$(sp 17)│
+☀☀ sun$(sp 32)│
+🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖│
+x🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖 │
+········································│"
+  rm -rf "$(idir 8)"
+  printf '0\t%s\n' "🤖 nightshift · plan" >"$(idir 7)/log"
+  expect "top: a line one cell too wide for its emoji is cut by a character" "$(frame 19 2)" \
+    "o/r#7 · queued
+🤖 nightshift · pla")
 
 # --- the log -------------------------------------------------------------------------------
 
