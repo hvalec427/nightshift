@@ -58,9 +58,9 @@ watcher.
 The user gives an issue its type with one of GitHub's default labels next to `agent`; the
 prompt names it ("Its type label: `bug`") or says it has none. The type sets how you work:
 
-- **`bug`**: cause first. With no plan yet (and not small, case 2 below), the
+- **`bug`**: cause first. With no plan yet (and not small, case 3 below), the
   `nightshift:diagnose` skill builds a check that fails the way the bug does and proves
-  the cause, then hands on to `nightshift:plan` (case 3). The plan is short: the cause, the
+  the cause, then hands on to `nightshift:plan` (case 4). The plan is short: the cause, the
   red check and the hypotheses, the fix and the test, with the tickets. The first ticket
   turns the minimised repro into a failing test; the fix makes it pass.
 - **`enhancement`**: the steps below, as they are.
@@ -80,17 +80,41 @@ repo has (`gh label list`); when it lacks one, work the issue as that type anywa
 the label is missing. A label the prompt says the user changed since your last run stands
 as theirs. Labels other than the type and status ones are the user's.
 
+## Size
+
+Every issue but a `question` or `duplicate` has a size, which sets how much process it
+gets. Decide it on a run with no plan yet, from the issue and the code:
+
+- **small**: case 3's criteria below, unchanged. Built straight from the issue, with one
+  quick reviewer.
+- **large**: it touches many areas, adds several features, or changes how things work.
+  Questions first, always; a plan of **sub-issues**; a **go** always. Each sub-issue is
+  built, reviewed and merged as its own pull request.
+- **medium**: everything else. Questions when there are any, a plan, the build, one pull
+  request.
+
+Say the size and why in a line of that run's comment (a `questions`, `plan` or `progress`
+comment, or the build's `done`). A reply saying "small", "medium" or "large" before the
+build starts switches it, and the next case runs for the new size. A plan already posted
+is rewritten for it, by `nightshift:plan` (case 5). A large `bug` asks its questions,
+then diagnoses, then plans.
+
 ## Where the issue stands
 
 Read the thread first (`gh issue view <n> --comments`), take the first case below that
 applies, and end the run after its comment. Most cases are a stage with a skill of its own:
 invoke it by name with the Skill tool and follow it, with the rules above. The stage's
 guidance lives in that skill, not here. "No plan yet" means no plan and no pull request: a
-small issue (case 2) has a pull request and no plan, and its later runs take cases 6 to 8.
+small issue (case 3) has a pull request and no plan, and its later runs take cases 7 to 9.
 
-1. **No plan yet, open decisions.** Decisions that are the user's and that the issue and
-   the code don't settle: invoke the `nightshift:questions` skill, which asks them.
-2. **No plan yet, small.** A **small** issue is all of: a few lines (about 20) in one or
+1. **A sub-issue, no pull request yet.** Its body carries `<!-- nightshift:parent #<n> -->`.
+   Invoke the `nightshift:build` skill in this session straight away, with the body's spec
+   and tickets as the plan: no questions, no plan, no **go**. The parent's approval covers it.
+2. **No plan yet, open decisions.** Decisions that are the user's and that the issue and
+   the code don't settle: invoke the `nightshift:questions` skill, which asks them. A
+   **large** issue with no plan takes this case until it has asked once, even when
+   everything looks settled: the skill asks what it assumed.
+3. **No plan yet, small.** A **small** issue is all of: a few lines (about 20) in one or
    two files; nothing for the user to decide (the issue already says what to do); no new
    command or option, no breaking change, and nothing security-relevant or touching CI,
    releases or installing; and, on a `bug`, a cause already plain
@@ -98,38 +122,40 @@ small issue (case 2) has a pull request and no plan, and its later runs take cas
    no plan yet, and invoke the `nightshift:build` skill in this session (no
    `nightshift build` first: there's no planning conversation to leave behind). It builds
    the issue as its one ticket, with no plan and no wait for a **go**.
-3. **No plan yet, nothing open** (or the answers are in). On a `bug`, invoke the
+4. **No plan yet, nothing open** (or the answers are in). On a `bug`, invoke the
    `nightshift:diagnose` skill: it finds the cause behind a red check, then invokes
    `nightshift:plan` itself (or asks in a `questions` comment when it can't build the
    check). Otherwise invoke the `nightshift:plan` skill: it writes the plan, with the spec
    and ticket guidance.
-4. **A plan, and the user asked for changes.** Invoke `nightshift:plan` too, for a revised
-   plan, then wait again.
-5. **A plan the user approved** ("go", or anything that clearly means build it), **or a
+5. **A plan, and the user asked for changes** (or a new size). Invoke `nightshift:plan`
+   too, for a revised plan, then wait again.
+6. **A plan the user approved** ("go", or anything that clearly means build it), **or a
    plan that carried on** (its last line says it has no open choices, so no one said go).
    Run `nightshift build` first (`nightshift build --carry-on` for the carry-on): when it
    says a fresh session builds it, end the run there, with no comment. Otherwise invoke
    the `nightshift:build` skill: it builds the tickets test-first and opens the pull
-   request (and hands it to the merge skill when the repo auto-merges).
-6. **An update run:** the watcher's news says the default branch moved under this pull
+   request (and hands it to the merge skill when the repo auto-merges). For a **large**
+   plan the build makes the sub-issues instead, and a parent whose sub-issues exist is
+   not built again: a comment of the user's on it is answered in a `progress` comment.
+7. **An update run:** the watcher's news says the default branch moved under this pull
    request. Invoke the `nightshift:update` skill: it rebases the branch and adapts the
    change to what merged.
-7. **A `look` comment, and the user approved it** ("merge", or anything that clearly
+8. **A `look` comment, and the user approved it** ("merge", or anything that clearly
    means merge it). When the run prompt says "This repo auto-merges", invoke the
    `nightshift:merge` skill: it runs its hard gates again and merges. With
    `auto_merge=false`, a **merge** reply is a request like any other (the next case), but
    you don't merge: that's the user's.
-8. **A pull request is open, and the user commented.** Do what they ask on this branch,
+9. **A pull request is open, and the user commented.** Do what they ask on this branch,
    check it, commit and push. The pull request updates with the push. Then say what you did
    in a `progress` comment, only when the repo doesn't auto-merge. When the run prompt says
    "This repo auto-merges", post nothing and hand what it did to the `nightshift:merge`
    skill, invoked with the Skill tool: it puts that at the top of its one closing comment
    and checks the updated pull request again.
-   On a small issue (case 2), a reply asking for a plan or "the full process" is a plan
+   On a small issue (case 3), a reply asking for a plan or "the full process" is a plan
    request instead: invoke `nightshift:plan`, and the build after its **go** (or its
    carry-on) works on this same branch and its pull request.
 
-Done when the run's comment is posted, or the run ended as case 5 says.
+Done when the run's comment is posted, or the run ended as case 6 says.
 
 ## Overlap with other nightshift work
 

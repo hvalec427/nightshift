@@ -58,3 +58,8 @@ Each reply reshapes the tree: settled decisions push the frontier outward and un
 questions that depended on them. Recompute the frontier and ask the next round while it
 has questions. When the frontier is empty, every branch has been visited and nothing is
 left silently assumed: the issue is ready for its plan.
+
+A **large** issue (the issue skill's Size section) is asked at least once, even when the
+frontier is empty from the start: a big change never starts on assumptions, so the round asks
+what you settled yourself as questions, each with its recommendation. The split into
+sub-issues is the plan's, not asked here.

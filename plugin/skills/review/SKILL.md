@@ -34,7 +34,9 @@ nothing to review: say so when you report, and go on.
 - **The plan:** the latest `plan` comment on the issue (`<!-- nightshift:plan -->`), in
   full, plus any reply of the user's after it that changed it. A small issue (no `plan`
   comment: the issue skill built it straight away) has the issue and the user's replies as
-  its plan: each thing the issue asks for is met, partial, or missing.
+  its plan: each thing the issue asks for is met, partial, or missing. A sub-issue (the
+  parent marker in its body) has no `plan` comment either: its body, the spec and tickets
+  the parent's plan gave it, is the plan.
 - **The standards:** every file in the repo that says how code here is written:
   `CLAUDE.md` files, `CONTRIBUTING.md`, `CODING_STANDARDS.md`, a README's section on
   development or tests, and the commit and pull request conventions and the `CLAUDE.md`
