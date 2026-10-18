@@ -61,7 +61,7 @@ line 6
 line 7
 line 8"
   expect "top: the lines the screen has, whatever its height" "$(frame 40 6 | rows) $(frame 100 20 | rows)" "6 20"
-  expect "top: a tall window starts with what the log has, blank below" "$(frame 40 12 | sed -n '1p;2p;9p;10p' | tr '\n' '|')" \
+  expect "top: a tall window starts with what the log has, blank below" "$(frame 40 11 | sed -n '1p;2p;9p;10p' | tr '\n' '|')" \
     "o/r#7 · bug · queued to build|line 1|line 8||"
   expect "top: a header is cut to the width of its window" "$(frame 20 6 | head -1)" "o/r#7 · bug · queued")
 
@@ -75,7 +75,7 @@ line 8"
   issue 9 pr=https://github.com/o/r/pull/1 after=7 label="PR open"
   issue 10 done="issue closed"
   issue 11 ignored="labelled by someone else"
-  f=$(frame 200 30)
+  f=$(frame 160 30)
   kill "$bg"
   { wait "$bg" || true; } 2>/dev/null
   expect_line "top: a running issue" "$f" "^o/r#7 · running [0-9]*s (pid $bg) *│"
@@ -92,21 +92,72 @@ rows_of() { sed 's/|$//'; }
 (world
   four
   rm -rf "$(idir 8)" "$(idir 9)" "$(idir 90)"
-  frame 80 24 >"$W/one"
-  expect "top: 1 issue at 80×24, one window of 80×24" "$(sed -n '1p;2p;9p;10p' "$W/one" | tr '\n' '|')" \
-    "o/r#7 · bug · queued to build|line 1|line 8||"
+  expect "top: 1 issue at 81×24, 8 windows: a 2×4 grid of 40×6, the issue top left, the other 7 blank" "$(frame 81 24)" "$(rows_of <<'F'
+o/r#7 · bug · queued to build           │|
+line 4                                  │|
+line 5                                  │|
+line 6                                  │|
+line 7                                  │|
+line 8                                  │|
+                                        │|
+                                        │|
+                                        │|
+                                        │|
+                                        │|
+                                        │|
+                                        │|
+                                        │|
+                                        │|
+                                        │|
+                                        │|
+                                        │|
+                                        │|
+                                        │|
+                                        │|
+                                        │|
+                                        │|
+                                        │|
+F
+)"
+  expect "top: 1 issue at 80×24, 8 windows don't fit: 4 stacked windows of 6 rows, 3 blank" "$(frame 80 24)" "$(rows_of <<'F'
+o/r#7 · bug · queued to build|
+line 4|
+line 5|
+line 6|
+line 7|
+line 8|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+F
+)"
   four
   rm -rf "$(idir 9)" "$(idir 90)"
-  expect "top: 2 issues at 82×12, side by side, 41 and 40 wide around a │" "$(frame 82 12)" "$(rows_of <<'F'
+  expect "top: 2 issues at 82×12, 4 windows, 2×2: side by side, 41 and 40 wide around a │, the bottom pair blank" "$(frame 82 12)" "$(rows_of <<'F'
 o/r#7 · bug · queued to build            │o/r#8 · queued|
-line 1                                   │(nothing logged yet)|
-line 2                                   │|
-line 3                                   │|
-line 4                                   │|
+line 4                                   │(nothing logged yet)|
 line 5                                   │|
 line 6                                   │|
 line 7                                   │|
 line 8                                   │|
+                                         │|
+                                         │|
+                                         │|
                                          │|
                                          │|
                                          │|
@@ -127,12 +178,12 @@ o/r#8 · queued|
 |
 F
 )"
-  expect "top: 2 issues at 80×24, stacked, 12 rows each" "$(frame 80 24 | sed -n '1p;12p;13p;24p' | tr '\n' '|')" \
-    "o/r#7 · bug · queued to build||o/r#8 · queued||"
+  expect "top: 2 issues at 80×24, stacked, 4 windows of 6 rows, the last 2 blank" "$(frame 80 24 | sed -n '1p;6p;7p;12p;13p;24p' | tr '\n' '|')" \
+    "o/r#7 · bug · queued to build|line 8|o/r#8 · queued||||"
   four
   rm -rf "$(idir 90)"
-  expect "top: 3 issues at 80×24, stacked, 8 rows each" "$(frame 80 24 | sed -n '1p;2p;9p;17p;24p' | tr '\n' '|')" \
-    "o/r#7 · bug · queued to build|line 2|o/r#8 · queued|o/r#9 · proposed: waiting for your comment||"
+  expect "top: 3 issues at 80×24, stacked, 4 windows of 6 rows, the last blank" "$(frame 80 24 | sed -n '1p;2p;7p;13p;19p;24p' | tr '\n' '|')" \
+    "o/r#7 · bug · queued to build|line 4|o/r#8 · queued|o/r#9 · proposed: waiting for your comment|||"
   four
   expect "top: 4 issues at 80×24, stacked, 6 rows each" "$(frame 80 24)" "$(rows_of <<'F'
 o/r#7 · bug · queued to build|
@@ -161,25 +212,17 @@ line 7|
 line 8|
 F
 )"
-  expect "top: 4 issues at 120×30, 2 columns (60, 59) and 2 rows of 15" "$(frame 120 30)" "$(rows_of <<'F'
+  expect "top: 4 issues at 120×30, 8 windows: 2 columns (60, 59) and 4 rows (8, 8, 7, 7), the last 2 rows blank" "$(frame 120 30)" "$(rows_of <<'F'
 o/r#7 · bug · queued to build                               │o/r#8 · queued|
-line 1                                                      │(nothing logged yet)|
-line 2                                                      │|
+line 2                                                      │(nothing logged yet)|
 line 3                                                      │|
 line 4                                                      │|
 line 5                                                      │|
 line 6                                                      │|
 line 7                                                      │|
 line 8                                                      │|
-                                                            │|
-                                                            │|
-                                                            │|
-                                                            │|
-                                                            │|
-                                                            │|
 o/r#9 · proposed: waiting for your comment                  │o/r#90 · PR https://github.com/o/r/pull/1 · queued: rebase|
-(nothing logged yet)                                        │line 1|
-                                                            │line 2|
+(nothing logged yet)                                        │line 2|
                                                             │line 3|
                                                             │line 4|
                                                             │line 5|
@@ -192,16 +235,26 @@ o/r#9 · proposed: waiting for your comment                  │o/r#90 · PR htt
                                                             │|
                                                             │|
                                                             │|
+                                                            │|
+                                                            │|
+                                                            │|
+                                                            │|
+                                                            │|
+                                                            │|
+                                                            │|
+                                                            │|
 F
 )"
-  expect "top: 4 issues at 123×30, 3 columns (41, 40, 40) and 2 rows of 15" "$(frame 123 30 | sed -n '1p;16p')" \
+  expect "top: 4 issues at 123×30, 3 columns (41, 40, 40) and 3 rows of 10, the last 5 windows blank" "$(frame 123 30 | sed -n '1p;11p;21p')" \
     "$(cell 41 'o/r#7 · bug · queued to build')│$(cell 40 'o/r#8 · queued')│o/r#9 · proposed: waiting for your comme
-$(cell 41 'o/r#90 · PR https://github.com/o/r/pull/1')│$(cell 40 '')│"
+$(cell 41 'o/r#90 · PR https://github.com/o/r/pull/1')│$(cell 40 '')│
+$(cell 41 '')│$(cell 40 '')│"
   rm -rf "$(idir 90)"
-  expect "top: 3 issues at 120×30, 2 columns and 2 rows, the last slot empty" "$(frame 120 30 | sed -n '1p;16p;17p;30p')" \
+  expect "top: 3 issues at 120×30, 2 columns and 4 rows (8, 8, 7, 7), the 5 spare windows blank" "$(frame 120 30 | sed -n '1p;9p;10p;17p;30p')" \
     "$(cell 60 'o/r#7 · bug · queued to build')│o/r#8 · queued
 $(cell 60 'o/r#9 · proposed: waiting for your comment')│
 $(cell 60 '(nothing logged yet)')│
+$(cell 60 '')│
 $(cell 60 '')│"
   rm -rf "$(idir 9)"
   expect "top: 2 issues at 120×30, 2 columns (60, 59)" "$(frame 120 30 | head -1)" \
@@ -209,6 +262,16 @@ $(cell 60 '')│"
   expect "top: 2 issues at 60×14, stacked, 7 rows each" "$(frame 60 14 | sed -n '1p;8p')" \
     "o/r#7 · bug · queued to build
 o/r#8 · queued")
+
+# --- more than 8 issues ------------------------------------------------------------------
+
+(world
+  for i in 1 2 3 4 5 6 7 8 9; do issue $i; done
+  expect "top: 9 issues at 123×18: a window each, 3×3 of 41, 40 and 40 by 6, none blank" "$(frame 123 18 | sed -n '1p;7p;13p;18p')" \
+    "$(cell 41 'o/r#1 · queued')│$(cell 40 'o/r#2 · queued')│o/r#3 · queued
+$(cell 41 'o/r#4 · queued')│$(cell 40 'o/r#5 · queued')│o/r#6 · queued
+$(cell 41 'o/r#7 · queued')│$(cell 40 'o/r#8 · queued')│o/r#9 · queued
+$(cell 41 '')│$(cell 40 '')│")
 
 # --- overflow, empty, and nothing logged ----------------------------------------------
 
@@ -253,7 +316,7 @@ sp() { printf "%$1s" ''; }
   printf '0\t%s\n' "ünï·😀·😀 and some text" "✗ fail ✓ pass ☀" "⭐⌚ star" \
     "🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖" "x🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖" \
     "·······················································································" >"$(idir 7)/log"
-  f=$(frame 81 12)
+  f=$(frame 81 28)
   expect "top: multibyte characters are a cell each, emoji two (✗ ✓ ☀ one): the window is 40 cells wide on every row" \
     "$(printf '%s\n' "$f" | sed -n '2,7p' | sed 's/│.*/│/')" \
     "ünï·😀·😀 and some text$(sp 17)│
@@ -309,8 +372,8 @@ await() {
   return 1
 }
 
-# Runs `nightshift top` under a pty (BSD script) sized 40×6, TERM=xterm, with $1
-# on its stdin, and, given a signal $2, sends it that once its screen is up.
+# Runs `nightshift top` under a pty (BSD script) sized 40×6 (or $4×$3), TERM=xterm, with $1
+# on its stdin (or, for "-", what the caller writes to the fifo $W/in), and, given a signal $2, sends it that once its screen is up.
 # Its screen is in $W/tty (carriage returns dropped), its exit status in $ST
 # ("hung" if it outlasted 20 s), and the terminal's icanon, echo, min and time
 # in $W/before and $W/after, from before it ran and after. Its INT is reset to
@@ -318,11 +381,12 @@ await() {
 live() {
   local pid i top=
   rm -f "$W/st" "$W/before" "$W/after" "$W/sh"
-  printf '%s' "$1" >"$W/in"
-  TERM=xterm script -q /dev/null sh -c 'mode() { stty -a | tr " ;" "\n\n" | grep -x -e icanon -e -icanon -e echo -e -echo; stty -g | tr ":" "\n" | grep -e "^min=" -e "^time="; }
-    echo $$ >"$1"; stty cols 40 rows 6; unset COLUMNS LINES; mode >"$2"
+  # script won't take a fifo as its stdin, but takes a pipe.
+  [ "$1" = - ] || { rm -f "$W/in"; printf '%s' "$1" >"$W/in"; }
+  cat "$W/in" | TERM=xterm script -q /dev/null sh -c 'mode() { stty -a | tr " ;" "\n\n" | grep -x -e icanon -e -icanon -e echo -e -echo; stty -g | tr ":" "\n" | grep -e "^min=" -e "^time="; }
+    echo $$ >"$1"; stty cols "$6" rows "$5"; unset COLUMNS LINES; mode >"$2"
     perl -e "\$SIG{INT} = q(DEFAULT); exec @ARGV" "$0" top; echo $? >"$3"; mode >"$4"' \
-    "$ROOT/nightshift" "$W/sh" "$W/before" "$W/st" "$W/after" <"$W/in" >"$W/tty.raw" 2>&1 &
+    "$ROOT/nightshift" "$W/sh" "$W/before" "$W/st" "$W/after" "${3:-6}" "${4:-40}" >"$W/tty.raw" 2>&1 &
   pid=$!
   if [ -n "${2:-}" ]; then
     # nightshift is the shell's child, and draws once it has the alternate screen.
@@ -362,5 +426,69 @@ live() {
   expect "top, live: HUP ends it with status 129" "$ST" 129
   expect_line "top, live: HUP shows the cursor again" "$(cat "$W/tty")" "${esc}\[?25h"
   expect "top, live: HUP restores the terminal's settings" "$(cat "$W/after")" "$(cat "$W/before")")
+
+# Scrolling, at 40×6 (one 5-row window above the bottom line: a page is one issue) and 40×17
+# (two 8-row windows: a page is two). The bottom lines it drew, in order, and the headers,
+# less the first frame: BSD script sends a ^D first, which redraws it before the first key.
+bottoms() { grep -o 'issues [0-9–]* of [0-9]*' "$W/tty" | sed '1d; s/^issues //; s/ of .*//' | tr '\n' ' '; }
+headers() { grep -o 'o/r#[0-9]* ·' "$W/tty" | sed '1d; s/^o\/r#//; s/ ·$//' | tr '\n' ' '; }
+(world
+  for i in 7 8 9; do issue $i; done
+  live q
+  expect "top, live: more issues than fit: the first one, and its place in the bottom line" "$(bottoms)|$(headers)" "1–1 |7 "
+  expect_line "top, live: the bottom line is cut to the width" "$(cat "$W/tty")" "^issues 1–1 of 3 · ↑↓ j k scroll · q quit${esc}"
+  live jq
+  expect "top, live: j shows the next issue" "$(bottoms)|$(headers)" "1–1 2–2 |7 8 "
+  live jjjjq
+  expect "top, live: j stops at the last issue" "$(bottoms)|$(headers)" "1–1 2–2 3–3 3–3 3–3 |7 8 9 9 9 "
+  live jjkq
+  expect "top, live: k goes back one" "$(bottoms)" "1–1 2–2 3–3 2–2 "
+  live kkq
+  expect "top, live: k stops at the first issue" "$(bottoms)" "1–1 1–1 1–1 "
+  live jjjkkkkq
+  expect "top, live: the offset stays in range, so k comes straight back from the end" "$(bottoms)" "1–1 2–2 3–3 3–3 2–2 1–1 1–1 1–1 "
+  live "${esc}[B${esc}[B${esc}[Aq"
+  expect "top, live: the down and up arrows scroll too" "$(bottoms)" "1–1 2–2 3–3 2–2 "
+  live "${esc}[6~${esc}[6~${esc}[5~q"
+  expect "top, live: PgDn and PgUp move a page" "$(bottoms)" "1–1 2–2 3–3 2–2 "
+  live " q"
+  expect "top, live: Space moves a page" "$(bottoms)" "1–1 2–2 "
+  live "${esc}xq"
+  expect "top, live: an Escape sequence that isn't a key is ignored, and q after it quits" "$ST" 0
+  expect "top, live: the frame's first line, the offset and the page, isn't drawn" "$(grep -c "${esc}\[H[0-9]" "$W/tty" || true)" 0)
+
+(world
+  live q
+  expect_line "top, live: no issues: it says so" "$(cat "$W/tty")" "no issues in progress"
+  expect "top, live: no issues: the frame's first line isn't drawn" "$(grep -c "${esc}\[H[0-9]" "$W/tty" || true)" 0)
+
+# Issues finishing while it's scrolled to the end: the offset stays in range, so k moves at once.
+(world
+  for i in 7 8 9 10; do issue $i; done
+  rm -f "$W/in"
+  mkfifo "$W/in"
+  { printf jjj; sleep 3; touch "$(idir 10)/done"; sleep 3; printf kq; } >"$W/in" &
+  live -
+  wait
+  expect "top, live: an issue finishing at the end scrolls back to the new last, and k goes on from there" \
+    "$(bottoms | tr ' ' '\n' | uniq | tail -3 | tr '\n' ' ')" "4–4 3–3 2–2 ")
+
+(world
+  for i in 1 2 3 4 5; do issue $i; done
+  live jq "" 17
+  expect "top, live: 5 issues in 2-window pages: j moves a row of one window" "$(bottoms)" "1–2 2–3 "
+  live " q" "" 17
+  expect "top, live: Space moves a page of two rows" "$(bottoms)" "1–2 3–4 "
+  live "   q" "" 17
+  expect "top, live: and stops at the last page" "$(bottoms)" "1–2 3–4 4–5 4–5 "
+  live "${esc}[6~${esc}[5~q" "" 17
+  expect "top, live: PgUp moves a page back" "$(bottoms)" "1–2 3–4 1–2 ")
+
+# 81×11: two 40-wide windows side by side above the bottom line, so a row is two issues.
+(world
+  for i in 1 2 3 4 5; do issue $i; done
+  live jjjjq "" 11 81
+  expect_line "top, live: the bottom line names the keys, padded to the width" "$(cat "$W/tty")" "^issues 1–2 of 5 · ↑↓ j k scroll · q quits \{40\}${esc}"
+  expect "top, live: j moves a row of the grid, two issues, and the last row has the one left" "$(bottoms)" "1–2 3–4 5–5 5–5 5–5 ")
 
 report
