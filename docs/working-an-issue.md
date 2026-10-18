@@ -1,0 +1,141 @@
+# Working an issue
+
+| You | nightshift |
+|---|---|
+| Open an issue, add the `agent` label (and a [type](#issue-types) label) | Reads it and the code; asks its questions in one comment (each with its recommended answer), or goes straight to the plan; a small issue (about 20 lines in a file or two, nothing to decide, no new command, CI or security change) it builds straight away, with no plan, and says so: reply **full process** for a plan instead |
+| Reply | More questions, or a plan: the spec and its tickets, in the to-spec and to-tickets format of [Matt Pocock's skills](https://github.com/mattpocock/skills). A plan with no open choices (nothing it decided that the issue and your answers didn't) says so and goes on to the build without waiting for **go**; comment to stop or change it |
+| Reply **go** (or what to change) | Builds the tickets in order, each in a subagent of its own (so one ticket's work doesn't crowd the next; a one-ticket plan is built directly), with no comment on the issue meanwhile; has two fresh subagents review the change against the plan and the repo's standards, and fixes what they found in one pass; then opens the pull request, which closes the issue, and links it, with what the review found |
+| Nothing (unless the repo's `.nightshift/config` has `auto_merge=false`) | Once the pull request is open or updated and its checks pass (it fixes a failing check itself first, twice at most), squash-merges it when nothing in it needs a decision; otherwise lists what does in a look comment (a review finding left open that the plan didn't settle, a decision the plan didn't cover, a security-relevant change, or you asked to see it first). The rest worth knowing (a wide blast radius, a new command, a CI change, …) goes in its `done` comment |
+| Reply **merge** to a look comment | Checks it again (checks, conflicts, the pull requests it goes after) and merges it |
+| Comment on the issue after that | Makes the change on the same branch and pushes it (and checks it for merging again) |
+| Merge another pull request | Rebases and updates the ones it affects ([below](#pull-requests-that-overlap)) |
+| Remove the label, add `invalid` or `wontfix`, or close the issue | Stops it; `nightshift status` says so and why |
+| Add the label back, remove `invalid`/`wontfix`, or reopen it | Picks up the stopped run where it left off |
+| Merge its pull request, or close the issue | It's done: a last comment says what its runs cost (dollars at API prices, tokens, time) and the pull request's size (`PR +412 −37 in 9 files`), and, unless `.nightshift/config` has `cost_breakdown=false`, the dollars of each model and every agent that ran in a table (`cost_comment=false` leaves the comment out): a row a run (`plan run`), in the order they ran, with the subagents it started under it; each row's model, effort, skills, tokens (a subagent's: those of its turns), cost, time and tool calls; a subagent's cost is an estimate (`~$0.30`: the tokens of its turns at its model's average rate in that run, `–` when unknown) and a run's row is the rest of the run's cost, so the rows add up to the total row (unless the estimates overshoot the run's cost). Under it, the time from the first run to the last: how much the agent worked, how long it waited on you, and other waits (queued, an update); `nightshift status` leaves it out, and its state and branch are cleaned up |
+
+## Sessions and worktrees
+
+Each issue gets its own worktree (in the repo's clone, `.claude/worktrees/issue-<n>`,
+branch `nightshift/issue-<n>`) and a Claude session that its runs continue. When
+you approve the plan (or it carries on, with no open choices), the build starts in a fresh one, given the issue, the plan, the
+comments since the plan and your approval, so it doesn't carry (and pay for) the
+planning conversation: a reply of just **go** starts it straight away, and any other approval once the planning
+session has read it. Later runs (your comments, updates) continue the build session,
+until its context is half the model's window: the next run then starts a fresh
+session, given the issue, the latest plan, the pull request and what's new (the old
+session ids stay in the issue's `sessions` file under `~/.nightshift/issues`). A run
+that was stopped or stalled always resumes its session.
+A build, update or merge run that ends without commenting (it stopped to wait on
+something) is resumed once by itself; a second in a row asks you in a comment.
+Once the pull request is open, the worktree is
+removed; the branch stays. Once it's done (its pull request merged, or the issue
+closed with nothing to resume), only its log and what it needs to come back stay
+in `~/.nightshift`. A merged branch is deleted, here and on GitHub, unless it has
+commits the pull request didn't (a failed delete on GitHub is logged, not fatal). A comment on a done issue (open and labelled) picks it up again.
+
+## Skills
+
+Each run starts in the plugin's `issue` skill, which reads the thread and hands the
+stage to a skill of its own: `questions`, `plan`, `build` (then `review`,
+`finish` and `merge`), `update` (then `merge`), or `answer` for question and
+duplicate issues. Invoking a skill loads all of its guidance, so no stage runs without it. The status label follows the skill, `nightshift logs`
+shows each one a run invokes, and each comment names the skill that wrote it
+(`🤖 nightshift · plan · nightshift:plan`).
+
+## Issue types
+
+Give an issue its type with one of GitHub's default labels, next to `agent`;
+nightshift reads it at the start of every run and works the issue the way it
+calls for:
+
+| Label | nightshift |
+|---|---|
+| `bug` | finds the cause with a check that fails the way the bug does (or asks, when it can't build one), and its plan starts with a test that fails the way the bug does; the fix makes it pass; a small one whose cause is plain is fixed straight away |
+| `enhancement` | asks, plans, builds and opens a pull request, as above; a small one is built straight away |
+| `documentation` | the same, kept to the docs |
+| `question` | answers it in a comment: no plan, no pull request. Reply to follow up, or ask for a change to have it built |
+| `duplicate` | a comment linking the issue it duplicates; no pull request |
+| `invalid`, `wontfix` | doesn't work it: as if you'd removed `agent` (a run in flight stops); remove the label to pick it up again |
+
+With no type label, the run picks one from the issue, adds it, and says so in
+its comment; when a type turns out wrong, it swaps the label and says why. It
+only uses labels the repo has. Change the label yourself and yours stands: the
+next run is told, and leaves it. `good first issue` and `help wanted` say who
+should take an issue, not what it is, so they change nothing. If an issue has
+two type labels, the first of `invalid`/`wontfix`, `duplicate`, `bug`, `question`, `documentation`,
+`enhancement` wins in that order. `nightshift status` shows each issue's type.
+
+## Status labels
+
+Each issue nightshift works carries one status label at a time, so the issue
+list shows where each stands, and `label:"nightshift: needs you"` lists the ones
+waiting on you:
+
+| Label | |
+|---|---|
+| `nightshift: proposed` | a defect a run found and filed: held until you comment |
+| `nightshift: queued` | labelled, waiting for its first run (or a free slot), or a run stopped with the watcher, to resume when it starts again |
+| `nightshift: thinking` | a run is reading the issue and the code |
+| `nightshift: planning` | a run is writing or revising the plan |
+| `nightshift: building` | a run is building the tickets, or changing the open pull request |
+| `nightshift: updating` | a run is updating the pull request after a merge |
+| `nightshift: merging` | a run is checking the pull request and merging it |
+| `nightshift: answering` | a run is answering a `question` or `duplicate` issue |
+| `nightshift: needs you` | waiting on your reply: questions, an answer, a plan, blocked, a pull request to look at before it merges, a failed run, or one that stalled twice. It comes off as soon as the watcher sees your reply |
+| `nightshift: PR open` | the pull request is open, nothing running |
+| `nightshift: stopped` | a run was stopped partway |
+
+The watcher sets them as runs start and end, and as a run invokes one of
+nightshift's skills: `nightshift:questions` and `diagnose` set `thinking`, `plan` `planning`,
+`build`, `tdd`, `review` and `finish` `building`, `update` `updating`, `merge` `merging` and
+`answer` `answering` (`nightshift label <status>` sets one by hand). They come off once
+it's done, or when you remove the `agent` label with nothing running (and come back with
+it). `nightshift status` says the same, with the
+skill a run is in (or its last one ended in).
+
+A run that spots a real defect outside its own issue (a bug, broken docs, a
+failing check; not an idea) files it, after looking for a duplicate, with
+`agent`, its type and `nightshift: proposed`, at most three a run, and names
+them in its next comment; it doesn't fix them on its branch. That's the one
+status a run sets, not the watcher. An issue labelled `nightshift: proposed` is
+held: the watcher doesn't start it until you comment on it, or remove that
+label. Your comment starts its first run, and the run gets your comment.
+Others' comments don't start it. `nightshift status` shows a held one as
+`proposed: waiting for your comment`.
+
+nightshift's comments start with **🤖 nightshift** and carry a hidden `<!-- nightshift -->`
+marker, which is how it tells them from yours: it runs as your GitHub account, so
+on GitHub they're yours. It only acts on the label when you added it, and only on
+comments from you (`allowed_users` in [Config](config.md#config)).
+
+## Pull requests that overlap
+
+Two nightshift issues overlap when their changes touch the same file, or one relies
+on something the other adds (a function, a flag, a file). nightshift checks for this
+against the other `nightshift/issue-*` branches and open pull requests when it
+plans, and again when it opens the pull request. The plan says so ("touches the
+same code as #10"), and so does the pull request: **Merge after #10** when it goes
+second, **Overlaps with #10** when it goes first. The one relied on goes first;
+otherwise the pull request that opened first does. `nightshift status` shows it as
+`PR <url> · after #10`.
+
+After a merge, each poll looks at the open nightshift pull requests. One that now
+conflicts with the default branch (after any merge, nightshift's or not), or that
+goes after or overlaps the nightshift pull request that just merged, gets a run
+(its issue gets no comment until the run's own). That run rebases it onto the default
+branch, fixes the conflicts, and updates the change to fit what merged, not just to
+apply. It runs the checks again, force-pushes (`--force-with-lease`), and says what changed beyond the
+conflict fixes. A conflict that needs your decision gets a question on the issue
+instead. Meanwhile `status` shows `conflicts, rebasing` or `updating after #10`. So
+the pull requests can be merged in any order. With auto-merge on, a pull request
+that goes after another waits for it, then merges after that update run. When open
+pull requests go after each other in a loop, so none could merge first, the lowest
+issue's goes first: its run turns its after markers on the loop into overlaps
+markers, merges, and says so on its issue; the others update on top of it.
+
+## Finishing by hand
+
+The plugin's `finish` skill works in any Claude Code session too: in a
+`claude --worktree <name>` session, say **finish** and it commits, pushes, opens
+the pull request (showing the change as the project's instructions say) and
+removes the worktree.
