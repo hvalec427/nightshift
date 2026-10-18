@@ -1806,7 +1806,25 @@ TOP_JQ='
 def spaces($n): [range(0; $n)] | map(" ") | join("");
 def untab: split("\t") | reduce .[1:][] as $p ((.[0] // ""); . + spaces(8 - (length % 8)) + $p);
 def clean: untab | gsub("[[:cntrl:]]"; "");
-def fit($w): .[:$w] | . + spaces($w - length);
+# A code point'"'"'s cells on a terminal: emoji take two. That'"'"'s U+1F000 up, and the
+# BMP characters that default to emoji presentation (231A-231B, 23E9-23EC, 23F0,
+# 23F3, 25FD-25FE, 2614-2615, 2648-2653, 267F, 2693, 26A1, 26AA-26AB, 26BD-26BE,
+# 26C4-26C5, 26CE, 26D4, 26EA, 26F2-26F3, 26F5, 26FA, 26FD, 2705, 270A-270B,
+# 2728, 274C, 274E, 2753-2755, 2757, 2795-2797, 27B0, 27BF, 2B1B-2B1C, 2B50,
+# 2B55), in decimal below; the rest of U+2600-U+27BF (✓, ✗) is one.
+def cells: . as $c
+  | if $c >= 126976 or any([8986,8987],[9193,9196],[9200,9200],[9203,9203],[9725,9726],
+      [9748,9749],[9800,9811],[9855,9855],[9875,9875],[9889,9889],[9898,9899],[9917,9918],
+      [9924,9925],[9934,9934],[9940,9940],[9962,9962],[9970,9971],[9973,9973],[9978,9978],
+      [9981,9981],[9989,9989],[9994,9995],[10024,10024],[10060,10060],[10062,10062],
+      [10067,10069],[10071,10071],[10133,10135],[10160,10160],[10175,10175],[11035,11036],
+      [11088,11088],[11093,11093]; $c >= .[0] and $c <= .[1])
+    then 2 else 1 end;
+# Cut to $w cells, before the first character that would pass it, then pad.
+def fit($w): reduce explode[] as $c ({s: [], n: 0, full: false}; ($c | cells) as $k
+    | if .full then . elif .n + $k > $w then .full = true
+    else .s += [$c] | .n += $k end)
+  | (.s | implode) + spaces($w - .n);
 def sizes($total; $k): range(0; $k) as $i | ($total / $k | floor) + (if $i < ($total % $k) then 1 else 0 end);
 def rows_of($n; $c): ($n + $c - 1) / $c | floor;
 def abs: if . < 0 then -. else . end;
@@ -1857,7 +1875,7 @@ top_size() {
   case $top_rows in "" | *[!0-9]* | 0) top_rows=24 ;; esac
 }
 
-# One frame of `top`, plain text: $2 rows of at most $1 characters, a window
+# One frame of `top`, plain text: $2 rows of at most $1 cells, a window
 # for every issue not done or ignored, in the order `status` lists them. $3 = 1
 # (a terminal): headers in reverse video, and every row padded to the full
 # width. Reads the issue dirs and logs afresh, so the live loop calls it per pass.
