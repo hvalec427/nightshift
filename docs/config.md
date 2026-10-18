@@ -39,6 +39,13 @@ interval=5
   - `test_command`: the command that runs the whole test suite (`test_command=npm test`).
     Where a run may run the suite, its prompt names the command; unset, the run works it
     out from the repo's instructions.
+  - `base_branch=develop` is the branch its pull requests merge into, when that isn't the
+    default branch. A new issue's branch starts from `origin/develop`, its pull request opens
+    against it, and the review and merge compare against it. Unset, the default branch.
+    `base_branch` is read from the default branch like the other keys, so a change applies
+    once it's merged there. A branch that isn't on origin is ignored: runs use the default
+    branch and the issue's log says so. GitHub closes an issue by `Closes #n` only on a merge
+    into the default branch, so nightshift closes the issue itself after it merges.
   - `cost_breakdown=false` keeps the closing cost comment to one line: dollars, tokens,
     time and the pull request's size. Unset (or any other value), it has the breakdown
     too: the dollars of each model, the agents table and the time line.

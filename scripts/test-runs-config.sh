@@ -217,13 +217,61 @@ test_command=npm test"
   poll
   expect_line "the file's auto_merge=false, beside an old line's other option" "$(run_prompt)" "$NO_MERGE")
 
+# base_branch in .nightshift/config: new worktrees start from origin/<it>, and the prompt
+# says where pull requests merge.
+BASE_LINE="^This repo's pull requests merge into \`develop\` (base_branch in \.nightshift/config), not the default branch: "
+
+(world
+  origin_file develop.md "on develop" develop
+  origin_config "base_branch=develop"
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  expect "base_branch=develop: the worktree starts at origin/develop" "$(git -C "$CLONE/.claude/worktrees/issue-7" rev-parse HEAD)" "$(git -C "$ORIGIN" rev-parse develop)"
+  expect_line "base_branch=develop: the prompt names it" "$(run_prompt)" "$BASE_LINE"
+  expect_line "base_branch=develop: nothing in the log" "$(cat "$(idir 7)/log")" "base_branch" no)
+
+(world
+  origin_file develop.md "on develop" develop
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  expect "no base_branch: the worktree starts at origin/master" "$(git -C "$CLONE/.claude/worktrees/issue-7" rev-parse HEAD)" "$(git -C "$ORIGIN" rev-parse master)"
+  expect_line "no base_branch: no base branch line" "$(run_prompt)" "pull requests merge into" no)
+
+(world
+  origin_config "base_branch=master"
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  expect "base_branch=master: the worktree starts at origin/master" "$(git -C "$CLONE/.claude/worktrees/issue-7" rev-parse HEAD)" "$(git -C "$ORIGIN" rev-parse master)"
+  expect_line "base_branch equal to the default branch: no base branch line" "$(run_prompt)" "pull requests merge into" no)
+
+(world
+  origin_config "base_branch=nope"
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  expect "base_branch not on origin: the worktree starts at origin/master" "$(git -C "$CLONE/.claude/worktrees/issue-7" rev-parse HEAD)" "$(git -C "$ORIGIN" rev-parse master)"
+  expect_line "base_branch not on origin: no base branch line" "$(run_prompt)" "pull requests merge into" no
+  expect_line "base_branch not on origin: the log says why" "$(cat "$(idir 7)/log")" "^0	=== base_branch nope isn't on origin: this run starts from master$")
+
+(world
+  origin_file develop.md "on develop" develop
+  origin_file .nightshift/config "base_branch=develop" nightshift/issue-7
+  gh_issue o/r 7 alice agent
+  runs_do 'comment questions'
+  poll
+  expect_line "base_branch only on the issue's branch: not read" "$(run_prompt)" "pull requests merge into" no)
+
 # The skills branch on exact lines of the run prompt: the double-quoted strings in them that
 # start "This repo" or "nightshift runs no". Rewording a line in the CLI, or a quote in a
 # skill, would silently stop the skill acting (no merge, the wrong checks), so each quoted
 # string must begin a line of the prompt of some run, under each setting that changes one.
 PROMPTS=$(temp)
-for setting in "" "auto_merge=false" "full_suite=local" "full_suite=nothing"; do
+for setting in "" "auto_merge=false" "full_suite=local" "full_suite=nothing" "base_branch=develop"; do
   (world
+    [ "$setting" != base_branch=develop ] || origin_file develop.md "on develop" develop
     [ -z "$setting" ] || origin_config "$setting"
     gh_issue o/r 7 alice agent
     runs_do 'comment questions'

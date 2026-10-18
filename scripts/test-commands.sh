@@ -113,6 +113,11 @@ $SCAFFOLD"
 # test_command: the command that runs the whole test suite (default: runs work it out from the repo's instructions).
 # test_command=npm test
 #
+# base_branch: the branch its pull requests merge into (default: the default branch). Issues branch
+# from it, pull requests target it and nightshift closes an issue itself once its pull request merges.
+# It must exist on origin, else runs use the default branch.
+# base_branch=develop
+#
 # cost_breakdown=false: the closing cost comment is one line of cost, tokens, time and the PR's size
 # (default true: it adds the dollars of each model, a table of the agents that ran and where the time went).
 # cost_breakdown=false

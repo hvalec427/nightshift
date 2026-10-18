@@ -136,6 +136,20 @@ repo_option() {
 # Whether nightshift merges repo $1's pull requests: unless `auto_merge=false`.
 auto_merges() { [ "$(repo_option "$1" auto_merge)" != false ]; }
 
+# Repo $1's base branch in clone $2: the branch its pull requests merge into.
+# `base_branch` in its config when origin has that branch, else the default
+# branch. A `base_branch` origin doesn't have leaves a line in log dir $3's
+# log, when there is one.
+base_branch() {
+  bb=$(repo_option "$1" base_branch)
+  if [ -n "$bb" ] && ! git -C "$2" rev-parse -q --verify "refs/remotes/origin/$bb" >/dev/null 2>&1; then
+    [ -z "${3:-}" ] || printf "0\t=== base_branch %s isn't on origin: this run starts from %s\n" "$bb" "$(default_branch "$1" "$2")" >>"$3/log"
+    bb=""
+  fi
+  [ -n "$bb" ] || bb=$(default_branch "$1" "$2")
+  printf '%s' "$bb"
+}
+
 allowed_users() {
   u=$(setting allowed_users "")
   [ -n "$u" ] || u=${LOGIN:-$(gh api user -q .login)}
@@ -368,13 +382,14 @@ git_exclude() {
 }
 
 # The issue's worktree in the repo's clone, created on the first run (or again,
-# on its existing branch, after it was removed).
+# on its existing branch, after it was removed). A new branch starts from the
+# repo's base branch; log dir $4's log says when that falls back to the default.
 worktree() {
-  repo=$1 n=$2 clone=$3
+  repo=$1 n=$2 clone=$3 logdir=${4:-}
   wt="$clone/.claude/worktrees/issue-$n"
   branch="nightshift/issue-$n"
   if [ ! -d "$wt" ]; then
-    base=$(default_branch "$repo" "$clone")
+    base=$(base_branch "$repo" "$clone" "$logdir")
     mkdir -p "$clone/.claude/worktrees"
     # Keep the worktrees out of the clone's own git status.
     git_exclude "$clone" .claude/worktrees/
@@ -555,7 +570,7 @@ run_agent() {
   said=$news
   # The repo's settings are on origin's default branch: fetch them.
   git -C "$clone" fetch -q origin >/dev/null 2>&1 || true
-  wt=$(worktree "$repo" "$n" "$clone") || {
+  wt=$(worktree "$repo" "$n" "$clone" "$dir") || {
     comment_failure "$repo" "$n" "couldn't create the worktree: see $dir/log"
     set_status "$repo" "$n" "needs you"
     return
@@ -609,11 +624,13 @@ $intro}"
       echo "0 $window" >"$dir/context"
     fi
   fi
+  bnote=$(base_note "$repo" "$clone")
   prompt="You are nightshift, working GitHub issue #$n in $repo, unattended: nobody is at a terminal, and you talk to the user only through the issue. Use the issue skill.
 This checkout is the issue's own worktree, on branch nightshift/issue-$n.
 $(type_note "$repo" "$n" "$dir")
 $(merge_note "$repo")
-$(suite_note "$repo")
+$(suite_note "$repo")${bnote:+
+$bnote}
 
 $intro"
   # The run says when it plans or builds (`nightshift label`); until then, a
@@ -821,6 +838,14 @@ suite_note() {
     nothing) echo "nightshift runs no whole test suite in this repo (full_suite=nothing in .nightshift/config): check what you touched, then push." ;;
     *) printf '%s\n' "This repo leaves its whole test suite to CI: check what you touched, then push; run the whole suite yourself only if the repo has no CI checks on its pull requests.$sn_run" ;;
   esac
+}
+
+# What a run is told of repo $1's base branch (clone $2): where its pull requests
+# merge, when that isn't the default branch. Nothing otherwise.
+base_note() {
+  bn_base=$(base_branch "$1" "$2")
+  [ "$bn_base" = "$(default_branch "$1" "$2")" ] ||
+    printf '%s\n' "This repo's pull requests merge into \`$bn_base\` (base_branch in .nightshift/config), not the default branch: branch from, compare against, rebase onto and open pull requests against \`$bn_base\`."
 }
 
 # What a run is told of its issue's type: its type label, or that it has none,
@@ -2602,6 +2627,11 @@ scaffold_repo() {
 #
 # test_command: the command that runs the whole test suite (default: runs work it out from the repo's instructions).
 # test_command=npm test
+#
+# base_branch: the branch its pull requests merge into (default: the default branch). Issues branch
+# from it, pull requests target it and nightshift closes an issue itself once its pull request merges.
+# It must exist on origin, else runs use the default branch.
+# base_branch=develop
 #
 # cost_breakdown=false: the closing cost comment is one line of cost, tokens, time and the PR's size
 # (default true: it adds the dollars of each model, a table of the agents that ran and where the time went).
