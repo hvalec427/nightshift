@@ -55,14 +55,18 @@ Stop a background task by its PID or with TaskStop, never by a name pattern like
 `pkill -f` or `killall`: a run's command line holds its prompt, so a pattern matches other
 runs too.
 
-Send git as one plain command per Bash call: no env prefix, pipe, `&&` or `;`. A run is
-allowed `Bash(git *)`, which matches only a plain git command; anything around it goes to
-the auto mode classifier, which can deny it. The editors are already off in a run
+Send git, `gh` and `nightshift label` as one plain command per Bash call: no env prefix,
+pipe, `$(…)`, `&&` or `;`. A run is allowed `Bash(git *)`, `Bash(gh pr *)`,
+`Bash(gh issue *)`, `Bash(gh api *)` and `Bash(nightshift label *)`, which match only a
+plain command; anything around it goes to the auto mode classifier, which can deny it (a
+`gh pr merge` chained to anything reads as a merge without review). Write a comment or a
+pull request body to a file with the Write tool first, then pass it with `--body-file`;
+read with a plain `gh … --json … -q …`, not a pipe. The editors are already off in a run
 (`GIT_EDITOR` and `GIT_SEQUENCE_EDITOR` are `true`), so `git rebase --continue` and
-`git merge` need no prefix. When a git step is denied anyway, retry it once as separate
-plain git commands before you write a `blocked` comment.
+`git merge` need no prefix. When a step is denied anyway, retry it once as separate plain
+commands before you write a `blocked` comment.
 
-Keep a check's logs and scratch files inside the worktree's ignored files or under
+Keep a check's logs, scratch files and comment bodies inside the worktree's ignored files or under
 `$TMPDIR` (make them with a template, `mktemp "${TMPDIR:-/tmp}/x.XXXXXX"`: plain `mktemp`
 ignores `TMPDIR` on macOS), remove them when you're done, and never leave loose files in
 `/tmp`.
