@@ -36,9 +36,9 @@ a plan, the build, a pull request, talking to the user only through the issue.
   shuffled and sharded): tests that rely on each other live in one file, nothing relies on
   another file.
 - Tests drive nightshift through the fakes in `scripts/fake/` (`gh`, `claude`, `curl`); the
-  README's Tests section says how, and names the one exception.
+  Tests section of `docs/development.md` says how, and names the one exception.
 
 ## Pointers
 
-- README: Tests (how a test reads), Releases (versioning from commit types), Config,
-  Status labels.
+- `docs/development.md`: Tests (how a test reads), Releases (versioning from commit types);
+  `docs/config.md`: Config; `docs/working-an-issue.md`: Status labels.
