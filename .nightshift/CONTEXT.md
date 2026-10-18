@@ -35,6 +35,8 @@ nightshift's runs read this file and keep it up to date.
 - **cost_breakdown**: the `.nightshift/config` option for the closing cost comment: `true` adds
   the dollars of each model, the agents table and the time line; anything else (or unset) keeps it
   to one line of cost, tokens, time and the pull request's size.
+- **cost_comment**: the `.nightshift/config` option that, set to `false`, leaves out the closing
+  cost comment altogether, `cost_breakdown` or not.
 - **has CI**: a workflow in `.github/workflows/` triggers on `pull_request`, or the repo's latest
   merged pull request lists checks (`gh pr checks`), so external CI counts. It matters only when
   `full_suite` is unset.

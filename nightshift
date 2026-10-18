@@ -1385,7 +1385,9 @@ cost_details() {
 # What a done issue's runs cost, as a comment on it, if they were counted.
 # With `cost_breakdown=true` in the repo's config, the models' dollars and the
 # agents table under the headline; otherwise the pull request's size on its end.
+# None with `cost_comment=false`.
 comment_cost() {
+  [ "$(repo_option "$1" cost_comment)" != false ] || return 0
   words=$(cost_words "$3") || return 0
   details="" table=""
   if [ "$(repo_option "$1" cost_breakdown)" = true ]; then
@@ -2370,6 +2372,9 @@ scaffold_repo() {
 # cost_breakdown=true: the closing cost comment adds the dollars of each model, a table of the agents
 # that ran and where the time went (default false: one line of cost, tokens, time and the PR's size).
 # cost_breakdown=true
+#
+# cost_comment=false: no closing cost comment at all (default true).
+# cost_comment=false
 EOS
     sr_made=".nightshift/config"
   fi

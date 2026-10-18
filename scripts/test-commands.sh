@@ -103,7 +103,10 @@ $SCAFFOLD"
 #
 # cost_breakdown=true: the closing cost comment adds the dollars of each model, a table of the agents
 # that ran and where the time went (default false: one line of cost, tokens, time and the PR's size).
-# cost_breakdown=true"
+# cost_breakdown=true
+#
+# cost_comment=false: no closing cost comment at all (default true).
+# cost_comment=false"
   expect "add: CONTEXT.md is scaffolded with a heading and what goes in it" "$(cat "$W/other/.nightshift/CONTEXT.md")" \
     "# Context
 

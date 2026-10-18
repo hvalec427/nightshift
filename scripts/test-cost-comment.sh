@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Tests for the cost comment posted on an issue once it's done: its headline,
 # the marker, its second line (the dollars of each model, the pull request's
-# size) with cost_breakdown=true, the one line without it, and that it's posted
-# once.
+# size) with cost_breakdown=true, the one line without it, none with
+# cost_comment=false, and that it's posted once.
 #   bash scripts/test-cost-comment.sh
 set -euo pipefail
 . "$(dirname "$0")/test-lib.sh"
@@ -185,5 +185,21 @@ built() {
   origin_file .nightshift/config cost_breakdown=true nightshift/issue-7
   built
   expect "cost_breakdown=true only on the issue's branch: the short comment" "$(cost_lines 7)" "$SHORT")
+
+# cost_comment=false on the default branch: no cost comment, breakdown or not.
+(world
+  origin_config "cost_comment=false
+cost_breakdown=true"
+  built
+  expect "merged: done" "$(state 7 "done")" "PR merged"
+  expect "cost_comment=false: no cost comment" "$(gh_comments o/r 7 | grep -c "^$COMMENT$" || true)" 0
+  expect "nor its headline" "$(gh_comments o/r 7 | grep -c 'at API prices' || true)" 0
+  expect_line "status --all still says what it spent" "$(ns status --all)" 'spent \$1\.00'
+  expect_no_unexpected)
+
+(world
+  origin_file .nightshift/config cost_comment=false nightshift/issue-7
+  built
+  expect "cost_comment=false only on the issue's branch: the comment is posted" "$(cost_lines 7)" "$SHORT")
 
 report
