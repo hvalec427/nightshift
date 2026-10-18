@@ -40,5 +40,5 @@ a plan, the build, a pull request, talking to the user only through the issue.
 
 ## Pointers
 
-- `docs/development.md`: Tests (how a test reads), Releases (versioning from commit types);
-  `docs/config.md`: Config; `docs/working-an-issue.md`: Status labels.
+- `docs/development.md`: Tests (how a test reads), Releases (versioning from commit types).
+- `docs/config.md`: the config keys; `docs/working-an-issue.md`: Status labels.

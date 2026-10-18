@@ -18,8 +18,8 @@ curl -fsSL https://raw.githubusercontent.com/hvalec427/nightshift/master/install
 ```
 
 It installs the latest release, the `nightshift` command and its Claude Code plugin;
-`--service` runs `nightshift watch` in the background whenever you're logged in. It
-updates itself with each release. More, and what it needs, in [docs/install.md](docs/install.md).
+`--service` runs `nightshift watch` in the background whenever you're logged in. A release
+install updates itself with each new release. More, and what it needs, in [docs/install.md](docs/install.md).
 
 Then:
 
