@@ -1912,9 +1912,9 @@ top_live() {
     size=$(stty size 2>/dev/null)
     LINES=${size% *} COLUMNS=${size#* }
     top_size
-    if [ "$top_cols×$top_rows" != "$top_prev" ]; then
+    if [ "${top_cols}×${top_rows}" != "$top_prev" ]; then
       tput clear
-      top_prev="$top_cols×$top_rows"
+      top_prev="${top_cols}×${top_rows}"
     fi
     tput home
     printf '%s' "$(top_frame "$top_cols" "$top_rows" 1)"
