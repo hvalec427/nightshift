@@ -1742,6 +1742,32 @@ cmd_start() {
   fi
 }
 
+# What `status` says of an issue (its dir $1): its type, its state, what its
+# runs cost.
+issue_text() {
+  d=$1
+  if [ -f "$d/ignored" ]; then what="ignored (labelled by someone else)"
+  elif [ -f "$d/done" ] && [ "$(cat "$d/done")" = "PR merged" ]; then what="done · PR $(cat "$d/pr") merged $(age "$d/done") ago"
+  elif [ -f "$d/done" ]; then what="done · $(cat "$d/done") $(age "$d/done") ago"
+  elif running "$d" && [ -f "$d/updating" ]; then what="PR $(cat "$d/pr") · $(head -1 "$d/updating") $(age "$d/pid") (pid $(cat "$d/pid"))$(heartbeat "$d")"
+  elif running "$d"; then what="$(label_or "$d" running)$(skill_note "$d") $(age "$d/pid") (pid $(cat "$d/pid"))$(heartbeat "$d")"
+  elif [ -f "$d/off" ] && [ -f "$d/interrupted" ]; then what="stopped $(age "$d/off") ago ($(cat "$d/off")) · $(resume_hint "$d")"
+  elif [ -f "$d/off" ] && [ -f "$d/pr" ]; then what="PR $(cat "$d/pr") · $(cat "$d/off")"
+  elif [ -f "$d/off" ]; then what="$(cat "$d/off") $(age "$d/off") ago"
+  elif [ -f "$d/interrupted" ] || [ -f "$d/stalled" ]; then what="queued to resume"
+  elif [ -f "$d/build" ]; then what="queued to build"
+  elif [ -f "$d/update" ]; then what="PR $(cat "$d/pr") · queued: $(head -1 "$d/update")"
+  elif [ -f "$d/pr" ] && [ "$(label_or "$d" "PR open")" = "PR open" ]; then what="PR $(cat "$d/pr")$(after_note "$d")$(skill_note "$d")$(waited "$d" " · waiting ")"
+  elif [ -f "$d/pr" ]; then what="PR $(cat "$d/pr")$(after_note "$d") · $(cat "$d/label")$(skill_note "$d")$(waited "$d" " · ")"
+  elif [ -s "$d/session" ]; then what="$(label_or "$d" "waiting for a reply")$(skill_note "$d")$(waited "$d" " · ")"
+  elif [ "$(label_or "$d" queued)" = proposed ]; then what="proposed: waiting for your comment"
+  else what="queued"
+  fi
+  what="$what$(cost_note "$d")"
+  t=$(cat "$d/type" 2>/dev/null) && [ -n "$t" ] && what="$t · $what"
+  printf '%s' "$what"
+}
+
 # `status [--all]`: done issues only with --all.
 cmd_status() {
   case "$1" in "" | --all) ;; *) usage_error "usage: nightshift status [--all]" ;; esac
@@ -1756,25 +1782,7 @@ cmd_status() {
     name=$(basename "$d")
     n=${name##*_}
     repo=$(echo "${name%_*}" | sed 's/_/\//')
-    if [ -f "$d/ignored" ]; then what="ignored (labelled by someone else)"
-    elif [ -f "$d/done" ] && [ "$(cat "$d/done")" = "PR merged" ]; then what="done · PR $(cat "$d/pr") merged $(age "$d/done") ago"
-    elif [ -f "$d/done" ]; then what="done · $(cat "$d/done") $(age "$d/done") ago"
-    elif running "$d" && [ -f "$d/updating" ]; then what="PR $(cat "$d/pr") · $(head -1 "$d/updating") $(age "$d/pid") (pid $(cat "$d/pid"))$(heartbeat "$d")"
-    elif running "$d"; then what="$(label_or "$d" running)$(skill_note "$d") $(age "$d/pid") (pid $(cat "$d/pid"))$(heartbeat "$d")"
-    elif [ -f "$d/off" ] && [ -f "$d/interrupted" ]; then what="stopped $(age "$d/off") ago ($(cat "$d/off")) · $(resume_hint "$d")"
-    elif [ -f "$d/off" ] && [ -f "$d/pr" ]; then what="PR $(cat "$d/pr") · $(cat "$d/off")"
-    elif [ -f "$d/off" ]; then what="$(cat "$d/off") $(age "$d/off") ago"
-    elif [ -f "$d/interrupted" ] || [ -f "$d/stalled" ]; then what="queued to resume"
-    elif [ -f "$d/build" ]; then what="queued to build"
-    elif [ -f "$d/update" ]; then what="PR $(cat "$d/pr") · queued: $(head -1 "$d/update")"
-    elif [ -f "$d/pr" ] && [ "$(label_or "$d" "PR open")" = "PR open" ]; then what="PR $(cat "$d/pr")$(after_note "$d")$(skill_note "$d")$(waited "$d" " · waiting ")"
-    elif [ -f "$d/pr" ]; then what="PR $(cat "$d/pr")$(after_note "$d") · $(cat "$d/label")$(skill_note "$d")$(waited "$d" " · ")"
-    elif [ -s "$d/session" ]; then what="$(label_or "$d" "waiting for a reply")$(skill_note "$d")$(waited "$d" " · ")"
-    elif [ "$(label_or "$d" queued)" = proposed ]; then what="proposed: waiting for your comment"
-    else what="queued"
-    fi
-    what="$what$(cost_note "$d")"
-    t=$(cat "$d/type" 2>/dev/null) && [ -n "$t" ] && what="$t · $what"
+    what=$(issue_text "$d")
     printf '%-40s %s\n' "$repo#$n" "$what"
   done
   if [ $found -eq 0 ] && [ $hidden -eq 0 ]; then echo "no issues yet"
