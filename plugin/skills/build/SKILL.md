@@ -142,7 +142,8 @@ the subagent can read itself unpasted.
   sub-issue's: its body) has the rest. When it's a retry after a `blocked` comment, add
   the user's answer and what the last attempt left in the worktree;
 - this worktree's absolute path, and the commits so far (the tickets already committed in
-  it: `git log --oneline` against the default branch shows them);
+  it: `git log --oneline` against the base branch shows them (the one the run prompt names with
+  "This repo's pull requests merge into", else the default branch));
 - for the second ticket on, the replies of the earlier tickets: what each delivered and what
   it flagged, a short list from the summaries the subagents returned in this build, not
   their logs. A ticket is then not caught by what an earlier one already ran into;
