@@ -8,7 +8,7 @@
 #   nightshift stop                      stop the service (until `nightshift start`)
 #   nightshift stop <owner/repo>#<n>     stop an issue's running agent
 #   nightshift logs [<owner/repo>#<n>] [-f] [-v…]  what every issue (or one) does, at a level
-#   nightshift top                       a window per issue in progress, tiled: its status and the end of its log
+#   nightshift top                       a window per issue in progress, tiled: its status and the end of its log, live on a terminal (q quits)
 #   nightshift add <owner/repo> <clone>  watch a repo, using this clone of it, and set up its .nightshift/ (config, CONTEXT.md) to commit
 #   nightshift label <status>            (in a run) set its issue's status label
 #   nightshift build [--carry-on]        (in a run) build the approved plan, in a fresh session if it's the planning one (--carry-on: no approval, the plan has no open choices)
@@ -1877,18 +1877,58 @@ top_help() {
 usage: nightshift top
 
 A window for every issue in progress, tiled to fit the terminal: its status and
-the end of its log. Piped, it prints one frame and exits. The size is COLUMNS
-and LINES, or the terminal's.
+the end of its log. On a terminal it is live: it redraws every second, fits the
+terminal as it resizes, and q quits. Piped, it prints one frame and exits. The
+size, for one frame, is COLUMNS and LINES, or the terminal's.
 HELP
 }
 
-# `top`: one frame, with reverse-video headers on a terminal.
+# Leave the live `top`: the terminal's settings, the cursor, the main screen.
+top_restore() {
+  [ -z "${top_stty:-}" ] || stty "$top_stty" 2>/dev/null
+  top_stty=
+  tput cnorm 2>/dev/null
+  tput rmcup 2>/dev/null
+}
+
+# The live `top`, until q or Q: the alternate screen and a hidden cursor, and
+# every second (the wait for a key, which `stty ... time 10` bounds) the size
+# read again from the terminal, one frame drawn from the top left.
+top_live() {
+  top_stty=$(stty -g)
+  trap top_restore EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  trap 'exit 129' HUP
+  stty -icanon -echo min 0 time 10
+  tput smcup
+  tput civis
+  top_prev=
+  while :; do
+    # The terminal's size by stdin: tput can't ask through a $(...).
+    unset COLUMNS LINES
+    size=$(stty size 2>/dev/null)
+    LINES=${size% *} COLUMNS=${size#* }
+    top_size
+    if [ "$top_cols×$top_rows" != "$top_prev" ]; then
+      tput clear
+      top_prev="$top_cols×$top_rows"
+    fi
+    tput home
+    printf '%s' "$(top_frame "$top_cols" "$top_rows" 1)"
+    case $(dd bs=1 count=1 2>/dev/null) in q | Q) exit 0 ;; esac
+  done
+}
+
+# `top`: live on a terminal (stdin and stdout both), else one frame, with
+# reverse-video headers if stdout is one.
 cmd_top() {
   case "${1:-}" in
   "") ;;
   -h | --help) top_help; exit 0 ;;
   *) usage_error "$(top_help | head -1)" ;;
   esac
+  [ -t 0 ] && [ -t 1 ] && top_live
   top_size
   rev=0
   [ -t 1 ] && rev=1

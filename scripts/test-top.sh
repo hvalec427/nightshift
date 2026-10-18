@@ -197,10 +197,75 @@ tab     separated")
   expect "top: without COLUMNS and LINES, 80×24 (or the terminal's, which a pipe has none of)" \
     "$(env -u COLUMNS -u LINES TERM=dumb "$ROOT/nightshift" top | head -1)" "o/r#7 · queued"
   expect "top: no escape codes when stdout isn't a terminal" "$(frame 40 6 | grep -c "$(printf '\033')" || true)" 0
-  # BSD script gives it a pty.
-  COLUMNS=40 LINES=6 script -q /dev/null "$ROOT/nightshift" top </dev/null >"$W/tty" 2>&1 || true
-  expect_line "top: on a terminal, the header is in reverse video, padded to 40" "$(tr -d '\r' <"$W/tty")" \
-    "$(printf '\033')\[7mo/r#7 · queued \{26\}$(printf '\033')\[0m$"
-  expect_line "top: and the log lines are padded to 40 too" "$(tr -d '\r' <"$W/tty")" "^line 4 \{34\}$")
+  expect "top: stdout on a terminal but stdin not: one frame, no live screen" \
+    "$(script -q /dev/null sh -c 'COLUMNS=40 LINES=6 "$0" top </dev/null' "$ROOT/nightshift" | tr -d '\r' | grep -c "$(printf '\033')\[?1049h" || true)" 0)
+
+# --- live, on a terminal ---------------------------------------------------------------------
+
+esc=$(printf '\033')
+
+# Waits up to $2 seconds for process $1 to end; kills it, by its PID, if it doesn't.
+await() {
+  local i
+  for i in $(seq $(($2 * 5))); do kill -0 "$1" 2>/dev/null || return 0; sleep 0.2; done
+  kill "$1" 2>/dev/null || true
+  return 1
+}
+
+# Runs `nightshift top` under a pty (BSD script) sized 40×6, TERM=xterm, with $1
+# on its stdin: its screen in $W/tty (carriage returns dropped), its exit status
+# in $ST ("hung" if it outlasted 20 s).
+live() {
+  printf '%s' "$1" >"$W/in"
+  rm -f "$W/st"
+  TERM=xterm script -q /dev/null sh -c 'stty cols 40 rows 6; unset COLUMNS LINES; "$0" top; echo $? >"$1"' "$ROOT/nightshift" "$W/st" <"$W/in" >"$W/tty.raw" 2>&1 &
+  local pid=$!
+  if await "$pid" 20; then wait "$pid" || true; ST=$(cat "$W/st" 2>/dev/null || echo none); else ST=hung; fi
+  tr -d '\r' <"$W/tty.raw" >"$W/tty"
+}
+
+# Starts it the same way, its stdin empty, sends it signal $1 once its screen
+# is up, and waits for it to end: $ST is its exit status and the screen is in
+# $W/tty. $W/before and $W/after hold the terminal's icanon, echo, min and time
+# before it ran and after.
+signalled() {
+  local pid i top=
+  rm -f "$W/st" "$W/before" "$W/after" "$W/sh"
+  : >"$W/in"
+  TERM=xterm script -q /dev/null sh -c 'mode() { stty -a | tr " ;" "\n\n" | grep -x -e icanon -e -icanon -e echo -e -echo; stty -g | tr ":" "\n" | grep -e "^min=" -e "^time="; }
+    echo $$ >"$1"; stty cols 40 rows 6; mode >"$2"; "$0" top; echo $? >"$3"; mode >"$4"' \
+    "$ROOT/nightshift" "$W/sh" "$W/before" "$W/st" "$W/after" <"$W/in" >"$W/tty.raw" 2>&1 &
+  pid=$!
+  # nightshift is the shell's child, and draws once it has the alternate screen.
+  for i in $(seq 100); do
+    if grep -q "${esc}\[?1049h" "$W/tty.raw" 2>/dev/null && [ -s "$W/sh" ]; then top=$(pgrep -P "$(cat "$W/sh")" | head -1); [ -z "$top" ] || break; fi
+    sleep 0.2
+  done
+  if [ -n "$top" ]; then kill -"$1" "$top"; fi
+  if await "$pid" 20; then wait "$pid" || true; ST=$(cat "$W/st" 2>/dev/null || echo none); else ST=hung; fi
+  tr -d '\r' <"$W/tty.raw" >"$W/tty"
+}
+
+(world
+  issue 7
+  log8 7
+  live q
+  expect "top, live: q quits with status 0" "$ST" 0
+  expect_line "top, live: it draws a frame, the header in reverse video padded to the terminal's 40" "$(cat "$W/tty")" \
+    "${esc}\[7mo/r#7 · queued \{26\}${esc}\[0m"
+  expect_line "top, live: and the log lines padded to 40 too" "$(cat "$W/tty")" "^line 4 \{34\}"
+  expect_line "top, live: it enters the alternate screen" "$(cat "$W/tty")" "${esc}\[?1049h"
+  expect_line "top, live: leaves it on q" "$(cat "$W/tty")" "${esc}\[?1049l"
+  expect_line "top, live: and shows the cursor again" "$(cat "$W/tty")" "${esc}\[?25h"
+  live Q
+  expect "top, live: Q quits too" "$ST" 0
+  signalled TERM
+  expect "top, live: TERM ends it with status 143" "$ST" 143
+  expect_line "top, live: TERM leaves the alternate screen" "$(cat "$W/tty")" "${esc}\[?1049l"
+  expect "top, live: TERM restores the terminal's settings" "$(cat "$W/after")" "$(cat "$W/before")"
+  signalled HUP
+  expect "top, live: HUP ends it with status 129" "$ST" 129
+  expect_line "top, live: HUP shows the cursor again" "$(cat "$W/tty")" "${esc}\[?25h"
+  expect "top, live: HUP restores the terminal's settings" "$(cat "$W/after")" "$(cat "$W/before")")
 
 report
