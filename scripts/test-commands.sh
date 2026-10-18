@@ -99,7 +99,11 @@ $SCAFFOLD"
 # full_suite=local
 #
 # test_command: the command that runs the whole test suite (default: runs work it out from the repo's instructions).
-# test_command=npm test"
+# test_command=npm test
+#
+# cost_breakdown=true: the closing cost comment adds the dollars of each model, a table of the agents
+# that ran and where the time went (default false: one line of cost, tokens, time and the PR's size).
+# cost_breakdown=true"
   expect "add: CONTEXT.md is scaffolded with a heading and what goes in it" "$(cat "$W/other/.nightshift/CONTEXT.md")" \
     "# Context
 

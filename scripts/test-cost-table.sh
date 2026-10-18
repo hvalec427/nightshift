@@ -5,10 +5,12 @@
 set -euo pipefail
 . "$(dirname "$0")/test-lib.sh"
 
-# The agents table in the cost comment. Nightshift's own plugin as installed
-# has agents and skills, some with an effort in their frontmatter.
+# The agents table in the cost comment, which cost_breakdown=true turns on.
+# Nightshift's own plugin as installed has agents and skills, some with an
+# effort in their frontmatter.
 own_plugin() {
   local d
+  origin_config cost_breakdown=true
   mkdir -p "$NS/plugin/agents"
   for d in issue:low questions:high plan:high build:high; do
     mkdir -p "$NS/plugin/skills/${d%:*}"

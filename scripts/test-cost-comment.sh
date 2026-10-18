@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Tests for the cost comment posted on an issue once it's done: its headline,
 # the marker, its second line (the dollars of each model, the pull request's
-# size) and that it's posted once.
+# size) with cost_breakdown=true, the one line without it, and that it's posted
+# once.
 #   bash scripts/test-cost-comment.sh
 set -euo pipefail
 . "$(dirname "$0")/test-lib.sh"
@@ -51,8 +52,8 @@ set -euo pipefail
   poll
   expect "nothing counted: no cost comment" "$(gh_comments o/r 7 | grep -c "^$COMMENT$" || true)" 0)
 
-# The cost comment's second line: the dollars of each model, and the pull
-# request's size, each left out when unknown.
+# The cost comment's second line, with cost_breakdown=true: the dollars of
+# each model, and the pull request's size, each left out when unknown.
 # The line after the headline, if there is one (the headline is the first line
 # with the dollars; the table or the marker follows a blank line).
 second() { gh_comments o/r "$1" | grep -A1 'at API prices' | sed -n 2p; }
@@ -69,6 +70,7 @@ merge_pr() {
 }
 
 (world
+  origin_config cost_breakdown=true
   gh_issue o/r 7 alice agent
   runs_do "costs 1.2 $OPUS 1 1 1 1; costs 0.2 $HAIKU 1 1 1 1; comment questions"
   poll
@@ -86,6 +88,7 @@ merge_pr() {
   expect_no_unexpected)
 
 (world
+  origin_config cost_breakdown=true
   gh_issue o/r 7 alice agent
   runs_do "costs 1 $OPUS 1 1 1 1; commit feature.txt; open_pr; comment done"
   poll
@@ -93,6 +96,7 @@ merge_pr() {
   expect "one file, one model" "$(second 7)" "opus-5-5 \$1.00 · PR +3 −0 in 1 file")
 
 (world
+  origin_config cost_breakdown=true
   gh_issue o/r 7 alice agent
   runs_do "costs 1 $OPUS 1 1 1 1; commit feature.txt; open_pr; comment done"
   poll
@@ -102,6 +106,7 @@ merge_pr() {
   expect_no_unexpected)
 
 (world
+  origin_config cost_breakdown=true
   gh_issue o/r 7 alice agent
   runs_do "costs 1 $OPUS 1 1 1 1; commit feature.txt; open_pr; comment done"
   poll
@@ -110,6 +115,7 @@ merge_pr() {
   expect "gh fails on the pull request: the models alone" "$(second 7)" "opus-5-5 \$1.00")
 
 (world
+  origin_config cost_breakdown=true
   gh_issue o/r 7 alice agent
   runs_do "comment questions"
   poll
@@ -120,6 +126,7 @@ merge_pr() {
   expect "and the comment is posted" "$(gh_comments o/r 7 | grep -c "^$COMMENT$")" 1)
 
 (world
+  origin_config cost_breakdown=true
   gh_issue o/r 7 alice agent
   runs_do "comment questions"
   poll
@@ -129,5 +136,43 @@ merge_pr() {
   poll
   merge_pr 7 8 9 2
   expect "a pull request but no models: its size alone" "$(second 7)" "PR +8 −9 in 2 files")
+
+# cost_breakdown: unless it's true on the default branch, the comment is the
+# headline and the pull request's size on one line, with no models and no table:
+# a blank line, then the marker.
+# The comment's lines, the marker's last, from the headline on, the time of a
+# session (whatever the run took) as S.
+cost_lines() { gh_comments o/r "$1" | sed -n '/at API prices/,/nightshift:cost/p' | sed 's/\*\*[0-9]*s\*\* over/**S** over/'; }
+SHORT='**$1.00** at API prices · **4 tokens** (1 in, 1 out, 2 cache) · **S** over 1 run · PR +412 −37 in 9 files
+
+<!-- nightshift --> <!-- nightshift:cost -->'
+# Issue 7 built by one run with agents, on a pull request that merged with a size.
+built() {
+  gh_issue o/r 7 alice agent
+  runs_do "costs 1 $OPUS 1 1 1 1; skill nightshift:build; agent toolu_1 Explore 'Look'; agent_result toolu_1 $HAIKU 30 60 2; commit feature.txt; open_pr; comment done"
+  poll
+  merge_pr 7 412 37 9
+}
+
+(world
+  built
+  expect "cost_breakdown unset: the headline and the size, then the marker" "$(cost_lines 7)" "$SHORT"
+  expect_no_unexpected)
+
+(world
+  origin_config cost_breakdown=false
+  built
+  expect "cost_breakdown=false: the same" "$(cost_lines 7)" "$SHORT")
+
+(world
+  origin_config cost_breakdown=true
+  built
+  expect "cost_breakdown=true: the models and the size on their own line" "$(second 7)" "opus-5-5 \$1.00 · PR +412 −37 in 9 files"
+  expect_line "and the agents table" "$(gh_comments o/r 7)" '^| Agent | Model ')
+
+(world
+  origin_file .nightshift/config cost_breakdown=true nightshift/issue-7
+  built
+  expect "cost_breakdown=true only on the issue's branch: the short comment" "$(cost_lines 7)" "$SHORT")
 
 report
