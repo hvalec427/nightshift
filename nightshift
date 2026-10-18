@@ -1084,6 +1084,16 @@ check_prs() {
   done
 }
 
+# Issues off for their label (removed, or held), closed since: off for the
+# close now, so check_done retires them. The issue list holds only open ones.
+check_off_closed() {
+  for d in "$NS/issues/$(echo "$1" | tr '/' '_')"_*; do
+    [ -f "$d/off" ] || continue
+    [ -f "$d/done" ] || [ -f "$d/ignored" ] || [ "$(cat "$d/off")" = "issue closed" ] && continue
+    [ "$(gh api "repos/$1/issues/${d##*_}" --jq .state 2>/dev/null)" = closed ] && echo "issue closed" >"$d/off"
+  done
+}
+
 # Issues that are done, with nothing running: their pull request merged, or
 # the issue closed with no stopped run to resume (or a stopped one that had
 # merged or said it was done). A merge is one in merged/<owner>_<repo>, or for
@@ -1420,6 +1430,7 @@ poll_repo() {
   pf="$NS/poll/$(echo "$repo" | tr '/' '_').prs" now=$(date +%s)
   if [ $((now - $(cat "$pf" 2>/dev/null || echo 0))) -ge "${NIGHTSHIFT_PR_INTERVAL:-30}" ]; then
     check_prs "$repo" "$open"
+    check_off_closed "$repo"
     echo "$now" >"$pf"
   fi
   check_done "$repo" "$clone"
