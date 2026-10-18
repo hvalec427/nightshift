@@ -24,7 +24,8 @@ own check; at the first one that fails, stop, say so and leave everything in pla
    user's commit conventions, and leave the media out. Done when `git status --porcelain`
    prints nothing.
 4. **Push.** `git push -u origin HEAD`. Done when it succeeds.
-5. **Pull request.** `gh pr create` against the repo's default branch
+5. **Pull request.** `gh pr create --base <base branch>`, the base branch being the one the run prompt
+   names ("This repo's pull requests merge into"), else the default branch
    (`gh repo view --json defaultBranchRef -q .defaultBranchRef.name`), following the user's
    PR conventions. The title says the change; write the body by [BODY.md](BODY.md). Place
    each media file where it belongs in the body by its path

@@ -62,6 +62,10 @@ for f in "$SKILLS"/*/*.md; do
 done
 expect "every file beside a SKILL.md has something in it and is linked from its skill" "$unlinked" ""
 
+# The finish skill opens the pull request against the base branch, not whatever gh defaults to.
+expect_ok "the finish skill opens the pull request with --base" \
+  grep -qF 'gh pr create --base <base branch>' "$SKILLS/finish/SKILL.md"
+
 # Each skill and plugin agent runs on its own model and effort, from its frontmatter.
 model_effort() {
   expect "$1: its model" "$(field "$2" model)" "$3"
@@ -91,7 +95,11 @@ done <<'EOF'
 ticket sonnet high
 spec-review opus high
 standards-review sonnet medium
+quick-review sonnet medium
 EOF
+
+expect_ok "the review skill starts the quick-review agent for a small change" \
+  grep -q 'nightshift:quick-review' "$SKILLS/review/SKILL.md"
 
 expect "the issue skill is its SKILL.md alone, the stages' guidance in their skills" \
   "$(cd "$SKILLS/issue" && find . -type f)" "./SKILL.md"

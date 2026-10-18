@@ -2,9 +2,10 @@
 
 | You | nightshift |
 |---|---|
-| Open an issue, add the `agent` label (and a [type](#issue-types) label) | Reads it and the code; asks its questions in one comment (each with its recommended answer), or goes straight to the plan; a small issue (about 20 lines in a file or two, nothing to decide, no new command, CI or security change) it builds straight away, with no plan, and says so: reply **full process** for a plan instead |
+| Open an issue, add the `agent` label (and a [type](#issue-types) label) | Reads it and the code, picks its [size](#sizes) and says so in its first comment; asks its questions in one comment (each with its recommended answer), or goes straight to the plan; a small issue it builds straight away, with no plan, and says so: reply **full process** for a plan instead |
 | Reply | More questions, or a plan: the spec and its tickets, in the to-spec and to-tickets format of [Matt Pocock's skills](https://github.com/mattpocock/skills). A plan with no open choices (nothing it decided that the issue and your answers didn't) says so and goes on to the build without waiting for **go**; comment to stop or change it |
-| Reply **go** (or what to change) | Builds the tickets in order, each in a subagent of its own (so one ticket's work doesn't crowd the next; a one-ticket plan is built directly), with no comment on the issue meanwhile; has two fresh subagents review the change against the plan and the repo's standards, and fixes what they found in one pass; then opens the pull request, which closes the issue, and links it, with what the review found |
+| Reply **small**, **medium** or **large** before the build starts | Switches the size, and rewrites a plan already posted for it |
+| Reply **go** (or what to change) | Builds the tickets in order, each in a subagent of its own (so one ticket's work doesn't crowd the next; a one-ticket plan is built directly), with no comment on the issue meanwhile; has two fresh subagents review the change against the plan and the repo's standards (a small change, one cheaper reviewer for both), and fixes what they found in one pass; then opens the pull request, which closes the issue, and links it, with what the review found. A large plan makes its sub-issues instead (below) |
 | Nothing (unless the repo's `.nightshift/config` has `auto_merge=false`) | Once the pull request is open or updated and its checks pass (it fixes a failing check itself first, twice at most), squash-merges it when nothing in it needs a decision; otherwise lists what does in a look comment (a review finding left open that the plan didn't settle, a decision the plan didn't cover, a security-relevant change, or you asked to see it first). The rest worth knowing (a wide blast radius, a new command, a CI change, …) goes in its `done` comment |
 | Reply **merge** to a look comment | Checks it again (checks, conflicts, the pull requests it goes after) and merges it |
 | Comment on the issue after that | Makes the change on the same branch and pushes it (and checks it for merging again) |
@@ -121,6 +122,28 @@ duplicate issues. Invoking a skill loads all of its guidance, so no stage runs w
 shows each one a run invokes, and each comment names the skill that wrote it
 (`🤖 nightshift · plan · nightshift:plan`).
 
+## Sizes
+
+nightshift picks a size on the first run and names it, with why, in that run's comment:
+
+- **small**: about 20 lines in a file or two, nothing to decide, no new command or option,
+  no breaking change, nothing touching CI, releases, installing or security. Built straight
+  from the issue, with no plan and **go**, and reviewed by one quick reviewer.
+- **medium**: everything else. The table above: questions if there are any, a plan, **go**
+  (or none, when the plan has no open choices), one pull request, two reviewers.
+- **large**: it touches many areas, adds several features, or changes how things work.
+  It always asks its questions first, and its plan is split into **sub-issues**, each a few
+  tickets, naming the sub-issues it's blocked by. The plan always waits for **go**, never
+  carrying on. On **go**, nightshift creates the sub-issues (`nightshift sub-issue`, labelled
+  `agent` and with the parent's type), builds nothing on the parent and opens no pull
+  request for it, and posts one comment listing them. Each sub-issue is then built from its
+  body, with no questions, plan or **go** (your **go** on the parent covers them), reviewed
+  and merged as its own pull request. One with no open blockers starts right away, in
+  parallel with the others; one with open blockers waits (`nightshift: waiting`) until they
+  close. The parent shows `waiting` and closes after the last merge (below).
+
+Reply **small**, **medium** or **large** to change the size before the build starts.
+
 ## Issue types
 
 Give an issue its type with one of GitHub's default labels, next to `agent`;
@@ -129,7 +152,7 @@ calls for:
 
 | Label | nightshift |
 |---|---|
-| `bug` | finds the cause with a check that fails the way the bug does (or asks, when it can't build one), and its plan starts with a test that fails the way the bug does; the fix makes it pass; a small one whose cause is plain is fixed straight away |
+| `bug` | finds the cause with a check that fails the way the bug does (or asks, when it can't build one), and its plan starts with a test that fails the way the bug does; the fix makes it pass; a small one whose cause is plain is fixed straight away; a large one asks first, then finds the cause, then plans |
 | `enhancement` | asks, plans, builds and opens a pull request, as above; a small one is built straight away |
 | `documentation` | the same, kept to the docs |
 | `question` | answers it in a comment: no plan, no pull request. Reply to follow up, or ask for a change to have it built |
@@ -162,6 +185,7 @@ waiting on you:
 | `nightshift: answering` | a run is answering a `question` or `duplicate` issue |
 | `nightshift: needs you` | waiting on your reply: questions, an answer, a plan, blocked, a pull request to look at before it merges, a failed run, or one that stalled twice. It comes off as soon as the watcher sees your reply |
 | `nightshift: PR open` | the pull request is open, nothing running |
+| `nightshift: waiting` | a sub-issue blocked by issues that are still open: held until they close, then its first run starts; or a parent whose sub-issues are not all done |
 | `nightshift: stopped` | a run was stopped partway |
 
 The watcher sets them as runs start and end, and as a run invokes one of
@@ -182,6 +206,16 @@ label. Your comment starts its first run, and the run gets your comment.
 Others' comments don't start it. `nightshift status` shows a held one as
 `proposed: waiting for your comment`.
 
+An issue with open blockers (GitHub's "blocked by", as `nightshift sub-issue` sets) that hasn't had
+its first run is held the same way, labelled `nightshift: waiting`: the watcher checks it every
+poll and starts it once its blockers are closed. One already worked on isn't held.
+
+A parent (an issue whose run made sub-issues) is `waiting` until they're all done. Each time a
+sub-issue's pull request merges, the watcher comments `#161 merged (2 of 4)` on the parent, once;
+when the last one has, it closes the parent, which retires as "issue closed" with one cost comment
+that totals the parent and every sub-issue, a line each (and, unless `cost_breakdown=false`, the
+dollars of each model, summed). A sub-issue closed without merging leaves the parent open for you.
+
 nightshift's comments start with **🤖 nightshift** and carry a hidden `<!-- nightshift -->`
 marker, which is how it tells them from yours: it runs as your GitHub account, so
 on GitHub they're yours. It only acts on the label when you added it, and only on
@@ -199,10 +233,10 @@ otherwise the pull request that opened first does. `nightshift status` shows it 
 `PR <url> · after #10`.
 
 After a merge, each poll looks at the open nightshift pull requests. One that now
-conflicts with the default branch (after any merge, nightshift's or not), or that
-goes after or overlaps the nightshift pull request that just merged, gets a run
-(its issue gets no comment until the run's own). That run rebases it onto the default
-branch, fixes the conflicts, and updates the change to fit what merged, not just to
+conflicts with its base branch (the default branch, or `base_branch`; after any merge,
+nightshift's or not), or that goes after or overlaps the nightshift pull request that
+just merged, gets a run (its issue gets no comment until the run's own). That run
+rebases it onto its base branch, fixes the conflicts, and updates the change to fit what merged, not just to
 apply. It runs the checks again, force-pushes (`--force-with-lease`), and says what changed beyond the
 conflict fixes. A conflict that needs your decision gets a question on the issue
 instead. Meanwhile `status` shows `conflicts, rebasing` or `updating after #10`. So

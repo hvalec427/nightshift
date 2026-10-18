@@ -47,9 +47,25 @@ interval=5
     `gh` needs the `project` scope (`gh auth refresh -s project`), and the project's Status
     field its seven columns; `nightshift doctor` checks both and names what is missing. Unset,
     nothing changes.
+  - `base_branch=develop` is the branch its pull requests merge into, when that isn't the
+    default branch. A new issue's branch starts from `origin/develop`, its pull request opens
+    against it, and the review and merge compare against it. Unset, the default branch.
+    `base_branch` is read from the default branch like the other keys, so a change applies
+    once it's merged there. A branch that isn't on origin is ignored: runs use the default
+    branch and the issue's log says so. GitHub closes an issue by `Closes #n` only on a merge
+    into the default branch, so nightshift closes the issue itself after it merges.
   - `cost_breakdown=false` keeps the closing cost comment to one line: dollars, tokens,
     time and the pull request's size. Unset (or any other value), it has the breakdown
     too: the dollars of each model, the agents table and the time line.
+  - `all_issues=true` works every issue an allowed user opens from then on, with or
+    without the `agent` label, so the repo needs no `agent` label (`add` doesn't
+    create it, `doctor` doesn't ask for it). Only issues opened at or after the
+    moment nightshift first read the option on count (the *all-issues on-time*,
+    kept in `~/.nightshift/all_issues/`, dropped when the option is read off): the
+    backlog is left alone. A stranger's issue still needs `agent` from an allowed
+    user, and closing an issue or adding `wontfix`/`invalid` stops it as usual.
+    Only the newest 100 open issues are looked at, and the watcher fetches the
+    clone between runs to read the option. Unset or any other value, off.
   - `cost_comment=false` posts no closing cost comment at all (`nightshift status`
     still shows what a done issue spent).
 - `allowed_users`: whose labels and comments count (default: your gh account).
@@ -154,6 +170,7 @@ No setting changes them: `model=` and `effort=` in the config are ignored, and
 | Ticket builder (agent `ticket`) | sonnet | high |
 | Spec reviewer (agent `spec-review`) | opus | high |
 | Standards reviewer (agent `standards-review`) | sonnet | medium |
+| Quick reviewer (agent `quick-review`, a small change's only reviewer) | sonnet | medium |
 | `answer`, `finish` | sonnet | medium |
 
 Each run's line in `nightshift logs` shows the models it used, the main one first.

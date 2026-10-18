@@ -36,7 +36,7 @@ while [ $# -gt 0 ]; do
   -H | --header) hdr=$2; shift ;;
   -R | --repo) repo=$2; shift ;;
   --json | -X | --method | --state | --limit | --head | --base | --title | --body | --body-file | \
-    --add-label | --remove-label | --color | --description | -F | -f) OPTS+=("$1" "$2"); shift ;;
+    --add-label | --remove-label | --label | --reason | --color | --description | --comment | -F | -f) OPTS+=("$1" "$2"); shift ;;
   --paginate | --force | --version | --active) OPTS+=("$1" "") ;;
   -*) unexpected ;;
   *) POS+=("$1") ;;
@@ -48,6 +48,17 @@ opt() {
   local i
   for ((i = 0; i < ${#OPTS[@]}; i += 2)); do
     [ "${OPTS[i]}" = "$1" ] && { printf '%s' "${OPTS[i + 1]}"; return 0; }
+  done
+  return 1
+}
+
+# The integer value of API field $1 (-F or -f), or fail.
+field() {
+  local i
+  for ((i = 0; i < ${#OPTS[@]}; i += 2)); do
+    case "${OPTS[i]} ${OPTS[i + 1]}" in
+    "-F $1="* | "-f $1="*) printf '%s' "${OPTS[i + 1]#*=}"; return 0 ;;
+    esac
   done
   return 1
 }
@@ -173,11 +184,12 @@ api() {
   case "$method $rest" in
   "GET ") out <"$D/repo.json" ;;
   "GET /issues?"*)
-    case "$rest" in *labels=*) ;; *) unexpected ;; esac
+    # With labels=, the issues with that label; without, every issue, newest first.
+    case "$rest" in *labels=* | *sort=created*) ;; *) unexpected ;; esac
     l=$(echo "$rest" | sed -n 's/.*labels=\([^&]*\).*/\1/p') s=$(echo "$rest" | sed -n 's/.*state=\([^&]*\).*/\1/p')
     for f in "$D"/issues/*.json; do
       case "${f##*/}" in *.*.json) ;; *) cat "$f" ;; esac
-    done | jq -s --arg l "$l" --arg s "${s:-open}" 'map(select(.state == $s and any(.labels[]; .name == $l))) | sort_by(.number) | reverse' | etagged ;;
+    done | jq -s --arg l "$l" --arg s "${s:-open}" 'map(select(.state == $s and ($l == "" or any(.labels[]; .name == $l)))) | sort_by(.number) | reverse' | etagged ;;
   "GET /issues/"*)
     n=$(echo "$rest" | cut -d/ -f3 | cut -d'?' -f1) f="$D/issues/$n"
     [ -f "$f.json" ] || not_found
@@ -186,6 +198,18 @@ api() {
     "/issues/$n/labels") jq .labels "$f.json" | out ;;
     "/issues/$n/comments"*) out <"$f.comments.json" ;;
     "/issues/$n/events") out <"$f.events.json" ;;
+    *) unexpected ;;
+    esac ;;
+  "POST /issues/"*)
+    n=$(echo "$rest" | cut -d/ -f3) f="$D/issues/$n"
+    [ -f "$f.json" ] || not_found
+    case "$rest" in
+    "/issues/$n/sub_issues")
+      gh_sub_issue_add "$r" "$n" "$(field sub_issue_id)" || not_found
+      jq . "$f.json" | out ;;
+    "/issues/$n/dependencies/blocked_by")
+      gh_block_add "$r" "$n" "$(field issue_id)" || not_found
+      jq . "$f.json" | out ;;
     *) unexpected ;;
     esac ;;
   "GET /labels/"*) grep -qxF "${rest#/labels/}" "$D/labels" || not_found; jq -n --arg n "${rest#/labels/}" '{name: $n}' | out ;;
@@ -230,9 +254,28 @@ pr() {
   esac
 }
 
+# gh issue create: a new issue, numbered after the last; prints its URL.
+issue_create() {
+  local n i by l
+  by=$(cat "$GH_FAKE/user")
+  [ -n "$(opt --title)" ] || unexpected
+  n=$(($(ls "$D/issues" | sed -n 's/^\([0-9]*\)\.json$/\1/p' | sort -n | tail -1) + 1))
+  gh_issue "$repo" "$n" "$by"
+  gh_edit "$D/issues/$n.json" '.title = $t | .body = $b' --arg t "$(opt --title)" \
+    --arg b "$(opt --body || cat "$(opt --body-file)")"
+  # Every --label given, however many.
+  for ((i = 0; i < ${#OPTS[@]}; i += 2)); do
+    [ "${OPTS[i]}" = --label ] || continue
+    IFS=, read -ra ls <<<"${OPTS[i + 1]}"
+    for l in "${ls[@]}"; do gh_label_add "$repo" "$n" "$by" "$l"; done
+  done
+  echo "https://github.com/$repo/issues/$n"
+}
+
 issue() {
   local n=${POS[2]:-} f body
   in_repo "$repo"
+  [ "${POS[1]:-}" = create ] && { issue_create; return; }
   f="$D/issues/$n"
   [ -f "$f.json" ] || not_found
   case "${POS[1]:-}" in
@@ -240,6 +283,11 @@ issue() {
     body=$(opt --body) || body=$(cat "$(opt --body-file)") || unexpected
     id=$(gh_comment "$repo" "$n" "$(cat "$GH_FAKE/user")" "$body")
     echo "https://github.com/$repo/issues/$n#issuecomment-$id" ;;
+  close)
+    if reason=$(opt --reason); then [ "$reason" = completed ] || unexpected; fi
+    if body=$(opt --comment); then gh_comment "$repo" "$n" "$(cat "$GH_FAKE/user")" "$body" >/dev/null; fi
+    gh_state "$repo" "$n" closed
+    echo "✓ Closed issue $repo#$n" ;;
   edit)
     if old=$(opt --remove-label); then
       IFS=, read -ra ls <<<"$old"

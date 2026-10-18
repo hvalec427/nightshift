@@ -3,9 +3,14 @@
 # changes, and what a test sets up through the same functions. Per repo, in
 # repos/<owner>_<repo>/: repo.json, labels (a name a line), pulls.json (newest
 # first, as gh lists them), origin (the path of its git remote) and per issue
-# issues/<n>.json, <n>.comments.json and <n>.events.json. `user` is who gh is
-# logged in as; `scopes` (once a test has called gh_scopes) the scopes of its token;
-# `clock` counts, for ids and update times.
+# issues/<n>.json (created_at: now, or gh_created), <n>.comments.json and
+# <n>.events.json. An issue has an `id` (5000 + its number, apart from the
+# number, as on GitHub), an `issue_dependencies_summary` whose `blocked_by`
+# counts its open blockers (a test sets it: gh_set_blocked_by),
+# `blocked_by_ids` (the ids it was made to wait for) and, as a parent,
+# `sub_issue_ids`. `user` is who gh is logged in as; `scopes` (once a test has
+# called gh_scopes) the scopes of its token; `clock` counts, for ids and update
+# times.
 
 # A repo's directory.
 gh_dir() { printf '%s/repos/%s' "$GH_FAKE" "$(echo "$1" | tr '/' '_')"; }
@@ -47,12 +52,68 @@ gh_issue() {
   shift 3
   d=$(gh_dir "$repo")
   gh_lock
-  printf '{"number":%s,"state":"open","title":"Issue %s","user":{"login":"%s"},"labels":[],"updated_at":"t%s"}\n' \
-    "$n" "$n" "$by" "$(gh_tick)" >"$d/issues/$n.json"
+  printf '{"number":%s,"id":%s,"state":"open","title":"Issue %s","user":{"login":"%s"},"labels":[],"created_at":"%s","updated_at":"t%s","issue_dependencies_summary":{"blocked_by":0,"blocking":0,"total_blocked_by":0,"total_blocking":0},"blocked_by_ids":[],"sub_issue_ids":[]}\n' \
+    "$n" "$((5000 + n))" "$n" "$by" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(gh_tick)" >"$d/issues/$n.json"
   echo '[]' >"$d/issues/$n.comments.json"
   echo '[]' >"$d/issues/$n.events.json"
   gh_unlock
   for l in "$@"; do gh_label_add "$repo" "$n" "$by" "$l"; done
+}
+
+# Issue $2 was opened at $3 (UTC, 2026-01-01T00:00:00Z); gh_issue says now.
+gh_created() { gh_edit "$(gh_dir "$1")/issues/$2.json" '.created_at = $t' --arg t "$3"; }
+
+# The number of the issue with id $2, if there is one.
+gh_id_number() {
+  local f
+  for f in "$(gh_dir "$1")"/issues/*.json; do
+    case "${f##*/}" in *.*.json) ;; *) jq -r --argjson i "$2" 'select(.id == $i) | .number' "$f" ;; esac
+  done | head -1
+}
+
+# Issue $3 (an id) becomes a sub-issue of issue $2.
+gh_sub_issue_add() {
+  local number
+  number=$(gh_id_number "$1" "$3")
+  [ -n "$number" ] || return 1
+  gh_lock
+  gh_edit "$(gh_dir "$1")/issues/$2.json" '.sub_issue_ids += [$i]' --argjson i "$3"
+  gh_edit "$(gh_dir "$1")/issues/$number.json" '.parent_issue_id = $p' --argjson p "$((5000 + $2))"
+  gh_unlock
+}
+
+# Issue $2's sub-issues' numbers, a line each.
+gh_sub_issues() {
+  local i
+  for i in $(jq -r '.sub_issue_ids[]' "$(gh_dir "$1")/issues/$2.json"); do gh_id_number "$1" "$i"; done
+}
+
+# Issue $2 is made to wait for issue $3 (an id): recorded, and counted as open
+# in its summary when that issue is.
+gh_block_add() {
+  local number
+  number=$(gh_id_number "$1" "$3")
+  [ -n "$number" ] || return 1
+  gh_lock
+  gh_edit "$(gh_dir "$1")/issues/$2.json" '
+    .blocked_by_ids += [$i]
+    | .issue_dependencies_summary.total_blocked_by += 1
+    | .issue_dependencies_summary.blocked_by += $open' --argjson i "$3" \
+    --argjson open "$(jq 'if .state == "open" then 1 else 0 end' "$(gh_dir "$1")/issues/$number.json")"
+  gh_unlock
+}
+
+# The numbers of the issues issue $2 was made to wait for, a line each.
+gh_blockers() {
+  local i
+  for i in $(jq -r '.blocked_by_ids[]' "$(gh_dir "$1")/issues/$2.json"); do gh_id_number "$1" "$i"; done
+}
+
+# Set how many open blockers GitHub counts for issue $2 to $3.
+gh_set_blocked_by() {
+  gh_lock
+  gh_edit "$(gh_dir "$1")/issues/$2.json" '.issue_dependencies_summary.blocked_by = $c' --argjson c "$3"
+  gh_unlock
 }
 
 # Mark issue $2 updated now.

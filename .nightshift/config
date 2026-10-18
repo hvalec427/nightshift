@@ -19,4 +19,4 @@
 # cost_breakdown=false
 #
 # cost_comment=false: no closing cost comment at all (default true).
-# cost_comment=false
+cost_comment=false

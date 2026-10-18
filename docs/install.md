@@ -30,7 +30,8 @@ Then:
 2. `gh auth login` (gh 2.99 or newer, for screenshots in pull requests).
 3. For each repo: a clone of it on the machine, then
    `nightshift add <owner/repo> <path to the clone>`.
-   That also creates its `agent` label and the status labels, and leaves
+   That also creates its `agent` label (not with `all_issues=true`, see
+   [Config](config.md#config)) and the status labels, and leaves
    `.nightshift/config` (the defaults, commented) and `.nightshift/CONTEXT.md`
    (a stub for the project's glossary) in the clone, where they're missing and
    uncommitted: commit them to the repo's default branch. `add` takes no
@@ -45,8 +46,8 @@ Then:
 `nightshift doctor` checks all of it on this machine, starting with the
 nightshift version that runs (and, on a release, whether a newer one is out):
 what's installed and its version, gh's login, a Claude token, nightshift's
-plugin, and each watched repo's clone and `agent` label (with a hint when GitHub
-keeps merged branches there), then a line for each plugin its `.nightshift/config` names:
+plugin, and each watched repo's clone and `agent` label (none needed with
+`all_issues=true`; with a hint when GitHub keeps merged branches there), then a line for each plugin its `.nightshift/config` names:
 `ok`, or `missing` with how to install it (`claude plugin install <name>`) or
 enable it (`claude plugin enable <id>`). It says what's missing and how to get it, and
 fails when something required is; `nightshift start` won't start the service until

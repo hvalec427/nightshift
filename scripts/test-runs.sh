@@ -46,10 +46,10 @@ GIT_SEQUENCE_EDITOR=true"
   expect_line "its log: how it ended" "$log" "^0	=== [0-9:]* run done in [0-9]*s$"
   expect_line "watch.log: the run, with the issue" "$(cat "$NS/watch.log")" "o/r#7: run done in"
   expect "the status labels are created" "$(LC_ALL=C sort "$(gh_dir o/r)/labels" | tr '\n' ,)" \
-    "nightshift: PR open,nightshift: answering,nightshift: building,nightshift: merging,nightshift: needs you,nightshift: planning,nightshift: proposed,nightshift: queued,nightshift: stopped,nightshift: thinking,nightshift: updating,"
+    "nightshift: PR open,nightshift: answering,nightshift: building,nightshift: merging,nightshift: needs you,nightshift: planning,nightshift: proposed,nightshift: queued,nightshift: stopped,nightshift: thinking,nightshift: updating,nightshift: waiting,"
   poll
   expect "nothing new: no run" "$(runs)" 1
-  expect "the status labels are created once" "$(gh_calls '^label create' | wc -l | tr -d ' ')" 11
+  expect "the status labels are created once" "$(gh_calls '^label create' | wc -l | tr -d ' ')" 12
   expect_no_unexpected)
 
 (world

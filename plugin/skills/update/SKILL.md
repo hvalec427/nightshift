@@ -1,6 +1,6 @@
 ---
 name: update
-description: Rebase an issue's pull request onto the default branch after it moved, and adapt the change to what merged. Started by the issue skill on an update run.
+description: Rebase an issue's pull request onto the base branch after it moved, and adapt the change to what merged. Started by the issue skill on an update run.
 user-invocable: false
 model: sonnet
 effort: high
@@ -9,12 +9,13 @@ effort: high
 # Update a pull request
 
 The issue skill sent you here, and its rules (comments, the status label, overlap, bounds)
-hold throughout. The default branch moved under this pull request (it conflicts now, or a
+hold throughout. The base branch (the one the run prompt names with "This repo's pull
+requests merge into", else the default branch) moved under this pull request (it conflicts now, or a
 pull request it goes after or overlaps merged). Make the change fit what's there now, so
 the pull requests can merge in any order.
 
 1. **Rebase.** `git fetch origin`, check out this branch at `origin/nightshift/issue-<n>`,
-   and rebase it onto `origin/<default branch>`, fixing the conflicts. A conflict that's a
+   and rebase it onto `origin/<base branch>`, fixing the conflicts. A conflict that's a
    real decision between the two changes gets a `blocked` comment instead, after
    `git rebase --abort`, so the branch stays as it was. Done when the rebase completes.
 2. **Adapt.** Reread what merged (`git log -p` of the new commits where they touch what

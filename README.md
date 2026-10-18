@@ -33,7 +33,9 @@ Then:
 ## How it works
 
 1. Label an issue `agent` (and a [type](docs/working-an-issue.md#issue-types) label).
-2. nightshift asks its questions in a comment; you reply.
+2. nightshift picks its [size](docs/working-an-issue.md#sizes) and asks its questions in a
+   comment; you reply. A small issue goes straight to the build; a large one is split into
+   sub-issues, each its own pull request.
 3. It posts a plan: a spec and its tickets.
 4. You reply **go** (or what to change); it builds the tickets and has the change reviewed.
 5. It opens a pull request that closes the issue.

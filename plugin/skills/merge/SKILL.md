@@ -68,8 +68,9 @@ needs the user to decide; otherwise tell the user exactly what does, and let the
 2. **Triggers.** Read the issue and its thread, the approved plan, the review's report
    (the PR body's open findings), the PR body's Merge Danger
    (its door and blast radius), the commits and the diff
-   (`git log -p origin/<default branch>..<head>`). The author graded its own Merge Danger:
-   judge the blast radius from the diff yourself, and take the wider call. A small issue
+   (`git log -p origin/<base branch>..<head>`, the base branch being the one the run prompt
+   names ("This repo's pull requests merge into"), else the default branch). The author
+   graded its own Merge Danger: judge the blast radius from the diff yourself, and take the wider call. A small issue
    has no plan: the issue and its thread stand in for it, so a decision they didn't settle
    is one the plan didn't cover; being small isn't a look item by itself. Stop only for
    what needs the user: a decision, or a security-relevant change, which reaches every

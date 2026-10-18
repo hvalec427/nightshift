@@ -34,6 +34,10 @@ Synthesise from what you have; the interview was the questions skill's.
 6. **Write the comment** ([below](#the-plan-comment)), then end the run as it says: wait
    for the user, or carry on. Done when the comment is posted.
 
+The plan fits the issue's size (the issue skill's Size section). A **small** one is a single
+ticket, **medium** is as described here, and a **large** one adds the sub-issues
+([below](#a-large-plan)). A reply that switches the size gets a revised plan for the new one.
+
 A revised plan, after the user asked for changes, is the same: a new `plan` comment with
 their changes in it, then wait again, or carry on when it has no open choice. A bug's plan,
 from the diagnose skill, is the same too.
@@ -48,9 +52,10 @@ the changes the user asked for makes no choice of its own.
 
 With any open choice, the plan stops for **go** and names those choices under "Decisions to
 look at". With none, it carries on: the comment says so, and the run builds without waiting.
-When unsure, it's open. On a project board (the run prompt says "This repo works from a
-project board") a plan never carries on: it always stops, and the user approves it with
-**go** or by moving the card to In progress.
+When unsure, it's open. A **large** plan has no carry-on: it always stops for **go**. On a
+project board (the run prompt says "This repo works from a project board") no plan carries
+on: it always stops, and the user approves it with **go** or by moving the card to In
+progress.
 
 ## The spec
 
@@ -116,20 +121,41 @@ What it delivers: the end-to-end behaviour it makes work, from the user's perspe
 
 Tickets follow the spec's rule on paths and snippets.
 
+## A large plan
+
+The spec is as above. The tickets, cut as above, are then grouped into **sub-issues**
+numbered `S1`, `S2`, …: each a few tickets that merge as one pull request, so a review
+stays small and a wrong assumption costs one sub-issue. Each sub-issue names the
+sub-issues it's **blocked by**, and only those: the ones whose merged code it needs.
+Sub-issues with no blocker build at once, in parallel, so group by what must merge first,
+not by area alone. List them in dependency order (a blocker before what it blocks): the
+build creates them in that order, and a blocker's number is known only once it exists.
+
+```
+**S1: <title>.** Blocked by: none (or S…). Tickets: T1, T2.
+**S2: <title>.** Blocked by: S1. Tickets: T3.
+```
+
+A ticket's blockers stay within its sub-issue or point at an earlier sub-issue's. A large
+plan never carries on: its last line is always the **go** one. Done when every ticket is
+in one sub-issue and each sub-issue's blockers are earlier in the list.
+
 ## The plan comment
 
 Short enough to read in a minute. The tickets live in this comment; on **go**, the build
-writes them to ticket files, so you write no issues.
+writes them to ticket files, so you write no issues (a large plan's sub-issues are the
+build's to create).
 
 - **On top:** what gets built, in two or three lines; the decisions the user should see;
-  the tickets, one line each, in build order (`**T1: <title>.** <what it delivers>`); and
+  the tickets, one line each, in build order (`**T1: <title>.** <what it delivers>`), a
+  large plan's grouped under their sub-issues (`**S1: <title>.** Blocked by: none.`); and
   the **overlap** (in the issue skill) with other nightshift work, if any.
 - **Collapsed,** in one `<details><summary>Full spec</summary>` block: the spec, then each
   ticket's blockers and acceptance criteria.
-- **Last line,** with an open choice: "Reply **go** to build it, or tell me what to change."
-  With none: "No open choices, so I'm building it now: comment to stop or change it."
-  On a board: "Reply **go** or move the card to In progress to build it, or tell me what to
-  change."
+- **Last line,** with an open choice, and always for a large plan: "Reply **go** to build
+  it, or tell me what to change." With none: "No open choices, so I'm building it now:
+  comment to stop or change it." On a board: "Reply **go** or move the card to In progress
+  to build it, or tell me what to change."
 
 ```
 **What changes:** <two or three lines>.

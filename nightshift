@@ -11,6 +11,7 @@
 #   nightshift top                       at least 8 windows, one per issue in progress, tiled: its status and the end of its log, live on a terminal (q quits, j/k scroll)
 #   nightshift add <owner/repo> <clone>  watch a repo, using this clone of it, and set up its .nightshift/ (config, CONTEXT.md) to commit
 #   nightshift label <status>            (in a run) set its issue's status label
+#   nightshift sub-issue --title <t> --body-file <f> [--after <n>]…  (in a run) create a sub-issue of its issue, blocked by the issues it goes after
 #   nightshift build [--carry-on]        (in a run) build the approved plan, in a fresh session if it's the planning one (--carry-on: no approval, the plan has no open choices)
 #   nightshift doctor                    check the tools and setup it needs on this machine
 #   nightshift --version                 the version that runs
@@ -38,21 +39,27 @@
 # starts), `merging-board` (a board repo: the run that just started carries the
 # merge news; the run reads and removes it), `log` (readable, live) and
 # `out.jsonl` (the last run's raw stream-json),
+# `subs` (the sub-issues it made, a number a line: see cmd_sub_issue;
+# `subs-noted`, the ones merged it commented on, and `subs-closed`, that it closed
+# itself once they all merged: see check_subs; `subs-linking`, the ones
+# cmd_sub_issue hasn't linked yet, which the watcher doesn't start),
 # `cost` (what its runs cost, added up), `usage` (its session's totals at the
 # last result), `agents` (every run's session and subagents, a JSON line each:
 # see AGENTS), `models` (what each model cost it, a line `opus-5-5 3.2` each),
 # `context` (its last run's context at the end, and the model's window), and
 # `done` (why) once its pull request merged or it closed, when only `log`,
 # `session`, `plan-session`, `sessions`, `seen`, `started`, `pr`, `cost`,
-# `usage`, `agents` and `models` stay
+# `usage`, `agents`, `models`, `subs`, `subs-noted` and `subs-closed` stay
 # (`revived`, the merged pull request a comment brought it back from);
-# `label`, its status label (see STATUSES); `skill`, the last nightshift skill
+# `label`, its status label (see STATUSES; `waiting` while open blockers hold its
+# first run, which the watcher checks every poll); `skill`, the last nightshift skill
 # its session invoked (see SKILL_STATUSES); `type`, its type label as the
 # last run left it (see TYPES); and per repo, `merged/<owner>_<repo>`, the
 # merged nightshift pull requests seen, `labels/<owner>_<repo>`, the
-# version of the status labels created there, and `poll/<owner>_<repo>.board.json`,
+# version of the status labels created there, `poll/<owner>_<repo>.board.json`,
 # the cards of its project board as the last poll read them (see the board
-# section; only a repo with `project=` has one).
+# section; only a repo with `project=` has one), and `all_issues/<owner>_<repo>`,
+# when the repo's all_issues=true was first read on (UTC), until it reads off.
 set -u
 
 # install.sh writes the version in: X.Y.Z for a release, `master (<sha>)` or
@@ -137,6 +144,23 @@ repo_option() {
 # `auto_merge=false`, and never on a board, where they wait for the card's
 # move to Ready to merge.
 auto_merges() { ! is_board "$1" && [ "$(repo_option "$1" auto_merge)" != false ]; }
+
+# Repo $1's base branch in clone $2: the branch its pull requests merge into.
+# `base_branch` in its config when origin has that branch, else the default
+# branch. A `base_branch` origin doesn't have leaves a line in log dir $3's
+# log, when there is one.
+base_branch() {
+  bb_name=$(repo_option "$1" base_branch)
+  if [ -n "$bb_name" ] && ! origin_has "$2" "$bb_name"; then
+    [ -z "${3:-}" ] || printf "0\t=== base_branch %s isn't on origin: this run starts from %s\n" "$bb_name" "$(default_branch "$1" "$2")" >>"$3/log"
+    bb_name=""
+  fi
+  [ -n "$bb_name" ] || bb_name=$(default_branch "$1" "$2")
+  printf '%s' "$bb_name"
+}
+
+# Whether clone $1 has origin's branch $2.
+origin_has() { git -C "$1" rev-parse -q --verify "refs/remotes/origin/$2" >/dev/null 2>&1; }
 
 allowed_users() {
   u=$(setting allowed_users "")
@@ -261,6 +285,7 @@ updating|1D76DB|nightshift is updating its pull request after a merge
 merging|1D76DB|nightshift is checking its pull request and merging it
 answering|1D76DB|nightshift is answering the question
 needs you|D93F0B|nightshift is waiting on your reply
+waiting|BFBFBF|nightshift is waiting on other issues
 PR open|0E8A16|its pull request is open
 stopped|BFBFBF|nightshift was stopped partway'
 
@@ -306,6 +331,22 @@ set_status() {
   printf '%s\n' "$snew" >"$sd/label"
 }
 
+# The dirs of parent dir $1's sub-issues, a line each: a sub-issue's dir is its
+# sibling.
+sub_dirs() {
+  while read -r sp; do echo "${1%_*}_$sp"; done <"$1/subs"
+}
+
+# Whether issue dir $1 is a parent (it has `subs`) with a sub-issue that isn't
+# done.
+subs_pending() {
+  [ -s "$1/subs" ] || return 1
+  for subd in $(sub_dirs "$1"); do
+    [ -f "$subd/done" ] || return 0
+  done
+  return 1
+}
+
 # The status of an issue with nothing running, from its log's last run: how it
 # ended, and the stage of the last comment it posted.
 idle_status() {
@@ -319,7 +360,8 @@ idle_status() {
   case "$ended" in
   stopped*) echo stopped ;;
   failed* | stalled* | *" questions" | *" answer" | *" plan" | *" blocked" | *" look") echo "needs you" ;;
-  *) if [ -f "$1/pr" ]; then echo "PR open"
+  *) if subs_pending "$1"; then echo waiting
+    elif [ -f "$1/pr" ]; then echo "PR open"
     elif [ -s "$1/session" ]; then echo "needs you"
     else echo queued
     fi ;;
@@ -359,13 +401,14 @@ git_exclude() {
 }
 
 # The issue's worktree in the repo's clone, created on the first run (or again,
-# on its existing branch, after it was removed).
+# on its existing branch, after it was removed). A new branch starts from the
+# repo's base branch; log dir $4's log says when that falls back to the default.
 worktree() {
-  repo=$1 n=$2 clone=$3
+  repo=$1 n=$2 clone=$3 logdir=${4:-}
   wt="$clone/.claude/worktrees/issue-$n"
   branch="nightshift/issue-$n"
   if [ ! -d "$wt" ]; then
-    base=$(default_branch "$repo" "$clone")
+    base=$(base_branch "$repo" "$clone" "$logdir")
     mkdir -p "$clone/.claude/worktrees"
     # Keep the worktrees out of the clone's own git status.
     git_exclude "$clone" .claude/worktrees/
@@ -413,7 +456,7 @@ write_instructions() {
 
 # Tools a run may use without asking, on top of the permission mode: the ones
 # that reach GitHub, which an automatic reviewer might otherwise hold back.
-ALLOWED_TOOLS='Bash(gh issue *) Bash(gh pr *) Bash(gh repo view *) Bash(gh api *) Bash(git *) Bash(nightshift label *)'
+ALLOWED_TOOLS='Bash(gh issue *) Bash(gh pr *) Bash(gh repo view *) Bash(gh api *) Bash(git *) Bash(nightshift label *) Bash(nightshift sub-issue *)'
 
 # Runs are isolated from the machine's own Claude setup:
 # no user-level skills, settings, plugins or hooks, only the repo's own and
@@ -546,7 +589,7 @@ run_agent() {
   said=$news
   # The repo's settings are on origin's default branch: fetch them.
   git -C "$clone" fetch -q origin >/dev/null 2>&1 || true
-  wt=$(worktree "$repo" "$n" "$clone") || {
+  wt=$(worktree "$repo" "$n" "$clone" "$dir") || {
     comment_failure "$repo" "$n" "couldn't create the worktree: see $dir/log"
     set_status "$repo" "$n" "needs you"
     return
@@ -605,11 +648,13 @@ $intro}"
       echo "0 $window" >"$dir/context"
     fi
   fi
+  bnote=$(base_note "$repo" "$clone")
   prompt="You are nightshift, working GitHub issue #$n in $repo, unattended: nobody is at a terminal, and you talk to the user only through the issue. Use the issue skill.
 This checkout is the issue's own worktree, on branch nightshift/issue-$n.
 $(type_note "$repo" "$n" "$dir")
 $(merge_note "$repo")
-$(suite_note "$repo")
+$(suite_note "$repo")${bnote:+
+$bnote}
 
 $intro"
   # The run says when it plans or builds (`nightshift label`); until then, a
@@ -841,6 +886,14 @@ suite_note() {
     nothing) echo "nightshift runs no whole test suite in this repo (full_suite=nothing in .nightshift/config): check what you touched, then push." ;;
     *) printf '%s\n' "This repo leaves its whole test suite to CI: check what you touched, then push; run the whole suite yourself only if the repo has no CI checks on its pull requests.$sn_run" ;;
   esac
+}
+
+# What a run is told of repo $1's base branch (clone $2): where its pull requests
+# merge, when that isn't the default branch. Nothing otherwise.
+base_note() {
+  bn_base=$(base_branch "$1" "$2")
+  [ "$bn_base" = "$(default_branch "$1" "$2")" ] ||
+    printf '%s\n' "This repo's pull requests merge into \`$bn_base\` (base_branch in .nightshift/config), not the default branch: branch from, compare against, rebase onto and open pull requests against \`$bn_base\`."
 }
 
 # What a run is told of its issue's type: its type label, or that it has none,
@@ -1258,10 +1311,58 @@ check_done() {
         why="issue closed"
       fi
     fi
+    [ "$why" = "PR merged" ] && close_after_merge "$repo" "$n" "$clone" "$d"
     [ -n "$why" ] || continue
     retire "$repo" "$n" "$clone" "$d" "$why"
     [ "$why" != "PR merged" ] || ! is_board "$repo" || move_card "$repo" "$n" Done || true
   done
+}
+
+# Parents (issue dirs with `subs`) that aren't done: a progress comment for
+# each sub-issue that retired merged since the last poll, once (`subs-noted`
+# holds the ones it counted), and when every sub-issue merged, the parent
+# closed, once (`subs-closed`): check_done retires it as "issue closed" when
+# it sees the close. A sub-issue closed without merging leaves it open.
+check_subs() {
+  for d in "$NS/issues/$(echo "$1" | tr '/' '_')"_*; do
+    [ -s "$d/subs" ] || continue
+    [ -f "$d/done" ] || [ -f "$d/ignored" ] && continue
+    n=${d##*_}
+    total=$(grep -c . "$d/subs")
+    merged=0
+    for subd in $(sub_dirs "$d"); do
+      s=${subd##*_}
+      [ "$(cat "$subd/done" 2>/dev/null)" = "PR merged" ] || continue
+      merged=$((merged + 1))
+      grep -qx "$s" "$d/subs-noted" 2>/dev/null && continue
+      k=$(($(grep -c . "$d/subs-noted" 2>/dev/null || true) + 1))
+      if gh issue comment "$n" --repo "$1" --body "🤖 **nightshift**: #$s merged ($k of $total)
+
+$MARKER <!-- nightshift:progress -->" >/dev/null 2>&1; then
+        echo "$s" >>"$d/subs-noted"
+      else
+        log "$1#$n: couldn't comment that #$s merged"
+      fi
+    done
+    if [ "$merged" -eq "$total" ] && [ ! -f "$d/subs-closed" ]; then
+      if gh issue close "$n" --repo "$1" >/dev/null 2>&1; then
+        touch "$d/subs-closed"
+        log "$1#$n: closed: all $total sub-issues merged"
+      else
+        log "$1#$n: couldn't close it after its sub-issues merged"
+      fi
+    fi
+  done
+}
+
+# Issue $2, after its pull request merged into another branch than the default
+# one: GitHub's Closes #n only closes on the default branch, so close it here.
+close_after_merge() {
+  cm_base=$(gh pr view "$(cat "$4/pr")" --repo "$1" --json baseRefName -q .baseRefName 2>/dev/null)
+  [ -n "$cm_base" ] && [ "$cm_base" != "$(default_branch "$1" "$3")" ] || return 0
+  [ "$(gh api "repos/$1/issues/$2" --jq .state 2>/dev/null)" = open ] || return 0
+  gh issue close "$2" --repo "$1" --reason completed >/dev/null 2>>"$4/log" ||
+    log "$1#$2: couldn't close the issue after its merge into $cm_base"
 }
 
 # A done issue: its worktree goes if it's clean, and after a merge its branch,
@@ -1288,7 +1389,7 @@ retire() {
   # Dated when it closed, if it already had (a merge closes the issue too).
   echo "$5" >"$4/done"
   [ -f "$4/off" ] && touch -r "$4/off" "$4/done"
-  find "$4" -mindepth 1 -maxdepth 1 ! -name "done" ! -name log ! -name session ! -name plan-session ! -name sessions ! -name seen ! -name started ! -name pr ! -name cost ! -name usage ! -name agents ! -name models -exec rm -rf {} +
+  find "$4" -mindepth 1 -maxdepth 1 ! -name "done" ! -name log ! -name session ! -name plan-session ! -name sessions ! -name seen ! -name started ! -name pr ! -name cost ! -name usage ! -name agents ! -name models ! -name subs ! -name subs-noted ! -name subs-closed -exec rm -rf {} +
   comment_cost "$1" "$2" "$4"
   log "$1#$2: done ($5)$gone"
 }
@@ -1421,12 +1522,29 @@ pr_size() {
 # dollars of each model from its `models`, most first, and the size of its pull
 # request, each only if known. Nothing if neither is.
 cost_details() {
-  split=$(awk '$2 > 0 { printf "%s %.6f\n", $1, $2 }' "$2/models" 2>/dev/null | sort -k2,2nr -k1,1 |
-    awk '{ printf "%s%s $%.2f", (n++ ? " · " : ""), $1, $2 }')
+  split=$(models_split "$2/models")
   size=$(pr_size "$1" "$2")
   printf '%s' "$split"
   [ -z "$split" ] || [ -z "$size" ] || printf ' · '
   printf '%s' "$size"
+}
+
+# The dollars of each model in the `models` files given (a model and its
+# dollars a line), a model's summed over them, most first.
+models_split() {
+  cat "$@" 2>/dev/null | awk '$2 > 0 { usd[$1] += $2 } END { for (m in usd) printf "%s %.6f\n", m, usd[m] }' | sort -k2,2nr -k1,1 |
+    awk '{ printf "%s%s $%.2f", (n++ ? " · " : ""), $1, $2 }'
+}
+
+# A parent's cost lines (its repo not needed): its own planning and a line
+# each sub-issue with a cost, from the dirs $1 (the parent's) and its `subs`.
+parent_cost_lines() {
+  p=$(cost_words "$1" | cut -d' ' -f1)
+  [ -z "$p" ] || printf '#%s planning: %s\n' "${1##*_}" "$p"
+  for subd in $(sub_dirs "$1"); do
+    p=$(cost_words "$subd" | cut -d' ' -f1)
+    [ -z "$p" ] || printf '#%s: %s\n' "${subd##*_}" "$p"
+  done
 }
 
 # What a done issue's runs cost, as a comment on it, if they were counted.
@@ -1435,21 +1553,36 @@ cost_details() {
 # end. None with `cost_comment=false`.
 comment_cost() {
   [ "$(repo_option "$1" cost_comment)" != false ] || return 0
-  words=$(cost_words "$3") || return 0
   details="" table=""
-  if [ "$(repo_option "$1" cost_breakdown)" != false ]; then
-    # The models' dollars and the pull request's size, on a line of their own.
-    details=$(cost_details "$1" "$3")
-    [ -z "$details" ] || details="
+  if [ -s "$3/subs" ]; then
+    # A parent: the models summed over its sub-issues, and a line each issue.
+    words=$(cost_sum "$3") || return 0
+    words=$(printf '%s\n' "$words" | cost_line_words)
+    if [ "$(repo_option "$1" cost_breakdown)" != false ]; then
+      # shellcheck disable=SC2046 # a path each, none with a space
+      details=$(models_split $(cost_files "$3" | sed 's|/cost$|/models|'))
+      [ -z "$details" ] || details="
 $details"
-    # The agents table, if it has agents: after a blank line.
-    table=$(agents_table "$3")
-    [ -z "$table" ] || table="
-$table
+    fi
+    table="
+$(parent_cost_lines "$3")
 "
   else
-    details=$(pr_size "$1" "$3")
-    [ -z "$details" ] || details=" · $details"
+    words=$(cost_words "$3") || return 0
+    if [ "$(repo_option "$1" cost_breakdown)" != false ]; then
+      # The models' dollars and the pull request's size, on a line of their own.
+      details=$(cost_details "$1" "$3")
+      [ -z "$details" ] || details="
+$details"
+      # The agents table, if it has agents: after a blank line.
+      table=$(agents_table "$3")
+      [ -z "$table" ] || table="
+$table
+"
+    else
+      details=$(pr_size "$1" "$3")
+      [ -z "$details" ] || details=" · $details"
+    fi
   fi
   # shellcheck disable=SC2086 # a word each
   set -- "$1" "$2" $words
@@ -1490,12 +1623,15 @@ queue_update() {
   log "$1#$2: pull request $3"
 }
 
-# The repo's open labelled issues, as GitHub's JSON. Asked with the ETag of
-# the last answer, GitHub says 304 when nothing changed (which costs no rate
-# limit), and the last answer, kept in poll/<owner>_<repo>.json, stands.
+# The repo's open labelled issues, as GitHub's JSON (with $2 = all, its newest
+# 100 open issues, for all_issues). Asked with the ETag of the last answer,
+# GitHub says 304 when nothing changed (which costs no rate limit), and the last
+# answer, kept in poll/<owner>_<repo>.json (.all.json), stands.
 list_issues() {
   f="$NS/poll/$(echo "$1" | tr '/' '_')"
-  set -- "repos/$1/issues?labels=$LABEL&state=open&per_page=100"
+  q="labels=$LABEL&state=open&per_page=100"
+  if [ "${2:-}" = all ]; then f="$f.all" q="state=open&sort=created&direction=desc&per_page=100"; fi
+  set -- "repos/$1/issues?$q"
   [ -s "$f.json" ] && [ -s "$f.etag" ] && set -- -H "If-None-Match: $(cat "$f.etag")" "$@"
   mkdir -p "$NS/poll"
   # gh fails on a 304; the status line says which it was.
@@ -1748,6 +1884,21 @@ move_card() {
   log "$1#$2: card moved to $mcn"
 }
 
+# With all_issues=true on repo $1, the time it was first read on (UTC, in
+# all_issues/<owner>_<repo>); off or unset, nothing, and the record goes. The
+# repo's settings are fetched first (fetch_settings), as no run may be
+# fetching them.
+all_issues_since() {
+  af="$NS/all_issues/$(echo "$1" | tr '/' '_')"
+  fetch_settings "$1" "$2"
+  if [ "$(repo_option "$1" all_issues)" = true ]; then
+    [ -s "$af" ] || { mkdir -p "$NS/all_issues" && date -u +%Y-%m-%dT%H:%M:%SZ >"$af"; }
+    cat "$af"
+  else
+    rm -f "$af"
+  fi
+}
+
 # The merged pull request of $1#$2's branch, asked by head branch (`pr` may not
 # be recorded), in $mpr; fails without one, or when the newest is the one issue
 # dir $3 was brought back from (`revived`).
@@ -1776,7 +1927,7 @@ poll_repo() {
   # `-`, none). A held one isn't worked: it's off, as if unlabelled.
   # A repo with a project= works its board's cards in place of the label.
   board=$(repo_board "$repo" "$clone") || return 0
-  boff=""
+  boff="" extra="" all_since=""
   if [ -n "$board" ]; then
     # shellcheck disable=SC2086 # the owner and the number
     issues=$(list_board "$repo" $board 2>>"$NS/watch.log") || { log "$repo: couldn't read the board"; return; }
@@ -1786,12 +1937,30 @@ poll_repo() {
     boff=$(board_off "$repo")
   else
     issues=$(list_issues "$repo" 2>>"$NS/watch.log") || { log "$repo: couldn't list issues"; return; }
+    # With all_issues=true, an allowed user's open issues from the option's
+    # on-time on count too, labelled or not: `extra` are the ones the label
+    # didn't list, whose author is the check (below).
+    all_since=$(all_issues_since "$repo" "$clone")
+    if [ -n "$all_since" ]; then
+      more=$(list_issues "$repo" all 2>>"$NS/watch.log") || { log "$repo: couldn't list issues"; return; }
+      more=$(printf '%s\n' "$more" | jq -c --argjson have "$(printf '%s\n' "$issues" | jq -c '[.[].number]')" --argjson allowed "$allowed" --arg since "$all_since" \
+        '[.[] | select((.pull_request | not) and (.number | IN($have[]) | not) and (.user.login as $u | $allowed | index($u)) and .created_at >= $since)]')
+      extra=$(printf '%s\n' "$more" | jq -r '.[].number')
+      issues=$(printf '%s\n%s\n' "$issues" "$more" | jq -s -c 'add')
+    fi
   fi
   all=$(printf '%s\n' "$issues" | jq -r '.[] | select(.pull_request | not) | "\(.number) \(.updated_at) \([.labels[].name | select(. == "invalid" or . == "wontfix")] | first // "-")"')
   open=$(printf '%s\n' "$all" | awk 'NF && $3 == "-" { print $1, $2 }')
   held=$(printf '%s\n' "$all" | awk 'NF && $3 != "-" { print $1, $3 }')
   # The ones a run filed (`nightshift: proposed`), held until you comment.
   proposed=$(printf '%s\n' "$issues" | jq -r '.[] | select(any(.labels[]; .name == "nightshift: proposed")) | .number')
+
+  # The ones with open blockers (GitHub counts them in the list), held until
+  # they close if they haven't had their first run.
+  blocked=$(printf '%s\n' "$issues" | jq -r '.[] | select((.issue_dependencies_summary.blocked_by // 0) > 0) | .number')
+  # And the sub-issues a run is still linking (see cmd_sub_issue): with
+  # all_issues, listed before their blockers are.
+  linking=$(cat "$NS/issues/$(echo "$repo" | tr '/' '_')"_*/subs-linking 2>/dev/null || true)
 
   # Issues no longer labelled (or closed, or held): note which, once, and stop
   # what's running there. Back in the list, the note goes (and a stopped run
@@ -1811,6 +1980,8 @@ poll_repo() {
     if [ "$state" = closed ]; then why="issue closed"
     elif [ -n "$hold" ]; then why="$hold label added"
     elif [ -n "$board" ]; then why=$(printf '%s\n' "$boff" | awk -v n="$n" '$1 == n { sub(/^[0-9]+ /, ""); print }'); why=${why:-removed from the board}
+    elif [ -f "$d/unlabelled" ] && [ -z "$all_since" ]; then why="all_issues turned off"
+    elif [ -f "$d/unlabelled" ]; then why="not among the newest 100 open issues"
     else why="label removed"
     fi
     echo "$why" >"$d/off"
@@ -1839,6 +2010,7 @@ poll_repo() {
     echo "$now" >"$pf"
   fi
   check_done "$repo" "$clone"
+  check_subs "$repo"
 
   printf '%s\n' "$open" | {
   count=0 did=""
@@ -1866,6 +2038,9 @@ poll_repo() {
       # A card in a working column: only people who can write to the project move cards.
       mkdir -p "$d"
       board_column "$repo" "$n" >"$d/column"
+    elif [ ! -d "$d" ] && printf '%s\n' "$extra" | grep -qx "$n"; then
+      # Unlabelled, by an allowed user: the author is the check.
+      mkdir -p "$d" && touch "$d/unlabelled"
     elif [ ! -d "$d" ]; then
       # Only a label added by an allowed user starts work.
       by=$(gh api --paginate "repos/$repo/issues/$n/events" \
@@ -1878,13 +2053,23 @@ poll_repo() {
       mkdir -p "$d"
     fi
     [ -f "$d/ignored" ] && { echo "$updated" >"$d/updated"; continue; }
+    first_run=0
+    [ -s "$d/session" ] || [ -f "$d/started" ] || first_run=1
+    # Blocked, never run: held, checked again every poll (its updated isn't
+    # recorded), and started once its blockers are closed.
+    if [ $first_run -eq 1 ] && printf '%s\n' "$linking" | grep -qx "$n"; then
+      did="$did, #$n being linked"
+      continue
+    elif [ $first_run -eq 1 ] && printf '%s\n' "$blocked" | grep -qx "$n"; then
+      printf '%s\n' "$proposed" | grep -qx "$n" || set_status "$repo" "$n" waiting
+      did="$did, #$n blocked"
+      continue
+    fi
     seen=$(cat "$d/seen" 2>/dev/null || echo 0)
     filter=".[] | select(.id > $seen and (.user.login as \$u | $allowed | index(\$u)) and (.body | contains(\"$MARKER\") | not))"
     news=$(gh api --paginate "repos/$repo/issues/$n/comments?per_page=100" \
       --jq "$filter | \"- @\(.user.login) (comment \(.id)):\n\n\(.body[0:3000])\n\"" 2>>"$NS/watch.log")
     last=$(gh api --paginate "repos/$repo/issues/$n/comments?per_page=100" --jq "$filter | .id" 2>/dev/null | tail -1)
-    first_run=0
-    [ -s "$d/session" ] || [ -f "$d/started" ] || first_run=1
     # Proposed, never run and not commented on: held, its status kept.
     if [ $first_run -eq 1 ] && [ -z "$news" ] && printf '%s\n' "$proposed" | grep -qx "$n"; then
       echo "$updated" >"$d/updated"
@@ -2361,8 +2546,31 @@ cmd_top() {
 # with its first run). Fails if there's none.
 cost_words() {
   [ -s "$1/cost" ] || return 1
+  cost_line_words <"$1/cost"
+}
+# The same of a cost line on stdin.
+cost_line_words() {
   awk "$TOK"'
-    { printf "$%.2f %s %s %s %s %d %d %s\n", $1, tok($2 + $3 + $4), tok($2), tok($3), tok($4), $5, $6, $7 }' "$1/cost"
+    { printf "$%.2f %s %s %s %s %d %d %s\n", $1, tok($2 + $3 + $4), tok($2), tok($3), tok($4), $5, $6, $7 }'
+}
+
+# The costs of a parent's dir $1 and its sub-issues' (their dirs are its
+# siblings) added up, as one cost line, the day counting started the latest
+# of theirs (the sum is whole only from then); fails if none is counted.
+cost_sum() {
+  files=$(cost_files "$1")
+  [ -n "$files" ] || return 1
+  printf '%s\n' "$files" | while read -r f; do cat "$f"; echo; done | awk '
+    NF { for (i = 1; i <= 6; i++) t[i] += $i; if ($7 != "-" && (since == "" || $7 > since)) since = $7 }
+    END { printf "%.6f %d %d %d %d %d %s\n", t[1], t[2], t[3], t[4], t[5], t[6], (since == "" ? "-" : since) }'
+}
+
+# The `cost` files of parent dir $1 and its sub-issues, the ones that exist.
+cost_files() {
+  for cdir in "$1" $(sub_dirs "$1"); do
+    [ -s "$cdir/cost" ] && echo "$cdir/cost"
+  done
+  return 0
 }
 
 # What an issue's runs (its dir $1) cost, for status, if it's counted, and
@@ -2715,6 +2923,11 @@ cmd_doctor() {
     [ -n "$repo" ] || continue
     if ! git -C "$clone" rev-parse --git-dir >/dev/null 2>&1; then
       fail missing "$repo: its clone ($clone)" "clone it there, or fix its repo line in $CONFIG"
+    elif [ "$(repo_option "$repo" all_issues)" = true ]; then
+      # Works its allowed users' new issues, so no agent label is needed.
+      if auto_merges "$repo"; then pass "$repo: clone $clone, all_issues=true works its allowed users' new issues, PRs merge on their own"
+      else pass "$repo: clone $clone, all_issues=true works its allowed users' new issues, PRs wait for you (auto_merge=false in .nightshift/config)"
+      fi
     elif [ -z "$ghv" ]; then fail "?" "$repo: its \`$LABEL\` label" "needs gh to check"
     elif gh api "repos/$repo/labels/$LABEL" >/dev/null 2>&1; then
       if is_board "$repo"; then pass "$repo: clone $clone, \`$LABEL\` label, PRs merge when you move their cards to Ready to merge"
@@ -2734,6 +2947,10 @@ cmd_doctor() {
     done
     v=$(repo_line_option "$repo" instructions)
     [ -z "$v" ] || printf '  %-7s %s\n' note "$repo: instructions=$v on its repo line is ignored now: copy the file into .nightshift/instructions/ in $repo"
+    # A base_branch origin doesn't have: runs fall back to the default branch.
+    v=$(repo_option "$repo" base_branch)
+    [ -z "$v" ] || origin_has "$clone" "$v" ||
+      printf '  %-7s %s\n' note "$repo: base_branch=$v isn't on origin, so runs use $(default_branch "$repo" "$clone"): push it, or fix base_branch in .nightshift/config"
     # A hint, not a problem: nightshift deletes its own merged branches.
     [ -n "$ghv" ] && [ "$(gh api "repos/$repo" -q .delete_branch_on_merge 2>/dev/null)" = false ] &&
       printf '  %-7s %s\n' hint "$repo: GitHub keeps merged branches (\"Automatically delete head branches\" is off); nightshift deletes its own, and for the rest: gh repo edit $repo --delete-branch-on-merge"
@@ -2768,13 +2985,18 @@ cmd_add() {
   touch "$CONFIG"
   grep -q "^repo $repo " "$CONFIG" && die "$repo is already watched"
   echo "repo $repo $clone" >>"$CONFIG"
-  gh label create "$LABEL" --repo "$repo" --color 5319E7 --description "nightshift works this issue" >/dev/null 2>&1 || true
+  # With all_issues=true on the default branch already, the repo needs no agent label.
+  all=""
+  [ "$(repo_option "$repo" all_issues)" = true ] && all=1
+  [ -n "$all" ] || gh label create "$LABEL" --repo "$repo" --color 5319E7 --description "nightshift works this issue" >/dev/null 2>&1 || true
   ensure_labels "$repo" || true
   if is_board "$repo"; then merging="PRs merge when you move their cards to Ready to merge"
   elif auto_merges "$repo"; then merging="PRs merge on their own (auto_merge=false in .nightshift/config turns it off)"
   else merging="PRs wait for you (auto_merge=false in .nightshift/config)"
   fi
-  echo "watching $repo (clone: $clone); $merging; add the \`$LABEL\` label to an issue to start"
+  if [ -n "$all" ]; then echo "watching $repo (clone: $clone); $merging; all_issues=true works your allowed users' new issues, no \`$LABEL\` label needed"
+  else echo "watching $repo (clone: $clone); $merging; add the \`$LABEL\` label to an issue to start"
+  fi
   scaffold_repo "$clone"
 }
 
@@ -2802,12 +3024,21 @@ scaffold_repo() {
 # test_command: the command that runs the whole test suite (default: runs work it out from the repo's instructions).
 # test_command=npm test
 #
+# base_branch: the branch its pull requests merge into (default: the default branch). Issues branch
+# from it, pull requests target it and nightshift closes an issue itself once its pull request merges.
+# It must exist on origin, else runs use the default branch.
+# base_branch=develop
+#
 # cost_breakdown=false: the closing cost comment is one line of cost, tokens, time and the PR's size
 # (default true: it adds the dollars of each model, a table of the agents that ran and where the time went).
 # cost_breakdown=false
 #
 # cost_comment=false: no closing cost comment at all (default true).
 # cost_comment=false
+#
+# all_issues=true: nightshift works every issue an allowed user opens from then on, labelled or not
+# (default: only issues with the agent label). Issues opened before it came on are left alone.
+# all_issues=true
 EOS
     sr_made=".nightshift/config"
   fi
@@ -2831,6 +3062,75 @@ cmd_label() {
   printf '%s\n' "$STATUSES" | cut -d'|' -f1 | grep -qxF "$1" ||
     die "usage: nightshift label <status>: one of $(printf '%s\n' "$STATUSES" | cut -d'|' -f1 | paste -sd, - | sed 's/,/, /g')"
   set_status "$NIGHTSHIFT_REPO" "$NIGHTSHIFT_ISSUE" "$1" || die "couldn't set the label: see nightshift logs"
+}
+
+# `sub-issue --title <t> --body-file <f> [--after <n>]…`: a run creating a
+# sub-issue of its issue (the parent): the body and the parent marker, labelled
+# the parent's type, linked under the parent, blocked by each issue it goes
+# --after, and noted in the parent's `subs`, and only then labelled `agent`, so
+# the watcher can't start it before its blockers are linked. With all_issues,
+# the label doesn't hold it, so it's in the parent's `subs-linking` until its
+# links are made. A step that fails after the issue was created closes it,
+# saying why, and drops it from `subs` (see sub_issue_drop), so the run can make
+# it again.
+cmd_sub_issue() {
+  [ -n "${NIGHTSHIFT_REPO:-}" ] && [ -n "${NIGHTSHIFT_ISSUE:-}" ] || die "nightshift sub-issue only works in a nightshift run"
+  si_use="usage: nightshift sub-issue --title <title> --body-file <file> [--after <n>]…"
+  si_title="" si_file="" si_after=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+    --title | --body-file | --after) [ $# -ge 2 ] || die "$si_use" ;;
+    esac
+    case "$1" in
+    --title) si_title=$2 ;;
+    --body-file) si_file=$2 ;;
+    --after)
+      case "$2" in '' | *[!0-9]*) die "$si_use" ;; esac
+      si_after="$si_after $2" ;;
+    *) die "$si_use" ;;
+    esac
+    shift 2
+  done
+  [ -n "$si_title" ] && [ -f "$si_file" ] || die "$si_use"
+  si_repo=$NIGHTSHIFT_REPO si_parent=$NIGHTSHIFT_ISSUE
+  si_type=$(fetch_type "$si_repo" "$si_parent") || die "couldn't read #$si_parent's type: nothing was created"
+  si_body="$(cat "$si_file")
+
+<!-- nightshift:parent #$si_parent -->"
+  si_url=$(gh issue create --repo "$si_repo" --title "$si_title" --body "$si_body" ${si_type:+--label "$si_type"} 2>/dev/null | tail -1)
+  si_n=${si_url##*/}
+  case "$si_n" in '' | *[!0-9]*) die "couldn't create the sub-issue: nothing was created" ;; esac
+  # Noted at once: the parent waits on it however the rest goes.
+  si_dir=$(issue_dir "$si_repo" "$si_parent")
+  mkdir -p "$si_dir" && echo "$si_n" >>"$si_dir/subs" && echo "$si_n" >>"$si_dir/subs-linking"
+  si_id=$(gh api "repos/$si_repo/issues/$si_n" --jq .id 2>/dev/null) || si_id=""
+  [ -n "$si_id" ] && gh api -X POST "repos/$si_repo/issues/$si_parent/sub_issues" -F "sub_issue_id=$si_id" >/dev/null 2>&1 ||
+    sub_issue_drop "couldn't link it under #$si_parent"
+  for si_a in $si_after; do
+    si_aid=$(gh api "repos/$si_repo/issues/$si_a" --jq .id 2>/dev/null) || si_aid=""
+    [ -n "$si_aid" ] && gh api -X POST "repos/$si_repo/issues/$si_n/dependencies/blocked_by" -F "issue_id=$si_aid" >/dev/null 2>&1 ||
+      sub_issue_drop "couldn't make it wait for #$si_a"
+  done
+  { grep -vx "$si_n" "$si_dir/subs-linking" || true; } >"$si_dir/subs-linking.new" && mv "$si_dir/subs-linking.new" "$si_dir/subs-linking"
+  gh issue edit "$si_n" --repo "$si_repo" --add-label "$LABEL" >/dev/null 2>&1 ||
+    sub_issue_drop "couldn't label it $LABEL"
+  echo "$si_url"
+}
+
+# A sub-issue cmd_sub_issue created but couldn't finish, $1 why: closed with a
+# comment saying so, and out of the parent's `subs` and `subs-linking`, so the
+# run makes it again; it fails either way. Not closed, it stays in both, so
+# the watcher holds it, until it's closed by hand.
+sub_issue_drop() {
+  if gh issue close "$si_n" --repo "$si_repo" --comment "🤖 **nightshift**: closed: nightshift made this sub-issue of #$si_parent but $1, so the run makes it again.
+
+$MARKER" >/dev/null 2>&1; then
+    for si_f in subs subs-linking; do
+      { grep -vx "$si_n" "$si_dir/$si_f" || true; } >"$si_dir/$si_f.new" && mv "$si_dir/$si_f.new" "$si_dir/$si_f"
+    done
+    die "created #$si_n but $1: closed it and dropped it from #$si_parent's sub-issues; run it again"
+  fi
+  die "created #$si_n but $1, and couldn't close it: close #$si_n by hand (the watcher holds it until then)"
 }
 
 # `build`: a run about to build the approved plan. In the planning session,
@@ -2876,7 +3176,7 @@ cmd_skill() {
   [ -z "$sc" ] || ! is_board "$1" || move_card "$1" "$2" "$sc" || true
 }
 
-usage() { sed -n '2,16s/^# \{0,1\}//p' "$SELF"; }
+usage() { sed -n '2,17s/^# \{0,1\}//p' "$SELF"; }
 
 # Sourced for its functions (the tests): stop here.
 [ "${NIGHTSHIFT_LIB:-}" = 1 ] && return 0
@@ -2893,6 +3193,7 @@ logs) shift; cmd_logs "$@" ;;
 top) shift; cmd_top "$@" ;;
 add) shift; cmd_add "$@" ;;
 label) shift; cmd_label "$*" ;;
+sub-issue) shift; cmd_sub_issue "$@" ;;
 build) shift; cmd_build "$@" ;;
 _skill) shift; cmd_skill "$@" ;;
 doctor) cmd_doctor ;;

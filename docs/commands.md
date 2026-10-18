@@ -11,6 +11,7 @@ nightshift logs -f                  # every issue, as it happens: picked up, run
 nightshift logs <owner/repo>#<n> -f # the same for one issue
 nightshift logs -f -vv              # more: -v Claude's messages, -vv its tool calls, -vvv everything
 nightshift doctor                   # what this machine is missing, and how to get it
+nightshift sub-issue --title <t> --body-file <f> [--after <n>]…  # (in a run only) create a sub-issue of the run's issue, blocked by the issues it goes after; prints its URL
 nightshift --version                # the version that runs
 ```
 
