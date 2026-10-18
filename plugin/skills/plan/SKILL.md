@@ -147,6 +147,7 @@ Reply **go** to build it, or tell me what to change.
 ```
 
 With no open choice the last line is the carry-on one instead (on a board, never). Post
-the comment, then run `nightshift build --carry-on`. When it says a fresh session builds it, end the run there,
-with no comment; otherwise invoke the `nightshift:build` skill with the Skill tool and build
-here. Done when the comment is posted and the run ended or went on to build, as it said.
+the comment, then run `nightshift build --carry-on`. When it says a fresh session builds
+it, end the run there, with no comment; otherwise invoke the `nightshift:build` skill with
+the Skill tool and build here. Done when the comment is posted and the run ended or went on
+to build, as it said.

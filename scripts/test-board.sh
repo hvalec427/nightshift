@@ -81,6 +81,24 @@ issue_count() { find "$(gh_dir "$1")/issues" -name '[0-9]*.json' ! -name '*.*.js
   expect "no longer off" "$(state 7 off)" ""
   expect_no_unexpected)
 
+# A card moved to Done stops its run, as one moved to Backlog does.
+(world
+  board
+  gh_issue o/r 7 alice
+  gh_card "$BOARD" o/r 7 Ready
+  runs_do '[ "$k" = 1 ] && hang; comment questions'
+  "$ROOT/nightshift" once &
+  bg=$!
+  wait_for "$CLAUDE_FAKE/runs/1/waiting"
+  gh_card_move "$BOARD" o/r 7 Done
+  poll
+  wait "$bg"
+  expect_ok "moved to Done mid-run: the run is stopped" test -f "$CLAUDE_FAKE/runs/1/stopped"
+  expect "it's marked off, and why" "$(state 7 off)" "moved to Done"
+  poll
+  expect "still in Done: no run" "$(runs)" 1
+  expect_no_unexpected)
+
 # A card taken off the board is off.
 (world
   board
@@ -448,7 +466,7 @@ built() {
   poll
   expect "the card moved to Ready to merge: a run" "$(runs)" 2
   expect "it resumes the session" "$(run_opt --resume)" "session-1"
-  expect_line "its news says the card moved" "$(sed -n '/^New on the issue/,$p' <<<"$(run_prompt)")" "^- the board: moved to Ready to merge$"
+  expect_line "its news says where the card is" "$(sed -n '/^New on the issue/,$p' <<<"$(run_prompt)")" "^- the board: the card is in Ready to merge$"
   poll
   expect "the pull request merged: the card is in Done" "$(gh_card_column "$BOARD" o/r 7)" "Done"
   poll
@@ -464,6 +482,60 @@ built() {
   expect "the merge run ended unmerged: the card is back in Your review" "$(gh_card_column "$BOARD" o/r 7)" "Your review"
   poll
   expect "and it stays: no third run" "$(runs)" 2
+  expect_no_unexpected)
+
+# A build run that ends on the merge skill's look comment (its status is "needs
+# you", not "PR open") still hands the card to the user: Your review.
+(world
+  board
+  gh_issue o/r 7 alice
+  gh_card "$BOARD" o/r 7 Ready
+  runs_do 'skill nightshift:build; commit feature.txt; open_pr; skill nightshift:review; skill nightshift:merge; comment look'
+  poll
+  expect "a build ending on a look: the card is in Your review" "$(gh_card_column "$BOARD" o/r 7)" "Your review"
+  expect "no merge run follows" "$(runs)" 1
+  expect_no_unexpected)
+
+# A card the user moved to Ready to merge while a run works stays there: neither
+# the skill's move to In review nor the run's end undoes it, and the next poll
+# starts the merge run.
+(world
+  board
+  gh_issue o/r 7 alice
+  gh_card "$BOARD" o/r 7 Ready
+  runs_do 'skill nightshift:build; commit feature.txt; open_pr; gh_card_move alice/5 o/r 7 "Ready to merge"; skill nightshift:review; comment done'
+  poll
+  expect "moved to Ready to merge mid-run: the run's end leaves it" "$(gh_card_column "$BOARD" o/r 7)" "Ready to merge"
+  expect "one run so far" "$(runs)" 1
+  expect_ok "the merge is queued" test -f "$(idir 7)/merge-move"
+  runs_do 'skill nightshift:merge; cp "$CLAUDE_FAKE/runs/1/pr" "$RUN/pr"; merge_pr; comment done'
+  poll
+  expect "the next poll starts the merge run" "$(runs)" 2
+  expect_line "its news says where the card is" "$(sed -n '/^New on the issue/,$p' <<<"$(run_prompt)")" "^- the board: the card is in Ready to merge$"
+  expect_ok "the merge run's marker is gone with the run" test ! -f "$(idir 7)/merging-board"
+  poll
+  expect "merged: the card is in Done" "$(gh_card_column "$BOARD" o/r 7)" "Done"
+  expect_no_unexpected)
+
+# A merge run that ends without merging and without needing the user (it waits
+# on another pull request) leaves the card in Ready to merge, and a later run on
+# it carries the merge news too.
+(world
+  built
+  gh_card_move "$BOARD" o/r 7 "Ready to merge"
+  runs_do 'skill nightshift:merge; comment progress "Waiting for #3 to merge first."'
+  poll
+  expect "the merge run waited: two runs" "$(runs)" 2
+  expect "the card stays in Ready to merge" "$(gh_card_column "$BOARD" o/r 7)" "Ready to merge"
+  poll
+  expect "and starts no third run" "$(runs)" 2
+  gh_comment o/r 7 alice "any news?" >/dev/null
+  runs_do 'comment progress'
+  poll
+  expect "a comment: a third run" "$(runs)" 3
+  expect_line "it carries the merge news, as the merge skill's" "$(sed -n '/^New on the issue/,$p' <<<"$(run_prompt)")" "^- the board: the card is in Ready to merge$"
+  expect_line "and the comment" "$(sed -n '/^New on the issue/,$p' <<<"$(run_prompt)")" "any news"
+  expect "the card still waits there" "$(gh_card_column "$BOARD" o/r 7)" "Ready to merge"
   expect_no_unexpected)
 
 # A card already in Ready to merge when nightshift first sees it, or one with no pull
@@ -490,6 +562,6 @@ built() {
   runs_do 'skill nightshift:merge; cp "$CLAUDE_FAKE/runs/1/pr" "$RUN/pr"; merge_pr; comment done'
   poll
   expect "a slot frees: the merge run starts" "$(runs)" 2
-  expect_line "with the news" "$(run_prompt)" "^- the board: moved to Ready to merge$")
+  expect_line "with the news" "$(run_prompt)" "^- the board: the card is in Ready to merge$")
 
 report

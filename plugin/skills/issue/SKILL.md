@@ -122,7 +122,7 @@ small issue (case 2) has a pull request and no plan, and its later runs take cas
    `auto_merge=false`, a **merge** reply is a request like any other (the next case), but
    you don't merge: that's the user's. On a project board (the run prompt says "This repo
    works from a project board") nothing auto-merges: invoke `nightshift:merge` on a
-   **merge** reply, or when the news says "the board: moved to Ready to merge" (a `look`
+   **merge** reply, or when the news says "the board: the card is in Ready to merge" (a `look`
    comment before it or not), and it merges.
 8. **A pull request is open, and the user commented.** Do what they ask on this branch,
    check it, commit and push. The pull request updates with the push. Then say what you did

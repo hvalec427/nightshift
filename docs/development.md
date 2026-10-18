@@ -46,8 +46,9 @@ on another file.
 Each `scripts/test-*.sh` drives nightshift the way it's used, in a throwaway
 `HOME` and `NIGHTSHIFT_HOME`, against a fake GitHub and a fake Claude
 (`scripts/fake`): nothing reaches GitHub, Claude or your own `~/.nightshift`. The
-fake `gh` keeps GitHub as files (issues, comments, labels, pull requests, project boards) and runs
-nightshift's own `--jq` filters on them; it fails on any call it doesn't know.
+fake `gh` keeps GitHub as files (issues, comments, labels, pull requests, project
+boards) and runs nightshift's own `--jq` filters on them; it fails on any call it doesn't
+know.
 The fake `claude` keeps each run's arguments and plays a script: its text,
 comments, skills it invokes, `nightshift label`, commits, a pull request, a failure, or waiting to be
 stopped. The fake `curl` answers the latest release and serves its `install.sh` and

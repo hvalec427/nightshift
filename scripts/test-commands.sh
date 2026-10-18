@@ -484,7 +484,16 @@ doctor_board() {
   try ns doctor
   expect "doctor: a board with all seven columns: passes" "$ST" 0
   expect_line "doctor: says the board is all there" "$OUT" "^  ok      o/r: board alice/5 (https://github.com/users/alice/projects/5), its seven columns$"
-  expect "doctor: the board is read in one query" "$(gh_calls "graphql .*query NightshiftBoard" | wc -l | tr -d ' ')" 1)
+  expect "doctor: the board is read in one query" "$(gh_calls "graphql .*query NightshiftBoard" | wc -l | tr -d ' ')" 1
+  expect_line "doctor: a board repo's PRs merge from Ready to merge, not on their own" "$OUT" "^  ok      o/r: clone $CLONE, \`agent\` label, PRs merge when you move their cards to Ready to merge$"
+  expect_line "doctor: not that they merge on their own" "$OUT" "PRs merge on their own" no
+  expect "status: a board repo's PRs merge from Ready to merge" "$(ns status | sed -n 2p)" \
+    "pull requests merge when you move their cards to Ready to merge (project= in every repo's .nightshift/config)")
+
+(doctor_board
+  second_repo ""
+  expect "status: a board and a repo that auto-merges" "$(ns status | sed -n 2p)" \
+    "pull requests merge on their own (auto_merge=false in a repo's .nightshift/config turns it off; board repos merge when you move their cards to Ready to merge)")
 
 (healthy
   expect_line "doctor: no project=: nothing about a board" "$(ns doctor)" "board" no
