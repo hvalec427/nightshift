@@ -36,7 +36,7 @@ while [ $# -gt 0 ]; do
   -H | --header) hdr=$2; shift ;;
   -R | --repo) repo=$2; shift ;;
   --json | -X | --method | --state | --limit | --head | --base | --title | --body | --body-file | \
-    --add-label | --remove-label | --color | --description | -F | -f) OPTS+=("$1" "$2"); shift ;;
+    --add-label | --remove-label | --label | --color | --description | -F | -f) OPTS+=("$1" "$2"); shift ;;
   --paginate | --force | --version) OPTS+=("$1" "") ;;
   -*) unexpected ;;
   *) POS+=("$1") ;;
@@ -48,6 +48,17 @@ opt() {
   local i
   for ((i = 0; i < ${#OPTS[@]}; i += 2)); do
     [ "${OPTS[i]}" = "$1" ] && { printf '%s' "${OPTS[i + 1]}"; return 0; }
+  done
+  return 1
+}
+
+# The integer value of API field $1 (-F or -f), or fail.
+field() {
+  local i
+  for ((i = 0; i < ${#OPTS[@]}; i += 2)); do
+    case "${OPTS[i]} ${OPTS[i + 1]}" in
+    "-F $1="* | "-f $1="*) printf '%s' "${OPTS[i + 1]#*=}"; return 0 ;;
+    esac
   done
   return 1
 }
@@ -106,6 +117,18 @@ api() {
     "/issues/$n/events") out <"$f.events.json" ;;
     *) unexpected ;;
     esac ;;
+  "POST /issues/"*)
+    n=$(echo "$rest" | cut -d/ -f3) f="$D/issues/$n"
+    [ -f "$f.json" ] || not_found
+    case "$rest" in
+    "/issues/$n/sub_issues")
+      gh_sub_issue_add "$r" "$n" "$(field sub_issue_id)" || not_found
+      jq . "$f.json" | out ;;
+    "/issues/$n/dependencies/blocked_by")
+      gh_block_add "$r" "$n" "$(field issue_id)" || not_found
+      jq . "$f.json" | out ;;
+    *) unexpected ;;
+    esac ;;
   "GET /labels/"*) grep -qxF "${rest#/labels/}" "$D/labels" || not_found; jq -n --arg n "${rest#/labels/}" '{name: $n}' | out ;;
   "GET /commits/"*)
     s=$(git -C "$(cat "$D/origin")" rev-parse -q --verify "refs/heads/${rest#/commits/}") || not_found
@@ -148,9 +171,28 @@ pr() {
   esac
 }
 
+# gh issue create: a new issue, numbered after the last; prints its URL.
+issue_create() {
+  local n i by l
+  by=$(cat "$GH_FAKE/user")
+  [ -n "$(opt --title)" ] || unexpected
+  n=$(($(ls "$D/issues" | sed -n 's/^\([0-9]*\)\.json$/\1/p' | sort -n | tail -1) + 1))
+  gh_issue "$repo" "$n" "$by"
+  gh_edit "$D/issues/$n.json" '.title = $t | .body = $b' --arg t "$(opt --title)" \
+    --arg b "$(opt --body || cat "$(opt --body-file)")"
+  # Every --label given, however many.
+  for ((i = 0; i < ${#OPTS[@]}; i += 2)); do
+    [ "${OPTS[i]}" = --label ] || continue
+    IFS=, read -ra ls <<<"${OPTS[i + 1]}"
+    for l in "${ls[@]}"; do gh_label_add "$repo" "$n" "$by" "$l"; done
+  done
+  echo "https://github.com/$repo/issues/$n"
+}
+
 issue() {
   local n=${POS[2]:-} f body
   in_repo "$repo"
+  [ "${POS[1]:-}" = create ] && { issue_create; return; }
   f="$D/issues/$n"
   [ -f "$f.json" ] || not_found
   case "${POS[1]:-}" in

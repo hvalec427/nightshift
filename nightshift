@@ -11,6 +11,7 @@
 #   nightshift top                       at least 8 windows, one per issue in progress, tiled: its status and the end of its log, live on a terminal (q quits, j/k scroll)
 #   nightshift add <owner/repo> <clone>  watch a repo, using this clone of it, and set up its .nightshift/ (config, CONTEXT.md) to commit
 #   nightshift label <status>            (in a run) set its issue's status label
+#   nightshift sub-issue --title <t> --body-file <f> [--after <n>]…  (in a run) create a sub-issue of its issue, blocked by the issues it goes after
 #   nightshift build [--carry-on]        (in a run) build the approved plan, in a fresh session if it's the planning one (--carry-on: no approval, the plan has no open choices)
 #   nightshift doctor                    check the tools and setup it needs on this machine
 #   nightshift --version                 the version that runs
@@ -33,6 +34,7 @@
 # then why),
 # `conflict` (the default branch's commit its pull request was last updated
 # for), `log` (readable, live) and `out.jsonl` (the last run's raw stream-json),
+# `subs` (the sub-issues it made, a number a line: see cmd_sub_issue),
 # `cost` (what its runs cost, added up), `usage` (its session's totals at the
 # last result), `agents` (every run's session and subagents, a JSON line each:
 # see AGENTS), `models` (what each model cost it, a line `opus-5-5 3.2` each),
@@ -398,7 +400,7 @@ write_instructions() {
 
 # Tools a run may use without asking, on top of the permission mode: the ones
 # that reach GitHub, which an automatic reviewer might otherwise hold back.
-ALLOWED_TOOLS='Bash(gh issue *) Bash(gh pr *) Bash(gh repo view *) Bash(gh api *) Bash(git *) Bash(nightshift label *)'
+ALLOWED_TOOLS='Bash(gh issue *) Bash(gh pr *) Bash(gh repo view *) Bash(gh api *) Bash(git *) Bash(nightshift label *) Bash(nightshift sub-issue *)'
 
 # Runs are isolated from the machine's own Claude setup:
 # no user-level skills, settings, plugins or hooks, only the repo's own and
@@ -2504,6 +2506,55 @@ cmd_label() {
   set_status "$NIGHTSHIFT_REPO" "$NIGHTSHIFT_ISSUE" "$1" || die "couldn't set the label: see nightshift logs"
 }
 
+# `sub-issue --title <t> --body-file <f> [--after <n>]…`: a run creating a
+# sub-issue of its issue (the parent): the body and the parent marker, labelled
+# the parent's type, linked under the parent, blocked by each issue it goes
+# --after, and noted in the parent's `subs`, and only then labelled `agent`, so
+# the watcher can't start it before its blockers are linked. A step that fails
+# fails it, saying what it managed.
+cmd_sub_issue() {
+  [ -n "${NIGHTSHIFT_REPO:-}" ] && [ -n "${NIGHTSHIFT_ISSUE:-}" ] || die "nightshift sub-issue only works in a nightshift run"
+  si_use="usage: nightshift sub-issue --title <title> --body-file <file> [--after <n>]…"
+  si_title="" si_file="" si_after=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+    --title | --body-file | --after) [ $# -ge 2 ] || die "$si_use" ;;
+    esac
+    case "$1" in
+    --title) si_title=$2 ;;
+    --body-file) si_file=$2 ;;
+    --after)
+      case "$2" in '' | *[!0-9]*) die "$si_use" ;; esac
+      si_after="$si_after $2" ;;
+    *) die "$si_use" ;;
+    esac
+    shift 2
+  done
+  [ -n "$si_title" ] && [ -f "$si_file" ] || die "$si_use"
+  si_repo=$NIGHTSHIFT_REPO si_parent=$NIGHTSHIFT_ISSUE
+  si_type=$(fetch_type "$si_repo" "$si_parent") || die "couldn't read #$si_parent's type: nothing was created"
+  si_body="$(cat "$si_file")
+
+<!-- nightshift:parent #$si_parent -->"
+  si_url=$(gh issue create --repo "$si_repo" --title "$si_title" --body "$si_body" ${si_type:+--label "$si_type"} 2>/dev/null | tail -1)
+  si_n=${si_url##*/}
+  case "$si_n" in '' | *[!0-9]*) die "couldn't create the sub-issue: nothing was created" ;; esac
+  # Noted at once: the parent waits on it however the rest goes.
+  si_dir=$(issue_dir "$si_repo" "$si_parent")
+  mkdir -p "$si_dir" && echo "$si_n" >>"$si_dir/subs"
+  si_id=$(gh api "repos/$si_repo/issues/$si_n" --jq .id 2>/dev/null) || si_id=""
+  [ -n "$si_id" ] && gh api -X POST "repos/$si_repo/issues/$si_parent/sub_issues" -F "sub_issue_id=$si_id" >/dev/null 2>&1 ||
+    die "created #$si_n (not labelled $LABEL) but couldn't link it under #$si_parent"
+  for si_a in $si_after; do
+    si_aid=$(gh api "repos/$si_repo/issues/$si_a" --jq .id 2>/dev/null) || si_aid=""
+    [ -n "$si_aid" ] && gh api -X POST "repos/$si_repo/issues/$si_n/dependencies/blocked_by" -F "issue_id=$si_aid" >/dev/null 2>&1 ||
+      die "created #$si_n (not labelled $LABEL) and linked it under #$si_parent but couldn't make it wait for #$si_a"
+  done
+  gh issue edit "$si_n" --repo "$si_repo" --add-label "$LABEL" >/dev/null 2>&1 ||
+    die "created #$si_n and linked it under #$si_parent but couldn't label it $LABEL"
+  echo "$si_url"
+}
+
 # `build`: a run about to build the approved plan. In the planning session,
 # the build gets a fresh one, with the comments this run was given (see
 # run_agent), and the run ends; otherwise it builds here.
@@ -2538,7 +2589,7 @@ cmd_skill() {
   printf '%s\n' "$3" >"$(issue_dir "$1" "$2")/skill"
 }
 
-usage() { sed -n '2,16s/^# \{0,1\}//p' "$SELF"; }
+usage() { sed -n '2,17s/^# \{0,1\}//p' "$SELF"; }
 
 # Sourced for its functions (the tests): stop here.
 [ "${NIGHTSHIFT_LIB:-}" = 1 ] && return 0
@@ -2555,6 +2606,7 @@ logs) shift; cmd_logs "$@" ;;
 top) shift; cmd_top "$@" ;;
 add) shift; cmd_add "$@" ;;
 label) shift; cmd_label "$*" ;;
+sub-issue) shift; cmd_sub_issue "$@" ;;
 build) shift; cmd_build "$@" ;;
 _skill) shift; cmd_skill "$@" ;;
 doctor) cmd_doctor ;;
