@@ -196,4 +196,134 @@ two() {
   expect_line "and the log says so" "$(cat "$NS/watch.log")" "o/r: project= in .nightshift/config isn't a project URL"
   expect "and the label list isn't read" "$(gh_calls "issues?labels" | wc -l | tr -d ' ')" 0)
 
+# A card moved from Ready to In progress, a plan waiting, is the plan's approval:
+# a fresh build session, its approval the board line.
+planned() {
+  board
+  gh_issue o/r 7 alice
+  gh_edit "$(gh_dir o/r)/issues/7.json" '.body = "Make it faster."'
+  gh_card "$BOARD" o/r 7 Ready
+  runs_do 'skill nightshift:plan; comment plan "T1: the fast path."'
+  poll
+}
+(world
+  planned
+  expect "the plan is posted: one run" "$(runs)" 1
+  expect "and the card stays in Ready" "$(gh_card_column "$BOARD" o/r 7)" "Ready"
+  poll
+  expect "nothing new: no second run" "$(runs)" 1
+  gh_card_move "$BOARD" o/r 7 "In progress"
+  runs_do 'comment progress'
+  poll
+  expect "the card moved to In progress: a run" "$(runs)" 2
+  expect "it's a fresh session" "$(run_opt --resume)" ""
+  expect_line "the prompt: the plan is approved" "$(run_prompt)" "^The plan is approved: build it with the nightshift:build skill"
+  expect_line "the prompt: the plan" "$(run_prompt)" "^T1: the fast path\\.$"
+  expect_line "the prompt: the approval is the board" "$(sed -n '/^The approval:/,$p' <<<"$(run_prompt)")" "^- the board: moved to In progress$"
+  expect "the planning session is kept" "$(state 7 plan-session)" session-1
+  expect_ok "nothing is left pending" test ! -f "$(idir 7)/build"
+  poll
+  expect "nothing new after: no run" "$(runs)" 2
+  expect "no move of the watcher's: the card is where the user put it" "$(gh_calls "mutation NightshiftMoveCard" | wc -l | tr -d ' ')" 0
+  expect_no_unexpected)
+
+# A comment of the user's with the move reaches the build, held out of the approval.
+(world
+  planned
+  early=$(gh_comment o/r 7 alice "also handle the empty case")
+  gh_card_move "$BOARD" o/r 7 "In progress"
+  runs_do 'comment progress'
+  poll
+  p=$(run_prompt)
+  expect "move and comment: a fresh session" "$(run_opt --resume)" ""
+  expect_line "the approval holds the board line" "$(sed -n '/^The approval:/,$p' <<<"$p")" "^- the board: moved to In progress$"
+  expect_line "and the comment" "$(sed -n '/^The approval:/,$p' <<<"$p")" "^- @alice (comment $early):$"
+  expect_line "the comment isn't in the section before" "$(sed -n '/^Since the plan/,/^The approval:/p' <<<"$p")" "comment $early" no)
+
+# Moved to In progress with questions waiting, not a plan: no hand-off.
+(world
+  board
+  gh_issue o/r 7 alice
+  gh_card "$BOARD" o/r 7 Ready
+  runs_do 'comment questions'
+  poll
+  gh_card_move "$BOARD" o/r 7 "In progress"
+  poll
+  expect "no plan to approve: no run" "$(runs)" 1
+  expect_ok "and no build pending" test ! -f "$(idir 7)/build")
+
+# Moved to In progress when a build session exists: not an approval again.
+(world
+  planned
+  gh_card_move "$BOARD" o/r 7 "In progress"
+  runs_do 'comment progress'
+  poll
+  gh_card_move "$BOARD" o/r 7 Ready
+  poll
+  gh_card_move "$BOARD" o/r 7 "In progress"
+  poll
+  expect "a second move forward: no new run" "$(runs)" 2)
+
+# A go reply hands off as before, and the card goes to In progress.
+(world
+  planned
+  id=$(gh_comment o/r 7 alice "Go!")
+  runs_do 'comment progress'
+  poll
+  expect "go to a plan: the build run" "$(runs)" 2
+  expect "a fresh session" "$(run_opt --resume)" ""
+  expect_line "the approval is the go" "$(sed -n '/^The approval:/,$p' <<<"$(run_prompt)")" "^- @alice (comment $id):$"
+  expect "the card moved to In progress" "$(gh_card_column "$BOARD" o/r 7)" "In progress"
+  expect "with one move" "$(gh_calls "mutation NightshiftMoveCard" | wc -l | tr -d ' ')" 1
+  poll
+  expect "the move isn't a second approval" "$(runs)" 2
+  expect_no_unexpected)
+
+# A go on a board with no In progress column: the build starts, the card stays, the log says so.
+(world
+  gh_project "$BOARD" Backlog Ready Done
+  origin_config "project=https://github.com/users/alice/projects/5"
+  gh_issue o/r 7 alice
+  gh_card "$BOARD" o/r 7 Ready
+  runs_do 'skill nightshift:plan; comment plan "T1: the fast path."'
+  poll
+  gh_comment o/r 7 alice "go" >/dev/null
+  runs_do 'comment progress'
+  poll
+  expect "no In progress column: the build still starts" "$(runs)" 2
+  expect "the card stays" "$(gh_card_column "$BOARD" o/r 7)" "Ready"
+  expect_line "the log says why" "$(cat "$NS/watch.log")" "o/r#7: the board has no In progress column: card not moved")
+
+# `nightshift build --carry-on` is refused on a board; a plain `nightshift build` is not.
+(world
+  planned
+  gh_comment o/r 7 alice "x" >/dev/null
+  runs_do 'nightshift build --carry-on >"$RUN/said" 2>&1 || echo "status $?" >>"$RUN/said"'
+  poll
+  expect_line "carry-on on a board: refused, with the reason" "$(cat "$CLAUDE_FAKE/runs/2/said")" "isn't allowed on a project board"
+  expect_line "and it fails" "$(cat "$CLAUDE_FAKE/runs/2/said")" "^status 1$"
+  expect_ok "nothing pending" test ! -f "$(idir 7)/build")
+(world
+  planned
+  gh_comment o/r 7 alice "looks good, build it" >/dev/null
+  runs_do 'nightshift build >"$RUN/said"'
+  poll
+  expect_line "a plain build on a board: a fresh session builds it" "$(cat "$CLAUDE_FAKE/runs/2/said")" "fresh session")
+
+# The prompt of a board repo says so, in place of the merge line.
+(world
+  board
+  gh_issue o/r 7 alice
+  gh_card "$BOARD" o/r 7 Ready
+  poll
+  p=$(run_prompt)
+  expect_line "board repo: the board line" "$p" "^This repo works from a project board.*no carry-on.*no small-issue build.*no merge unless the card is in Ready to merge or the user replied merge"
+  expect_line "board repo: not the auto-merge line" "$p" "This repo auto-merges" no
+  expect_line "board repo: not the other merge line" "$p" "doesn't auto-merge" no)
+(world
+  gh_issue o/r 7 alice agent
+  poll
+  expect_line "no board: the merge line" "$(run_prompt)" "^This repo auto-merges"
+  expect_line "no board: no board line" "$(run_prompt)" "project board" no)
+
 report

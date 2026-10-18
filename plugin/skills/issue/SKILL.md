@@ -97,7 +97,8 @@ small issue (case 2) has a pull request and no plan, and its later runs take cas
    from the issue and the code. When in doubt, it isn't small. Decide it on a run with
    no plan yet, and invoke the `nightshift:build` skill in this session (no
    `nightshift build` first: there's no planning conversation to leave behind). It builds
-   the issue as its one ticket, with no plan and no wait for a **go**.
+   the issue as its one ticket, with no plan and no wait for a **go**. When the run prompt
+   says "This repo works from a project board", nothing is small: take case 3.
 3. **No plan yet, nothing open** (or the answers are in). On a `bug`, invoke the
    `nightshift:diagnose` skill: it finds the cause behind a red check, then invokes
    `nightshift:plan` itself (or asks in a `questions` comment when it can't build the
@@ -106,7 +107,8 @@ small issue (case 2) has a pull request and no plan, and its later runs take cas
 4. **A plan, and the user asked for changes.** Invoke `nightshift:plan` too, for a revised
    plan, then wait again.
 5. **A plan the user approved** ("go", or anything that clearly means build it), **or a
-   plan that carried on** (its last line says it has no open choices, so no one said go).
+   plan that carried on** (its last line says it has no open choices, so no one said go;
+   never on a project board, where the card moving to In progress approves it).
    Run `nightshift build` first (`nightshift build --carry-on` for the carry-on): when it
    says a fresh session builds it, end the run there, with no comment. Otherwise invoke
    the `nightshift:build` skill: it builds the tickets test-first and opens the pull
@@ -118,7 +120,9 @@ small issue (case 2) has a pull request and no plan, and its later runs take cas
    means merge it). When the run prompt says "This repo auto-merges", invoke the
    `nightshift:merge` skill: it runs its hard gates again and merges. With
    `auto_merge=false`, a **merge** reply is a request like any other (the next case), but
-   you don't merge: that's the user's.
+   you don't merge: that's the user's. The same on a project board (the run prompt says
+   "This repo works from a project board"): it never auto-merges, and merging waits for the
+   card in Ready to merge or a **merge** reply.
 8. **A pull request is open, and the user commented.** Do what they ask on this branch,
    check it, commit and push. The pull request updates with the push. Then say what you did
    in a `progress` comment, only when the repo doesn't auto-merge. When the run prompt says

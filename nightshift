@@ -781,7 +781,8 @@ build_intro() {
 
 # What a run is told of repo $1's merging: whether to merge its pull requests.
 merge_note() {
-  if auto_merges "$1"; then echo "This repo auto-merges: once its pull request is open or updated, use the merge skill."
+  if is_board "$1"; then echo "This repo works from a project board (project= in .nightshift/config), where nightshift moves the cards: no carry-on (never run \`nightshift build --carry-on\`), no small-issue build (a plan always waits for a go or its card moving to In progress), and no merge unless the card is in Ready to merge or the user replied merge."
+  elif auto_merges "$1"; then echo "This repo auto-merges: once its pull request is open or updated, use the merge skill."
   else echo "This repo doesn't auto-merge (auto_merge=false in .nightshift/config): leave merging to the user."
   fi
 }
@@ -1523,6 +1524,15 @@ CONVERT_DRAFT='mutation NightshiftConvertDraft($item: ID!, $repo: ID!) {
   }
 }'
 
+# The GraphQL document that sets a card's Status (`option` is the id of the
+# column's option). To try it by hand:
+#   gh api graphql -f query='…' -f project=<PVT_…> -f item=<PVTI_…> -f field=<PVTSSF_…> -f option=<id>
+MOVE_CARD='mutation NightshiftMoveCard($project: ID!, $item: ID!, $field: ID!, $option: String!) {
+  updateProjectV2ItemFieldValue(input: {projectId: $project, itemId: $item, fieldId: $field, value: {singleSelectOptionId: $option}}) {
+    projectV2Item { id }
+  }
+}'
+
 # The columns whose cards nightshift works, lower case, as a jq array; the
 # others (Backlog, Done, a card with none) it leaves alone.
 BOARD_WORKING='["ready", "in progress", "in review", "your review", "ready to merge"]'
@@ -1619,6 +1629,41 @@ board_off() {
     .items[] | select(.type == "Issue" and (.repo | ascii_downcase) == ($r | ascii_downcase))
     | select(((.status // "") | ascii_downcase | IN($work[])) | not)
     | "\(.number) moved to \(.status // "Backlog")"' "$NS/poll/$(echo "$1" | tr '/' '_').board.json"
+}
+
+# Whether repo $1 works from a project board (its `project=` is set).
+is_board() { [ -n "$(repo_option "$1" project)" ]; }
+
+# The column, in lower case, of the card of $1#$2 as the last list_board read
+# it; empty with none (not on the board, or no Status).
+board_column() {
+  jq -r --arg r "$1" --argjson n "$2" '
+    [.items[] | select(.type == "Issue" and (.repo | ascii_downcase) == ($r | ascii_downcase) and .number == $n)][0].status // "" | ascii_downcase' \
+    "$NS/poll/$(echo "$1" | tr '/' '_').board.json" 2>/dev/null
+}
+
+# Move the card of $1#$2 to the column $3 (matched without regard to case) of its
+# board, as the last list_board read it. Fails, with a line in the log, when the
+# board has no such column or card, or the mutation fails; does nothing when the
+# card is there already. On success the card is that column in board.json and in
+# the issue's `column`, so the move isn't taken for the user's.
+move_card() {
+  mcf="$NS/poll/$(echo "$1" | tr '/' '_').board.json"
+  [ -f "$mcf" ] || return 1
+  mcc=$(jq -r --arg c "$3" 'first(.columns[] | select((.name | ascii_downcase) == ($c | ascii_downcase))) | "\(.id)\t\(.name)"' "$mcf" 2>/dev/null)
+  if [ -z "$mcc" ]; then log "$1#$2: the board has no $3 column: card not moved"; return 1; fi
+  mci=$(jq -r --arg r "$1" --argjson n "$2" '[.items[] | select(.type == "Issue" and (.repo | ascii_downcase) == ($r | ascii_downcase) and .number == $n)][0].id // empty' "$mcf")
+  if [ -z "$mci" ]; then log "$1#$2: not on the board: card not moved"; return 1; fi
+  mcn=${mcc#*"$(printf '\t')"}
+  [ "$(board_column "$1" "$2")" != "$(printf '%s' "$mcn" | tr 'A-Z' 'a-z')" ] || return 0
+  if ! gh api graphql -f query="$MOVE_CARD" -f project="$(jq -r .project "$mcf")" -f item="$mci" \
+    -f field="$(jq -r .field "$mcf")" -f option="${mcc%%"$(printf '\t')"*}" >/dev/null 2>>"$NS/watch.log"; then
+    log "$1#$2: couldn't move the card to $mcn"
+    return 1
+  fi
+  jq -c --arg i "$mci" --arg s "$mcn" '.items |= map(if .id == $i then .status = $s else . end)' "$mcf" >"$mcf.tmp" && mv "$mcf.tmp" "$mcf"
+  printf '%s\n' "$mcn" | tr 'A-Z' 'a-z' >"$(issue_dir "$1" "$2")/column"
+  log "$1#$2: card moved to $mcn"
 }
 
 # The merged pull request of $1#$2's branch, asked by head branch (`pr` may not
@@ -1720,10 +1765,20 @@ poll_repo() {
     count=$((count + 1))
     d=$(issue_dir "$repo" "$n")
     running "$d" && { did="$did, #$n running"; continue; }
-    [ ! -f "$d/update" ] && [ ! -f "$d/build" ] && [ ! -f "$d/interrupted" ] && [ ! -f "$d/stalled" ] && [ -f "$d/updated" ] && [ "$(cat "$d/updated")" = "$updated" ] && continue
+    # A card moved from Ready to In progress, with a plan waiting, is the plan's
+    # approval. The board doesn't bump the issue's updated_at, so the move is
+    # noticed here, against the column the card was last seen in.
+    bmove=0
+    if [ -n "$board" ] && [ -d "$d" ]; then
+      col=$(board_column "$repo" "$n")
+      [ "$(cat "$d/column" 2>/dev/null)" = ready ] && [ "$col" = "in progress" ] && handoff_ok "$d" && plan_pending "$repo" "$n" && bmove=1
+      printf '%s\n' "$col" >"$d/column"
+    fi
+    [ "$bmove" != 1 ] && [ ! -f "$d/update" ] && [ ! -f "$d/build" ] && [ ! -f "$d/interrupted" ] && [ ! -f "$d/stalled" ] && [ -f "$d/updated" ] && [ "$(cat "$d/updated")" = "$updated" ] && continue
     if [ ! -d "$d" ] && [ -n "$board" ]; then
       # A card in a working column: only people who can write to the project move cards.
       mkdir -p "$d"
+      board_column "$repo" "$n" >"$d/column"
     elif [ ! -d "$d" ]; then
       # Only a label added by an allowed user starts work.
       by=$(gh api --paginate "repos/$repo/issues/$n/events" \
@@ -1750,8 +1805,13 @@ poll_repo() {
       continue
     fi
     # A plain "go" to the plan: build it in a fresh session (see run_agent).
-    if [ -n "$news" ] && handoff_ok "$d" && approves "$repo" "$n" "$filter"; then
+    if [ "$bmove" = 1 ]; then
+      printf '%s\n%s' "- the board: moved to In progress" "${news:+
+$news}" >"$d/build"
+    elif [ -n "$news" ] && handoff_ok "$d" && approves "$repo" "$n" "$filter"; then
       printf '%s' "$news" >"$d/build"
+      # The card follows the go.
+      [ -z "$board" ] || move_card "$repo" "$n" "In progress" || true
     fi
     # A reply to an issue that needs you: it no longer does, before its run
     # (or, at capacity, `queued`) sets the next status.
@@ -1808,6 +1868,11 @@ handoff_ok() { { [ -s "$1/session" ] || [ "${2:-}" = carry ]; } && [ ! -f "$1/pl
 approves() {
   [ "$(gh api --paginate "repos/$1/issues/$2/comments?per_page=100" \
     --jq "$3 | .body | ascii_downcase | test(\"^\\\\s*go[.!]*\\\\s*$\")" 2>/dev/null)" = true ] || return 1
+  plan_pending "$1" "$2"
+}
+
+# Whether the last nightshift comment on $1#$2 is a plan: one waiting for its approval.
+plan_pending() {
   gh api --paginate "repos/$1/issues/$2/comments?per_page=100" \
     --jq ".[] | select(.body | contains(\"$MARKER\")) | .body | contains(\"nightshift:plan -->\")" 2>/dev/null | tail -1 | grep -qx true
 }
@@ -2637,6 +2702,7 @@ cmd_build() {
   *) usage_error "usage: nightshift build [--carry-on]" ;;
   esac
   [ -n "${NIGHTSHIFT_REPO:-}" ] && [ -n "${NIGHTSHIFT_ISSUE:-}" ] || die "nightshift build only works in a nightshift run"
+  [ $carry = 0 ] || ! is_board "$NIGHTSHIFT_REPO" || die "nightshift build --carry-on isn't allowed on a project board: the plan waits for a go or for its card to move to In progress"
   bd=$(issue_dir "$NIGHTSHIFT_REPO" "$NIGHTSHIFT_ISSUE")
   if [ $carry = 1 ] && handoff_ok "$bd" carry && [ ! -f "$bd/updating" ]; then
     printf '%s\n' "$CARRY_ON" >"$bd/build"

@@ -114,6 +114,21 @@ graphql() {
       return
     done
     echo "gh: Could not resolve to a DraftIssue item with the id $item. (itemId)" >&2; exit 1 ;;
+  NightshiftMoveCard)
+    # The project is found by its id; the field and the option must be its own.
+    local f pid fid oid item
+    pid=$(gql_var project) item=$(gql_var item) fid=$(gql_var field) oid=$(gql_var option)
+    for f in "$GH_FAKE"/projects/*/project.json; do
+      [ -f "$f" ] && [ "$(jq -r .id "$f")" = "$pid" ] || continue
+      jq -e --arg f "$fid" --arg o "$oid" '.field.id == $f and any(.field.options[]; .id == $o)' "$f" >/dev/null ||
+        { echo "gh: Could not resolve to a ProjectV2SingleSelectField option (fieldId, value)" >&2; exit 1; }
+      jq -e --arg i "$item" 'any(.[]; .id == $i)' "$(dirname "$f")/items.json" >/dev/null ||
+        { echo "gh: Could not resolve to a ProjectV2Item with the id $item. (itemId)" >&2; exit 1; }
+      gh_item_move "$(dirname "$f")" "$item" "$oid"
+      jq -n -c --arg i "$item" '{data: {updateProjectV2ItemFieldValue: {projectV2Item: {id: $i}}}}' | out
+      return
+    done
+    echo "gh: Could not resolve to a ProjectV2 with the id $pid. (projectId)" >&2; exit 1 ;;
   *) unexpected ;;
   esac
 }

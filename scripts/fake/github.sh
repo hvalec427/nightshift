@@ -191,6 +191,13 @@ gh_card_move() {
   gh_unlock
 }
 
+# Card (item id $2) of the project in directory $1 set to option id $3.
+gh_item_move() {
+  gh_lock
+  gh_edit "$1/items.json" 'map(if .id == $i then .option = $o else . end)' --arg i "$2" --arg o "$3"
+  gh_unlock
+}
+
 # Issue $3 of repo $2 taken off project $1.
 gh_card_remove() {
   gh_lock

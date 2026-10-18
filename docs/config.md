@@ -43,7 +43,7 @@ interval=5
     (an organisation's is `…/orgs/acme/projects/5`; a trailing `/views/2` is ignored).
     The repo is then worked from the board, not the `agent` label: see
     [Working from a project board](working-an-issue.md#working-from-a-project-board);
-    a draft card in Ready becomes an issue of the repo there.
+    a draft card in Ready becomes an issue of the repo there, and `auto_merge` is ignored.
     `gh` needs the `project` scope (`gh auth refresh -s project`). Unset, nothing changes.
   - `cost_breakdown=false` keeps the closing cost comment to one line: dollars, tokens,
     time and the pull request's size. Unset (or any other value), it has the breakdown
