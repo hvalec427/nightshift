@@ -1809,9 +1809,9 @@ def clean: untab | gsub("[[:cntrl:]]"; "");
 # A code point'"'"'s cells on a terminal: emoji (U+1F000 up, U+2600-U+27BF) take two.
 def cells: if . >= 126976 or (. >= 9728 and . <= 10175) then 2 else 1 end;
 # Cut to $w cells, before the first character that would pass it, then pad.
-def fit($w): reduce explode[] as $c ({s: [], n: 0, full: false};
-    if .full then . elif .n + ($c | cells) > $w then .full = true
-    else .s += [$c] | .n += ($c | cells) end)
+def fit($w): reduce explode[] as $c ({s: [], n: 0, full: false}; ($c | cells) as $k
+    | if .full then . elif .n + $k > $w then .full = true
+    else .s += [$c] | .n += $k end)
   | (.s | implode) + spaces($w - .n);
 def sizes($total; $k): range(0; $k) as $i | ($total / $k | floor) + (if $i < ($total % $k) then 1 else 0 end);
 def rows_of($n; $c): ($n + $c - 1) / $c | floor;

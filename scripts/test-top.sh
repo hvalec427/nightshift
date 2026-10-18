@@ -41,11 +41,10 @@ four() {
   log8 90
 }
 
-# $2 padded to $1 characters (printf pads bytes, and · is two).
+# $2 padded to $1 characters (printf pads bytes, and · is two): no emoji, a
+# character is a cell.
 cell() { jq -nr --arg t "$2" --argjson n "$1" '$t + ([range(0; $n - ($t | length))] | map(" ") | join(""))'; }
 
-# Whether every line is at most $1 characters (jq counts characters).
-within() { printf '%s\n' "$2" | jq -R "length <= $1" | sort -u | grep -qx true; }
 # How many lines come in on stdin.
 rows() { wc -l | tr -d ' '; }
 
