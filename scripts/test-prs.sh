@@ -266,6 +266,24 @@ started"
   poll
   expect "closed by its merge: done, merged" "$(state 7 "done")" "PR merged")
 
+# A merge into another branch than the default one leaves the issue open (GitHub's
+# Closes #n only closes on the default branch): the watcher closes it.
+(world
+  origin_file develop.md "on develop" develop
+  built
+  gh_pr_set o/r "$(prn)" baseRefName '"develop"'
+  gh_pr_set o/r "$(prn)" state '"MERGED"'
+  poll
+  expect "merged into another branch: done, merged" "$(state 7 "done")" "PR merged"
+  expect "the issue is closed" "$(jq -r .state "$(gh_dir o/r)/issues/7.json")" closed
+  expect "as completed" "$(gh_calls "issue close" | tr '\n' ,)" "issue close 7 --repo o/r --reason completed,")
+
+(world
+  built
+  gh_pr_set o/r "$(prn)" state '"MERGED"'
+  poll
+  expect "merged into the default branch: no close call" "$(gh_calls "issue close")" "")
+
 # A run that merges its own pull request (which closes the issue) while a poll
 # comes: not stopped, and retired done once it exits.
 MERGES='commit feature.txt; open_pr; merge_pr; hold; comment done'

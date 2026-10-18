@@ -1263,6 +1263,7 @@ check_done() {
         why="issue closed"
       fi
     fi
+    [ "$why" = "PR merged" ] && close_after_merge "$repo" "$n" "$clone" "$d"
     [ -n "$why" ] && retire "$repo" "$n" "$clone" "$d" "$why"
   done
 }
@@ -1302,6 +1303,16 @@ $MARKER <!-- nightshift:progress -->" >/dev/null 2>&1; then
       fi
     fi
   done
+}
+
+# Issue $2, after its pull request merged into another branch than the default
+# one: GitHub's Closes #n only closes on the default branch, so close it here.
+close_after_merge() {
+  cm_base=$(gh pr view "$(cat "$4/pr")" --repo "$1" --json baseRefName -q .baseRefName 2>/dev/null)
+  [ -n "$cm_base" ] && [ "$cm_base" != "$(default_branch "$1" "$3")" ] || return 0
+  [ "$(gh api "repos/$1/issues/$2" --jq .state 2>/dev/null)" = open ] || return 0
+  gh issue close "$2" --repo "$1" --reason completed >/dev/null 2>>"$4/log" ||
+    log "$1#$2: couldn't close the issue after its merge into $cm_base"
 }
 
 # A done issue: its worktree goes if it's clean, and after a merge its branch,
