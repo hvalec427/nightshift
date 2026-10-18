@@ -32,7 +32,9 @@
 # `update` while an update run waits and `updating` while it runs (its status,
 # then why),
 # `conflict` (the default branch's commit its pull request was last updated
-# for), `log` (readable, live) and `out.jsonl` (the last run's raw stream-json),
+# for), `column` (a board repo: the column its card was last seen in, lower case),
+# `merge-move` (a board repo: the card moved into Ready to merge with its pull request
+# open, so a merge run is queued; gone once it starts), `log` (readable, live) and `out.jsonl` (the last run's raw stream-json),
 # `cost` (what its runs cost, added up), `usage` (its session's totals at the
 # last result), `agents` (every run's session and subagents, a JSON line each:
 # see AGENTS), `models` (what each model cost it, a line `opus-5-5 3.2` each),
@@ -2570,6 +2572,49 @@ repo_plugins() {
   done
 }
 
+# doctor's lines for repo $1's project board (project= in .nightshift/config), if it
+# has one: gh's `project` scope, the project and its Status field readable, and
+# each of the seven columns (BOARD_ROUTE) there.
+repo_board_doctor() {
+  rbd=$(repo_option "$1" project)
+  [ -n "$rbd" ] || return 0
+  rbp=$(parse_board "$rbd")
+  if [ -z "$rbp" ]; then
+    fail bad "$1: project=$rbd in .nightshift/config" "use a project's URL, https://github.com/users/<login>/projects/<n> (an organisation's: /orgs/<login>/projects/<n>)"
+    return 0
+  fi
+  if [ -z "$ghv" ]; then fail "?" "$1: its board ($rbp)" "needs gh to check"; return 0; fi
+  # Only a token that lists its scopes can be told lacking one (a fine-grained token doesn't).
+  rbs=$(gh auth status --active 2>&1 | sed -n 's/.*Token scopes: //p')
+  case "$rbs" in
+  '' | *"'project'"*) ;;
+  *) fail missing "$1: gh's \`project\` scope, for its board" "gh auth refresh -s project"; return 0 ;;
+  esac
+  rbn="${rbp% *}/${rbp#* }"
+  rbr=$(gh api graphql -f query="$BOARD_QUERY" -f owner="${rbp% *}" -F number="${rbp#* }" 2>&1) || {
+    fail no "$1: its board ($rbn)" "$(printf '%s' "$rbr" | head -1): check project= in .nightshift/config, and that gh may read it (gh auth refresh -s project)"
+    return 0
+  }
+  if ! printf '%s' "$rbr" | jq -e '.data.repositoryOwner.projectV2' >/dev/null 2>&1; then
+    fail no "$1: its board ($rbn)" "no such project: check project= in .nightshift/config"
+    return 0
+  fi
+  if ! printf '%s' "$rbr" | jq -e '.data.repositoryOwner.projectV2.field' >/dev/null 2>&1; then
+    fail no "$1: its board ($rbn)" "the project has no Status field: its columns are the options of one"
+    return 0
+  fi
+  rbc=$(printf '%s' "$rbr" | jq -r '.data.repositoryOwner.projectV2.field.options[].name' | tr 'A-Z' 'a-z')
+  rbm=0
+  for rbo in $(printf '%s\n' "$BOARD_ROUTE" | tr ' ' '_'); do
+    rbo=$(printf '%s' "$rbo" | tr '_' ' ')
+    printf '%s\n' "$rbc" | grep -qxF "$rbo" && continue
+    fail missing "$1: the board's $(printf '%s' "$rbo" | awk '{print toupper(substr($0, 1, 1)) substr($0, 2)}') column" "add it to the Status field of $rbd"
+    rbm=1
+  done
+  [ $rbm -eq 0 ] && pass "$1: board $rbn ($rbd), its seven columns"
+  return 0
+}
+
 # `doctor`: everything nightshift needs on this machine, what's missing and how
 # to get it. Fails when something required is.
 cmd_doctor() {
@@ -2631,6 +2676,7 @@ cmd_doctor() {
     tracks_local_md "$clone" &&
       fail tracked "$repo: CLAUDE.local.md, so runs don't get nightshift's instructions" "untrack it: git -C $clone rm --cached CLAUDE.local.md"
     repo_plugins "$repo"
+    repo_board_doctor "$repo"
     # Options older versions read from the repo's line, ignored now.
     for o in auto_merge plugins; do
       v=$(repo_line_option "$repo" "$o")

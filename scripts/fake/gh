@@ -37,7 +37,7 @@ while [ $# -gt 0 ]; do
   -R | --repo) repo=$2; shift ;;
   --json | -X | --method | --state | --limit | --head | --base | --title | --body | --body-file | \
     --add-label | --remove-label | --color | --description | -F | -f) OPTS+=("$1" "$2"); shift ;;
-  --paginate | --force | --version) OPTS+=("$1" "") ;;
+  --paginate | --force | --version | --active) OPTS+=("$1" "") ;;
   -*) unexpected ;;
   *) POS+=("$1") ;;
   esac
@@ -145,7 +145,7 @@ board_page() {
   jq -c --slurpfile items "$d/items.json" --argjson issues "$issues" '
     . as $p | {data: {repositoryOwner: {projectV2: {
       id: .id,
-      field: {id: .field.id, options: .field.options},
+      field: (if .field then {id: .field.id, options: .field.options} else null end),
       items: {pageInfo: {hasNextPage: false, endCursor: null}, nodes: [
         $items[0][] | . as $i
         | (first($p.field.options[] | select(.id == $i.option)) // null) as $o
@@ -254,6 +254,11 @@ issue() {
 case "${POS[0]:-}" in
 "") opt --version >/dev/null && { echo "gh version ${FAKE_GH_VERSION:-2.99.0} (2026-01-01)"; exit 0; }; unexpected ;;
 api) api ;;
+auth)
+  # gh auth status --active: the account and the scopes its token has (see gh_scopes in github.sh).
+  [ "${POS[1]:-}" = status ] && opt --active >/dev/null || unexpected
+  printf 'github.com\n  \xe2\x9c\x93 Logged in to github.com account %s (keyring)\n  - Active account: true\n  - Token scopes: %s\n' \
+    "$(cat "$GH_FAKE/user")" "$(cat "$GH_FAKE/scopes" 2>/dev/null || echo "'gist', 'project', 'read:org', 'repo'")" ;;
 pr) pr ;;
 issue) issue ;;
 label)

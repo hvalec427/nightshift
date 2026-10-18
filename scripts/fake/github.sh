@@ -4,7 +4,8 @@
 # repos/<owner>_<repo>/: repo.json, labels (a name a line), pulls.json (newest
 # first, as gh lists them), origin (the path of its git remote) and per issue
 # issues/<n>.json, <n>.comments.json and <n>.events.json. `user` is who gh is
-# logged in as; `clock` counts, for ids and update times.
+# logged in as; `scopes` (once a test has called gh_scopes) the scopes of its token;
+# `clock` counts, for ids and update times.
 
 # A repo's directory.
 gh_dir() { printf '%s/repos/%s' "$GH_FAKE" "$(echo "$1" | tr '/' '_')"; }
@@ -154,6 +155,12 @@ gh_project() {
   jq -n -c --arg id "PVT_$(echo "$p" | tr '/' '_')" --argjson cols "$cols" '
     {id: $id, field: {id: ($id + "_status"), options: [range(0; $cols | length) as $i | {id: ($id + "_opt\($i)"), name: $cols[$i]}]}}' >"$d/project.json"
   echo '[]' >"$d/items.json"
+}
+
+# The scopes of gh's token, as `gh auth status` lists them: names $1.. (default
+# gist, project, read:org, repo).
+gh_scopes() {
+  printf '%s\n' "$@" | sed "s/.*/'&'/" | paste -sd, - | sed 's/,/, /g' >"$GH_FAKE/scopes"
 }
 
 # The id of project $1's Status option named $2 (case-insensitive), or null.

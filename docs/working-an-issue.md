@@ -69,6 +69,11 @@ review, Ready to merge, Done; where you've already moved it past a column, night
 it. The ways back are Your review to In progress, and Ready to merge to Your review. A column
 the project lacks means no move, and a line in the log (`nightshift logs`) says which.
 
+`nightshift doctor` checks each board repo: that `gh` has the `project` scope (it names the fix,
+`gh auth refresh -s project`), that the project and its Status field can be read, and which of
+the seven columns the project lacks (you add them; nightshift doesn't). A `project=` that isn't
+a project's URL is reported too.
+
 Nothing merges until you move a card to Ready to merge (or reply **merge**). With a pull
 request open, a run on a board repo still checks it, fixes the failing checks and posts its
 `look` comment (even with nothing to look at), but doesn't merge. Moving the card to Ready to
