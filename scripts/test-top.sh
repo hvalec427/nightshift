@@ -61,7 +61,7 @@ line 6
 line 7
 line 8"
   expect "top: the lines the screen has, whatever its height" "$(frame 40 6 | rows) $(frame 100 20 | rows)" "6 20"
-  expect "top: a tall window starts with what the log has, blank below" "$(frame 40 12 | sed -n '1p;2p;9p;10p' | tr '\n' '|')" \
+  expect "top: a tall window starts with what the log has, blank below" "$(frame 40 11 | sed -n '1p;2p;9p;10p' | tr '\n' '|')" \
     "o/r#7 · bug · queued to build|line 1|line 8||"
   expect "top: a header is cut to the width of its window" "$(frame 20 6 | head -1)" "o/r#7 · bug · queued")
 
@@ -75,7 +75,7 @@ line 8"
   issue 9 pr=https://github.com/o/r/pull/1 after=7 label="PR open"
   issue 10 done="issue closed"
   issue 11 ignored="labelled by someone else"
-  f=$(frame 200 30)
+  f=$(frame 160 30)
   kill "$bg"
   { wait "$bg" || true; } 2>/dev/null
   expect_line "top: a running issue" "$f" "^o/r#7 · running [0-9]*s (pid $bg) *│"
@@ -93,20 +93,72 @@ rows_of() { sed 's/|$//'; }
   four
   rm -rf "$(idir 8)" "$(idir 9)" "$(idir 90)"
   frame 80 24 >"$W/one"
-  expect "top: 1 issue at 80×24, one window of 80×24" "$(sed -n '1p;2p;9p;10p' "$W/one" | tr '\n' '|')" \
-    "o/r#7 · bug · queued to build|line 1|line 8||"
+  expect "top: 1 issue at 81×24, 8 windows: a 2×4 grid of 40×6, the issue top left, the other 7 blank" "$(frame 81 24)" "$(rows_of <<'F'
+o/r#7 · bug · queued to build           │|
+line 4                                  │|
+line 5                                  │|
+line 6                                  │|
+line 7                                  │|
+line 8                                  │|
+                                        │|
+                                        │|
+                                        │|
+                                        │|
+                                        │|
+                                        │|
+                                        │|
+                                        │|
+                                        │|
+                                        │|
+                                        │|
+                                        │|
+                                        │|
+                                        │|
+                                        │|
+                                        │|
+                                        │|
+                                        │|
+F
+)"
+  expect "top: 1 issue at 80×24, 8 windows don't fit: 4 stacked windows of 6 rows, 3 blank" "$(cat "$W/one")" "$(rows_of <<'F'
+o/r#7 · bug · queued to build|
+line 4|
+line 5|
+line 6|
+line 7|
+line 8|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+F
+)"
   four
   rm -rf "$(idir 9)" "$(idir 90)"
-  expect "top: 2 issues at 82×12, side by side, 41 and 40 wide around a │" "$(frame 82 12)" "$(rows_of <<'F'
+  expect "top: 2 issues at 82×12, 4 windows, 2×2: side by side, 41 and 40 wide around a │, the bottom pair blank" "$(frame 82 12)" "$(rows_of <<'F'
 o/r#7 · bug · queued to build            │o/r#8 · queued|
-line 1                                   │(nothing logged yet)|
-line 2                                   │|
-line 3                                   │|
-line 4                                   │|
+line 4                                   │(nothing logged yet)|
 line 5                                   │|
 line 6                                   │|
 line 7                                   │|
 line 8                                   │|
+                                         │|
+                                         │|
+                                         │|
                                          │|
                                          │|
                                          │|
@@ -127,12 +179,12 @@ o/r#8 · queued|
 |
 F
 )"
-  expect "top: 2 issues at 80×24, stacked, 12 rows each" "$(frame 80 24 | sed -n '1p;12p;13p;24p' | tr '\n' '|')" \
-    "o/r#7 · bug · queued to build||o/r#8 · queued||"
+  expect "top: 2 issues at 80×24, stacked, 4 windows of 6 rows, the last 2 blank" "$(frame 80 24 | sed -n '1p;6p;7p;12p;13p;24p' | tr '\n' '|')" \
+    "o/r#7 · bug · queued to build|line 8|o/r#8 · queued||||"
   four
   rm -rf "$(idir 90)"
-  expect "top: 3 issues at 80×24, stacked, 8 rows each" "$(frame 80 24 | sed -n '1p;2p;9p;17p;24p' | tr '\n' '|')" \
-    "o/r#7 · bug · queued to build|line 2|o/r#8 · queued|o/r#9 · proposed: waiting for your comment||"
+  expect "top: 3 issues at 80×24, stacked, 4 windows of 6 rows, the last blank" "$(frame 80 24 | sed -n '1p;2p;7p;13p;19p;24p' | tr '\n' '|')" \
+    "o/r#7 · bug · queued to build|line 4|o/r#8 · queued|o/r#9 · proposed: waiting for your comment|||"
   four
   expect "top: 4 issues at 80×24, stacked, 6 rows each" "$(frame 80 24)" "$(rows_of <<'F'
 o/r#7 · bug · queued to build|
@@ -161,25 +213,17 @@ line 7|
 line 8|
 F
 )"
-  expect "top: 4 issues at 120×30, 2 columns (60, 59) and 2 rows of 15" "$(frame 120 30)" "$(rows_of <<'F'
+  expect "top: 4 issues at 120×30, 8 windows: 2 columns (60, 59) and 4 rows (8, 8, 7, 7), the last 2 rows blank" "$(frame 120 30)" "$(rows_of <<'F'
 o/r#7 · bug · queued to build                               │o/r#8 · queued|
-line 1                                                      │(nothing logged yet)|
-line 2                                                      │|
+line 2                                                      │(nothing logged yet)|
 line 3                                                      │|
 line 4                                                      │|
 line 5                                                      │|
 line 6                                                      │|
 line 7                                                      │|
 line 8                                                      │|
-                                                            │|
-                                                            │|
-                                                            │|
-                                                            │|
-                                                            │|
-                                                            │|
 o/r#9 · proposed: waiting for your comment                  │o/r#90 · PR https://github.com/o/r/pull/1 · queued: rebase|
-(nothing logged yet)                                        │line 1|
-                                                            │line 2|
+(nothing logged yet)                                        │line 2|
                                                             │line 3|
                                                             │line 4|
                                                             │line 5|
@@ -192,16 +236,26 @@ o/r#9 · proposed: waiting for your comment                  │o/r#90 · PR htt
                                                             │|
                                                             │|
                                                             │|
+                                                            │|
+                                                            │|
+                                                            │|
+                                                            │|
+                                                            │|
+                                                            │|
+                                                            │|
+                                                            │|
 F
 )"
-  expect "top: 4 issues at 123×30, 3 columns (41, 40, 40) and 2 rows of 15" "$(frame 123 30 | sed -n '1p;16p')" \
+  expect "top: 4 issues at 123×30, 3 columns (41, 40, 40) and 3 rows of 10, the last 5 windows blank" "$(frame 123 30 | sed -n '1p;11p;21p')" \
     "$(cell 41 'o/r#7 · bug · queued to build')│$(cell 40 'o/r#8 · queued')│o/r#9 · proposed: waiting for your comme
-$(cell 41 'o/r#90 · PR https://github.com/o/r/pull/1')│$(cell 40 '')│"
+$(cell 41 'o/r#90 · PR https://github.com/o/r/pull/1')│$(cell 40 '')│
+$(cell 41 '')│$(cell 40 '')│"
   rm -rf "$(idir 90)"
-  expect "top: 3 issues at 120×30, 2 columns and 2 rows, the last slot empty" "$(frame 120 30 | sed -n '1p;16p;17p;30p')" \
+  expect "top: 3 issues at 120×30, 2 columns and 4 rows (8, 8, 7, 7), the 5 spare windows blank" "$(frame 120 30 | sed -n '1p;9p;10p;17p;30p')" \
     "$(cell 60 'o/r#7 · bug · queued to build')│o/r#8 · queued
 $(cell 60 'o/r#9 · proposed: waiting for your comment')│
 $(cell 60 '(nothing logged yet)')│
+$(cell 60 '')│
 $(cell 60 '')│"
   rm -rf "$(idir 9)"
   expect "top: 2 issues at 120×30, 2 columns (60, 59)" "$(frame 120 30 | head -1)" \
@@ -209,6 +263,16 @@ $(cell 60 '')│"
   expect "top: 2 issues at 60×14, stacked, 7 rows each" "$(frame 60 14 | sed -n '1p;8p')" \
     "o/r#7 · bug · queued to build
 o/r#8 · queued")
+
+# --- more than 8 issues ------------------------------------------------------------------
+
+(world
+  for i in 1 2 3 4 5 6 7 8 9; do issue $i; done
+  expect "top: 9 issues at 123×18: a window each, 3×3 of 41, 40 and 40 by 6, none blank" "$(frame 123 18 | sed -n '1p;7p;13p;18p')" \
+    "$(cell 41 'o/r#1 · queued')│$(cell 40 'o/r#2 · queued')│o/r#3 · queued
+$(cell 41 'o/r#4 · queued')│$(cell 40 'o/r#5 · queued')│o/r#6 · queued
+$(cell 41 'o/r#7 · queued')│$(cell 40 'o/r#8 · queued')│o/r#9 · queued
+$(cell 41 '')│$(cell 40 '')│")
 
 # --- overflow, empty, and nothing logged ----------------------------------------------
 
@@ -253,7 +317,7 @@ sp() { printf "%$1s" ''; }
   printf '0\t%s\n' "ünï·😀·😀 and some text" "✗ fail ✓ pass ☀" "⭐⌚ star" \
     "🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖" "x🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖" \
     "·······················································································" >"$(idir 7)/log"
-  f=$(frame 81 12)
+  f=$(frame 81 28)
   expect "top: multibyte characters are a cell each, emoji two (✗ ✓ ☀ one): the window is 40 cells wide on every row" \
     "$(printf '%s\n' "$f" | sed -n '2,7p' | sed 's/│.*/│/')" \
     "ünï·😀·😀 and some text$(sp 17)│

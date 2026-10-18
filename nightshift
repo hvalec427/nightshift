@@ -8,7 +8,7 @@
 #   nightshift stop                      stop the service (until `nightshift start`)
 #   nightshift stop <owner/repo>#<n>     stop an issue's running agent
 #   nightshift logs [<owner/repo>#<n>] [-f] [-v…]  what every issue (or one) does, at a level
-#   nightshift top                       a window per issue in progress, tiled: its status and the end of its log, live on a terminal (q quits)
+#   nightshift top                       at least 8 windows, one per issue in progress, tiled: its status and the end of its log, live on a terminal (q quits)
 #   nightshift add <owner/repo> <clone>  watch a repo, using this clone of it, and set up its .nightshift/ (config, CONTEXT.md) to commit
 #   nightshift label <status>            (in a run) set its issue's status label
 #   nightshift build [--carry-on]        (in a run) build the approved plan, in a fresh session if it's the planning one (--carry-on: no approval, the plan has no open choices)
@@ -1813,10 +1813,12 @@ cmd_status() {
 # {id, text, log} (log: its last lines, one string); args: w, h (the screen),
 # rev (1: headers in reverse video). Output: the frame, a line per row, each at
 # most w characters (jq counts characters, awk here counts bytes). Windows are
-# at least 40×6, not counting the │ between them: n issues get c columns and
-# ceil(n / c) rows, the c that makes a window closest to 2:1 (a terminal cell
-# is about twice as tall as wide). If none holds them all, the last row says
-# how many more there are, and the first issues that fit have the rows above it.
+# at least 40×6, not counting the │ between them. The grid has s windows, the
+# most from max(8, n) down to n that fit: c columns and ceil(s / c) rows, the c
+# that makes a window closest to 2:1 (a terminal cell is about twice as tall as
+# wide). Issue x has window x; the spare windows are blank. If not even n fit,
+# the last row says how many more there are, and the first issues that fit (m
+# windows, s = m) have the rows above it.
 TOP_JQ='
 def spaces($n): [range(0; $n)] | map(" ") | join("");
 def untab: split("\t") | reduce .[1:][] as $p ((.[0] // ""); . + spaces(8 - (length % 8)) + $p);
@@ -1858,17 +1860,17 @@ def window($i; $w; $h):
 . as $all | length as $n |
 if $n == 0 then (["no issues in progress"] + [range(1; $h) | ""])
 else
-  (best($n; $w; $h)) as $c_all
-  | (if $c_all != null then {m: $n, h: $h, c: $c_all}
+  ([range([8, $n] | max; $n - 1; -1) | select(best(.; $w; $h) != null)] | first) as $s
+  | (if $s != null then {s: $s, m: $n, h: $h, c: best($s; $w; $h)}
    else
      ($h - (if $h >= 2 then 1 else 0 end)) as $hr
      | ([range($n - 1; 0; -1) | select(best(.; $w; $hr) != null)] | first // 1) as $m
      | (if $m == $n then $h else $hr end) as $mh
-     | {m: $m, h: $mh, c: (best($m; $w; $mh) // 1)}
+     | {s: $m, m: $m, h: $mh, c: (best($m; $w; $mh) // 1)}
    end) as $p
   | ($all[:$p.m]) as $shown
   | $p.c as $c
-  | rows_of($p.m; $c) as $r
+  | rows_of($p.s; $c) as $r
   | [sizes($w - ($c - 1); $c)] as $cw
   | [sizes($p.h; $r)] as $rh
   | ([range(0; $r) as $i | range(0; $rh[$i]) as $k
@@ -1911,10 +1913,12 @@ top_help() {
   cat <<'HELP'
 usage: nightshift top
 
-A window for every issue in progress, tiled to fit the terminal: its status and
-the end of its log. On a terminal it is live: it redraws every second, fits the
-terminal as it resizes, and q quits. Piped, it prints one frame and exits. The
-size, for one frame, is COLUMNS and LINES, or the terminal's.
+A grid of at least 8 windows (the most that fit, never fewer than the issues in
+progress), tiled to fit the terminal: a window for every issue in progress, with
+its status and the end of its log, and the spare windows blank. On a terminal it
+is live: it redraws every second, fits the terminal as it resizes, and q quits.
+Piped, it prints one frame and exits. The size, for one frame, is COLUMNS and
+LINES, or the terminal's.
 HELP
 }
 
