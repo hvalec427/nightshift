@@ -20,3 +20,7 @@
 #
 # cost_comment=false: no closing cost comment at all (default true).
 cost_comment=false
+#
+# project: a GitHub project board to work this repo from, in place of the `agent` label
+# (default none). Cards in Ready are picked up; nothing merges until a card is in Ready to merge.
+project=https://github.com/users/hvalec427/projects/5
