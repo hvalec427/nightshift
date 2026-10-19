@@ -638,7 +638,7 @@ blocked_card() {
   board
   gh_issue o/r 3 alice
   gh_issue o/r 7 alice
-  gh_card "$BOARD" o/r 7 "${1:-Ready}"
+  gh_card "$BOARD" o/r 7 Ready
   gh_block_add o/r 7 5003
 }
 (world
