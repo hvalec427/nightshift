@@ -133,7 +133,7 @@ issue_count() { find "$(gh_dir "$1")/issues" -name '[0-9]*.json' ! -name '*.*.js
   expect "an org project with a view: read" "$(gh_calls "$QUERY" | wc -l | tr -d ' ')" 1
   expect "a card in Ready to merge: worked" "$(runs)" 1)
 
-# A column that isn't one of the seven isn't worked; one that is, whatever its case.
+# A column that isn't one of the eight isn't worked; one that is, whatever its case.
 (world
   gh_project alice/5 backlog ready "Blocked"
   origin_config "project=https://github.com/users/alice/projects/5"

@@ -2915,7 +2915,7 @@ repo_plugins() {
 
 # doctor's lines for repo $1's project board (project= in .nightshift/config), if it
 # has one: gh's `project` scope, the project and its Status field readable, and
-# each of the seven columns (BOARD_ROUTE) there.
+# each of the eight columns (BOARD_ROUTE) there.
 repo_board_doctor() {
   rbd=$(repo_option "$1" project)
   [ -n "$rbd" ] || return 0
@@ -2952,7 +2952,7 @@ repo_board_doctor() {
     fail missing "$1: the board's $(printf '%s' "$rbo" | awk '{print toupper(substr($0, 1, 1)) substr($0, 2)}') column" "add it to the Status field of $rbd"
     rbm=1
   done
-  [ $rbm -eq 0 ] && pass "$1: board $rbn ($rbd), its seven columns"
+  [ $rbm -eq 0 ] && pass "$1: board $rbn ($rbd), its eight columns"
   return 0
 }
 

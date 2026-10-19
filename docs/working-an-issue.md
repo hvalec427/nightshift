@@ -26,6 +26,7 @@ columns, matched by name without regard to case:
 |---|---|
 | Backlog | nothing: the card is left alone |
 | Ready | works the issue: a first run asks its questions or posts the plan |
+| Needs you | works it too: it waits on your reply before a pull request (questions, a plan waiting for its go, an answer, blocked) |
 | In progress, In review, Your review, Ready to merge | works it too |
 | Done | nothing |
 
@@ -45,12 +46,13 @@ other column is left alone. When several repos in `~/.nightshift/config` name th
 project, the first one listed turns its drafts into issues. A conversion that fails is
 logged and tried again on the next poll.
 
-Moving a card to In progress from any other column, after nightshift has posted a plan,
-approves it: the build starts in a fresh session as it does for a **go**, its approval the
-line `- the board: moved to In progress`. A card already in In progress when the plan posts
-doesn't approve it: reply **go**, or move the card out of In progress and back. A **go**
-reply approves as before and nightshift moves the card to In progress for you (with no In
-progress column, it builds and logs that it didn't move the card). The card moving without a plan waiting (questions still open) starts
+Moving a card to In progress from any other column (from Needs you, where a plan waits),
+after nightshift has posted a plan, approves it: the build starts in a fresh session as it
+does for a **go**, its approval the line `- the board: moved to In progress`. A card
+already in In progress when the plan posts doesn't approve it: reply **go**, or move the
+card out of In progress and back. A **go** reply approves as before and nightshift moves
+the card to In progress for you (with no In progress column, it builds and logs that it
+didn't move the card). The card moving without a plan waiting (questions still open) starts
 nothing. A board repo never builds without one of these: `auto_merge` is ignored, a plan
 never carries on by itself, nothing counts as a small issue, and nothing merges outside the
 card being in Ready to merge or a **merge** reply.
@@ -59,6 +61,8 @@ The card then follows the work, one move (a GraphQL mutation) each, only when it
 
 | When | The card goes to |
 |---|---|
+| A run starts on a card in Needs you (your reply, or the card moved to Ready) | Ready |
+| A run ends needing you before a pull request (questions, a plan waiting for its go, an answer, blocked) | Needs you, from Ready |
 | A build hands off, or a **go** approves; the build, tdd or update skill starts | In progress |
 | The review, finish or merge skill starts | In review |
 | Your comment starts a run on a card in Ready to merge | Your review, then In progress as the run starts |
@@ -68,16 +72,17 @@ The card then follows the work, one move (a GraphQL mutation) each, only when it
 | Its pull request merges | Done |
 
 So a comment on a card in Your review moves it to In progress, and the run ending puts it in
-Your review again. A card only moves forward along Backlog, Ready, In progress, In review, Your
-review, Ready to merge, Done; where you've already moved it past a column, nightshift leaves
-it. The ways back are Your review to In progress, and Ready to merge to Your review. Each move
-is decided on the board as it is then (read again just before), not as the last poll read it,
-so a card you moved a moment ago isn't overwritten. A column the project lacks means no move,
+Your review again; a reply on a card in Needs you moves it to Ready while the run works, and
+the run ending still waiting on you (before a pull request) puts it back. A card only moves forward along
+Backlog, Ready, Needs you, In progress, In review, Your review, Ready to merge, Done; where
+you've already moved it past a column, nightshift leaves it. The ways back are Needs you to
+Ready, Your review to In progress, and Ready to merge to Your review. Each move is decided on
+the board as it is then (read again just before), not as the last poll read it, so a card you moved a moment ago isn't overwritten. A column the project lacks means no move,
 and a line in the log (`nightshift logs`) says which.
 
 `nightshift doctor` checks each board repo: that `gh` has the `project` scope (it names the fix,
 `gh auth refresh -s project`), that the project and its Status field can be read, and which of
-the seven columns the project lacks (you add them; nightshift doesn't). A `project=` that isn't
+the eight columns the project lacks (you add them, Needs you too; nightshift doesn't). A `project=` that isn't
 a project's URL is reported too.
 
 Nothing merges until you move a card to Ready to merge (or reply **merge**). With a pull
