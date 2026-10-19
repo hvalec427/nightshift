@@ -673,6 +673,10 @@ $intro"
   if [ "$(board_column "$repo" "$n")" = "your review" ] && is_board "$repo"; then
     move_card "$repo" "$n" "In progress" || true
   fi
+  # A reply to a card in Needs you (questions, a plan waiting for its go) puts it back in Ready for the run.
+  if [ "$(board_column "$repo" "$n")" = "needs you" ] && is_board "$repo"; then
+    move_card "$repo" "$n" "Ready" || true
+  fi
   log "$repo#$n: run starting"
   t0=$(date +%s)
   printf '\n0\t=== %s run\n' "$(date '+%Y-%m-%d %H:%M:%S')" >>"$dir/log"
@@ -780,6 +784,14 @@ $intro"
       fi
     elif [ "$st" = "PR open" ] || [ "$st" = "needs you" ]; then
       move_card "$repo" "$n" "Your review" || true
+    fi
+  elif is_board "$repo" && [ ! -f "$dir/pr" ] && [ "$st" = "needs you" ]; then
+    # Needing the user before a pull request (questions, a plan waiting for its
+    # go): a card in Ready, by the board as it is now, waits in Needs you. One
+    # further along isn't moved back.
+    if [ "$(board_column "$repo" "$n")" = "ready" ]; then
+      refresh_board "$repo" || true
+      [ "$(board_column "$repo" "$n")" != "ready" ] || move_card "$repo" "$n" "Needs you" || true
     fi
   fi
 }
@@ -1723,7 +1735,7 @@ MOVE_CARD='mutation NightshiftMoveCard($project: ID!, $item: ID!, $field: ID!, $
 
 # The columns whose cards nightshift works, lower case, as a jq array; the
 # others (Backlog, Done, a card with none) it leaves alone.
-BOARD_WORKING='["ready", "in progress", "in review", "your review", "ready to merge"]'
+BOARD_WORKING='["ready", "needs you", "in progress", "in review", "your review", "ready to merge"]'
 
 # Repo $1's settings fetched from origin ($2 is its clone), every
 # NIGHTSHIFT_PR_INTERVAL (30 s): repo_option reads the last fetch, and a repo
@@ -1843,12 +1855,14 @@ board_column() {
 # that are allowed, a line each: from and to.
 BOARD_ROUTE='backlog
 ready
+needs you
 in progress
 in review
 your review
 ready to merge
 done'
 BOARD_BACK='your review|in progress
+needs you|ready
 ready to merge|your review'
 
 # Read repo $1's board again into its board.json (a poll's is up to a poll
@@ -2901,7 +2915,7 @@ repo_plugins() {
 
 # doctor's lines for repo $1's project board (project= in .nightshift/config), if it
 # has one: gh's `project` scope, the project and its Status field readable, and
-# each of the seven columns (BOARD_ROUTE) there.
+# each of the eight columns (BOARD_ROUTE) there.
 repo_board_doctor() {
   rbd=$(repo_option "$1" project)
   [ -n "$rbd" ] || return 0
@@ -2938,7 +2952,7 @@ repo_board_doctor() {
     fail missing "$1: the board's $(printf '%s' "$rbo" | awk '{print toupper(substr($0, 1, 1)) substr($0, 2)}') column" "add it to the Status field of $rbd"
     rbm=1
   done
-  [ $rbm -eq 0 ] && pass "$1: board $rbn ($rbd), its seven columns"
+  [ $rbm -eq 0 ] && pass "$1: board $rbn ($rbd), its eight columns"
   return 0
 }
 

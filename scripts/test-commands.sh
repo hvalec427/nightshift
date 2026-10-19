@@ -520,7 +520,7 @@ without() {
   try ns doctor
   expect_line "doctor: gh not logged in" "$OUT" "^  no      gh logged in: gh auth login$")
 
-# A board repo: o/r names alice's project 5 (columns $1.. , the seven by default).
+# A board repo: o/r names alice's project 5 (columns $1.. , the eight by default).
 BOARD_URL=https://github.com/users/alice/projects/5
 doctor_board() {
   healthy
@@ -531,8 +531,8 @@ doctor_board() {
 
 (doctor_board
   try ns doctor
-  expect "doctor: a board with all seven columns: passes" "$ST" 0
-  expect_line "doctor: says the board is all there" "$OUT" "^  ok      o/r: board alice/5 (https://github.com/users/alice/projects/5), its seven columns$"
+  expect "doctor: a board with all eight columns: passes" "$ST" 0
+  expect_line "doctor: says the board is all there" "$OUT" "^  ok      o/r: board alice/5 (https://github.com/users/alice/projects/5), its eight columns$"
   expect "doctor: the board is read in one query" "$(gh_calls "graphql .*query NightshiftBoard" | wc -l | tr -d ' ')" 1
   expect_line "doctor: a board repo's PRs merge from Ready to merge, not on their own" "$OUT" "^  ok      o/r: clone $CLONE, \`agent\` label, PRs merge when you move their cards to Ready to merge$"
   expect_line "doctor: not that they merge on their own" "$OUT" "PRs merge on their own" no
@@ -551,10 +551,11 @@ doctor_board() {
 (doctor_board Backlog Ready "In progress" "in review" Done
   try ns doctor
   expect "doctor: columns missing: fails" "$ST" 1
+  expect_line "doctor: names Needs you" "$OUT" "^  missing o/r: the board's Needs you column: add it to the Status field of $BOARD_URL$"
   expect_line "doctor: names Your review" "$OUT" "^  missing o/r: the board's Your review column: add it to the Status field of $BOARD_URL$"
   expect_line "doctor: names Ready to merge" "$OUT" "^  missing o/r: the board's Ready to merge column: add it to the Status field of $BOARD_URL$"
   expect_line "doctor: a column in another case is there" "$OUT" "In review" no
-  expect_line "doctor: counts them" "$OUT" "^2 to fix, then run nightshift doctor again$")
+  expect_line "doctor: counts them" "$OUT" "^3 to fix, then run nightshift doctor again$")
 
 (doctor_board
   gh_scopes gist read:org repo

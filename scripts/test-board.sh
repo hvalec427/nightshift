@@ -37,7 +37,7 @@ issue_count() { find "$(gh_dir "$1")/issues" -name '[0-9]*.json' ! -name '*.*.js
   gh_card "$BOARD" o/r 9 Done
   gh_card "$BOARD" o/r 11 "In progress"
   poll
-  expect "the board is read by the query" "$(gh_calls "$QUERY" | wc -l | tr -d ' ')" 1
+  expect "the board is read by the query: once, and twice more for card 7's move to Needs you" "$(gh_calls "$QUERY" | wc -l | tr -d ' ')" 3
   expect "the board repo doesn't list by label" "$(gh_calls "repos/o/r/issues?labels" | wc -l | tr -d ' ')" 0
   expect "runs: Ready and In progress only" "$(runs)" 2
   expect_ok "a card in Ready: a first run" test -f "$(idir 7)/started"
@@ -133,7 +133,7 @@ issue_count() { find "$(gh_dir "$1")/issues" -name '[0-9]*.json' ! -name '*.*.js
   expect "an org project with a view: read" "$(gh_calls "$QUERY" | wc -l | tr -d ' ')" 1
   expect "a card in Ready to merge: worked" "$(runs)" 1)
 
-# A column that isn't one of the seven isn't worked; one that is, whatever its case.
+# A column that isn't one of the eight isn't worked; one that is, whatever its case.
 (world
   gh_project alice/5 backlog ready "Blocked"
   origin_config "project=https://github.com/users/alice/projects/5"
@@ -154,7 +154,7 @@ issue_count() { find "$(gh_dir "$1")/issues" -name '[0-9]*.json' ! -name '*.*.js
   d3=$(gh_draft "$BOARD" "Being built" "In progress")
   poll
   expect "the Ready draft is an issue now" "$(jq -r .title "$(gh_dir o/r)/issues/1.json")" "Add a dark mode"
-  expect "and its card is still in Ready" "$(gh_card_column "$BOARD" o/r 1)" "Ready"
+  expect "and its card waits in Needs you after the run" "$(gh_card_column "$BOARD" o/r 1)" "Needs you"
   expect "the card kept its item id" "$(jq -r '.[0].id' "$(gh_project_dir "$BOARD")/items.json")" "$d1"
   expect "a run started on the new issue" "$(runs)" 1
   expect_ok "on issue 1" test -f "$(idir 1)/started"
@@ -223,11 +223,12 @@ planned() {
   gh_card "$BOARD" o/r 7 Ready
   runs_do 'skill nightshift:plan; comment plan "T1: the fast path."'
   poll
+  expect "the plan is posted: the card waits in Needs you" "$(gh_card_column "$BOARD" o/r 7)" "Needs you"
 }
 (world
   planned
   expect "the plan is posted: one run" "$(runs)" 1
-  expect "and the card stays in Ready" "$(gh_card_column "$BOARD" o/r 7)" "Ready"
+  expect "and the card stays in Needs you" "$(gh_card_column "$BOARD" o/r 7)" "Needs you"
   poll
   expect "nothing new: no second run" "$(runs)" 1
   gh_card_move "$BOARD" o/r 7 "In progress"
@@ -242,7 +243,7 @@ planned() {
   expect_ok "nothing is left pending" test ! -f "$(idir 7)/build"
   poll
   expect "nothing new after: no run" "$(runs)" 2
-  expect "no move of the watcher's: the card is where the user put it" "$(gh_calls "mutation NightshiftMoveCard" | wc -l | tr -d ' ')" 0
+  expect "no move of the watcher's but the plan's, to Needs you: the card is where the user put it" "$(gh_calls "mutation NightshiftMoveCard" | wc -l | tr -d ' ')" 1
   expect_no_unexpected)
 
 # A comment of the user's with the move reaches the build, held out of the approval.
@@ -337,7 +338,7 @@ planned() {
   expect "a fresh session" "$(run_opt --resume)" ""
   expect_line "the approval is the go" "$(sed -n '/^The approval:/,$p' <<<"$(run_prompt)")" "^- @alice (comment $id):$"
   expect "the card moved to In progress" "$(gh_card_column "$BOARD" o/r 7)" "In progress"
-  expect "with one move" "$(gh_calls "mutation NightshiftMoveCard" | wc -l | tr -d ' ')" 1
+  expect "with one move besides the plan's, to Needs you" "$(gh_calls "mutation NightshiftMoveCard" | wc -l | tr -d ' ')" 2
   poll
   expect "the move isn't a second approval" "$(runs)" 2
   expect_no_unexpected)
@@ -430,6 +431,70 @@ BUILDS='skill nightshift:build; commit feature.txt; open_pr; skill nightshift:re
   expect "the run on a change request: the card is in In progress" "$(gh_card_column "$BOARD" o/r 7)" "In progress"
   kill "$(cat "$(idir 7)/pid")"
   wait "$bg" || true)
+
+# A run that ends needing you before a pull request (questions, a plan waiting for its
+# go) moves the card from Ready to Needs you; a reply puts it back in Ready for the run.
+(world
+  board
+  gh_issue o/r 7 alice
+  gh_card "$BOARD" o/r 7 Ready
+  runs_do 'skill nightshift:questions; comment questions'
+  poll
+  expect "a questions run on a card in Ready: the card is in Needs you" "$(gh_card_column "$BOARD" o/r 7)" "Needs you"
+  poll
+  expect "nothing new: still in Needs you, one move" "$(moves)" 1
+
+  gh_comment o/r 7 alice "yes, the fast path" >/dev/null
+  runs_do 'hang'
+  "$ROOT/nightshift" once &
+  bg=$!
+  wait_for "$CLAUDE_FAKE/runs/2/waiting"
+  expect "a reply: the run starts with the card in Ready" "$(gh_card_column "$BOARD" o/r 7)" "Ready"
+  kill "$(cat "$(idir 7)/pid")"
+  wait "$bg" || true)
+(world
+  board
+  gh_issue o/r 7 alice
+  gh_card "$BOARD" o/r 7 Ready
+  runs_do 'skill nightshift:questions; comment questions'
+  poll
+  gh_comment o/r 7 alice "yes, the fast path" >/dev/null
+  runs_do 'skill nightshift:plan; comment plan "T1: the fast path."'
+  poll
+  expect "the reply's run ends with a plan: the card is in Needs you again" "$(gh_card_column "$BOARD" o/r 7)" "Needs you"
+  expect "Needs you, Ready, Needs you" "$(grep -o 'card moved to .*' "$NS/watch.log" | paste -sd, -)" "card moved to Needs you,card moved to Ready,card moved to Needs you"
+  expect_no_unexpected)
+
+# A run ending needing you with a pull request open still goes to Your review.
+(world
+  board
+  gh_issue o/r 7 alice
+  gh_card "$BOARD" o/r 7 Ready
+  runs_do 'skill nightshift:build; commit feature.txt; open_pr; comment blocked'
+  poll
+  expect "a hand-off with a pull request open: Your review" "$(gh_card_column "$BOARD" o/r 7)" "Your review"
+  expect "never through Needs you" "$(grep -c 'card moved to Needs you' "$NS/watch.log" || true)" 0)
+
+# A card in In progress with no pull request isn't moved back to Needs you.
+(world
+  board
+  gh_issue o/r 7 alice
+  gh_card "$BOARD" o/r 7 "In progress"
+  runs_do 'comment blocked'
+  poll
+  expect "a run ending needing you on a card in In progress: it stays" "$(gh_card_column "$BOARD" o/r 7)" "In progress"
+  expect "and nothing moved it" "$(moves)" 0)
+
+# A board with no Needs you column: the card stays in Ready, and the log says so.
+(world
+  gh_project "$BOARD" Backlog Ready "In progress" "In review" "Your review" "Ready to merge" Done
+  origin_config "project=https://github.com/users/alice/projects/5"
+  gh_issue o/r 7 alice
+  gh_card "$BOARD" o/r 7 Ready
+  runs_do 'skill nightshift:questions; comment questions'
+  poll
+  expect "no Needs you column: the card stays in Ready" "$(gh_card_column "$BOARD" o/r 7)" "Ready"
+  expect_line "the log says so" "$(cat "$NS/watch.log")" "o/r#7: the board has no Needs you column: card not moved")
 
 # Nothing moves a card back: one in Ready to merge stays there as a skill sets a status.
 (world

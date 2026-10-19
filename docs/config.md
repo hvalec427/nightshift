@@ -45,7 +45,7 @@ interval=5
     [Working from a project board](working-an-issue.md#working-from-a-project-board);
     a draft card in Ready becomes an issue of the repo there, and `auto_merge` is ignored.
     `gh` needs the `project` scope (`gh auth refresh -s project`), and the project's Status
-    field its seven columns; `nightshift doctor` checks both and names what is missing. Unset,
+    field its eight columns; `nightshift doctor` checks both and names what is missing. Unset,
     nothing changes.
   - `base_branch=develop` is the branch its pull requests merge into, when that isn't the
     default branch. A new issue's branch starts from `origin/develop`, its pull request opens
