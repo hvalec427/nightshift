@@ -98,6 +98,18 @@ and the next poll starts the merge run. A card that was in Ready to merge before
 saw it starts no merge by itself, and a card moved there with no pull request yet starts
 none until a run ends with one open.
 
+A card with open blockers (GitHub's "blocked by") is held at any stage, not only before its
+first run: it starts no run, labelled `nightshift: waiting`, until they close. What you do
+meanwhile is kept: your comments, a move to In progress with a plan waiting, a move to Ready
+to merge with a pull request open. The first poll after the last blocker closes starts the
+run with all of it. A card with nothing to run when it's released goes back to the status it
+had (`PR open`, `needs you`). A blocker added while a run is going doesn't stop it; the card
+is held once the run ends.
+
+`nightshift status` names what a held card waits for: `waiting · after #5, owner/repo#3`, or
+`PR <url> · waiting · after #5` when it has a pull request open. The line goes when the last
+blocker closes.
+
 ## Sessions and worktrees
 
 Each issue gets its own worktree (in the repo's clone, `.claude/worktrees/issue-<n>`,
@@ -190,7 +202,7 @@ waiting on you:
 | `nightshift: answering` | a run is answering a `question` or `duplicate` issue |
 | `nightshift: needs you` | waiting on your reply: questions, an answer, a plan, blocked, a pull request to look at before it merges, a failed run, or one that stalled twice. It comes off as soon as the watcher sees your reply |
 | `nightshift: PR open` | the pull request is open, nothing running |
-| `nightshift: waiting` | a sub-issue blocked by issues that are still open: held until they close, then its first run starts; or a parent whose sub-issues are not all done |
+| `nightshift: waiting` | a sub-issue blocked by issues that are still open: held until they close, then its first run starts (a board card is held at any stage); or a parent whose sub-issues are not all done |
 | `nightshift: stopped` | a run was stopped partway |
 
 The watcher sets them as runs start and end, and as a run invokes one of
@@ -213,7 +225,8 @@ Others' comments don't start it. `nightshift status` shows a held one as
 
 An issue with open blockers (GitHub's "blocked by", as `nightshift sub-issue` sets) that hasn't had
 its first run is held the same way, labelled `nightshift: waiting`: the watcher checks it every
-poll and starts it once its blockers are closed. One already worked on isn't held.
+poll and starts it once its blockers are closed. One already worked on isn't held, unless its repo
+works from a [project board](#working-from-a-project-board), where a card is held at any stage.
 
 A parent (an issue whose run made sub-issues) is `waiting` until they're all done. Each time a
 sub-issue's pull request merges, the watcher comments `#161 merged (2 of 4)` on the parent, once;

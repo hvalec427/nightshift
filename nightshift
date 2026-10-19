@@ -34,11 +34,12 @@
 # then why),
 # `conflict` (the default branch's commit its pull request was last updated
 # for), `column` (a board repo: the column its card was last seen in, lower case),
-# `merge-move` (a board repo: the card is in Ready to merge with its pull request
-# open and no merge run has started for it, so one is queued; gone once a run
-# starts), `merging-board` (a board repo: the run that just started, with no
-# comment of the user's, carries the merge news; the run reads and removes it),
-# `log` (readable, live) and `out.jsonl` (the last run's raw stream-json),
+# `blockers` (a board repo: the open issues holding its card, as `after` lists them,
+# until they close: see poll_repo), `merge-move` (a board repo: the card is in Ready to
+# merge with its pull request open and no merge run has started for it, so one is
+# queued; gone once a run starts), `merging-board` (a board repo: the run that just
+# started, with no comment of the user's, carries the merge news; the run reads and
+# removes it), `log` (readable, live) and `out.jsonl` (the last run's raw stream-json),
 # `subs` (the sub-issues it made, a number a line: see cmd_sub_issue;
 # `subs-noted`, the ones merged it commented on, and `subs-closed`, that it closed
 # itself once they all merged: see check_subs; `subs-linking`, the ones
@@ -52,8 +53,8 @@
 # `usage`, `agents`, `models`, `subs`, `subs-noted` and `subs-closed` stay
 # (`revived`, the merged pull request a comment brought it back from);
 # `label`, its status label (see STATUSES; `waiting` while open blockers hold its
-# first run, which the watcher checks every poll); `skill`, the last nightshift skill
-# its session invoked (see SKILL_STATUSES); `type`, its type label as the
+# first run, or on a board its card at any stage, which the watcher checks every
+# poll); `skill`, the last nightshift skill its session invoked (see SKILL_STATUSES); `type`, its type label as the
 # last run left it (see TYPES); and per repo, `merged/<owner>_<repo>`, the
 # merged nightshift pull requests seen, `labels/<owner>_<repo>`, the
 # version of the status labels created there, `poll/<owner>_<repo>.board.json`,
@@ -77,6 +78,8 @@ DOMAIN="gui/$(id -u)"
 MARKER="<!-- nightshift -->"
 # What `nightshift build --carry-on` leaves in `build` instead of an approval.
 CARRY_ON="- nightshift: the plan has no open choices, so it's built without waiting for a go."
+# The approval of a plan by moving its card to In progress (see poll_repo).
+BMOVE="- the board: moved to In progress"
 LABEL=agent
 # Who gh is logged in as, once `watch` has asked.
 LOGIN=""
@@ -1688,6 +1691,8 @@ BOARD_QUERY='query NightshiftBoard($owner: String!, $number: Int!, $endCursor: S
                 repository { nameWithOwner }
                 author { login }
                 labels(first: 50) { nodes { name } }
+                issueDependenciesSummary { blockedBy }
+                blockedBy(first: 50) { nodes { number state repository { nameWithOwner } } }
               }
               ... on DraftIssue { id title }
             }
@@ -1762,7 +1767,9 @@ board_first_repo() {
 
 # Read the board $2 (its owner) $3 (its number) for repo $1 into its board.json,
 # and print the repo's issues on it in a working column, open, as the issues
-# list gives them (number, updated_at, labels). Fails if the board can't be read.
+# list gives them (number, updated_at, labels, issue_dependencies_summary with
+# the count of open blockers) and `blockers`, the open ones' references (`#5`,
+# or `o/x#3` in another repo). Fails if the board can't be read.
 list_board() {
   bf=$(board_file "$1")
   mkdir -p "$NS/poll"
@@ -1776,7 +1783,11 @@ list_board() {
           | { id, status: (.fieldValueByName.name // null), type: .content.__typename }
             + (if .content.__typename == "Issue"
                then { repo: .content.repository.nameWithOwner, number: .content.number, updated_at: .content.updatedAt,
-                      state: .content.state, labels: [.content.labels.nodes[].name], author: .content.author.login }
+                      state: .content.state, labels: [.content.labels.nodes[].name], author: .content.author.login,
+                      blocked_by: (.content.issueDependenciesSummary.blockedBy // 0),
+                      blockers: ((.content.repository.nameWithOwner | ascii_downcase) as $r
+                        | [.content.blockedBy.nodes[] | select(.state == "OPEN")
+                          | if (.repository.nameWithOwner | ascii_downcase) == $r then "#\(.number)" else "\(.repository.nameWithOwner)#\(.number)" end]) }
                elif .content.__typename == "DraftIssue" then { draft_id: .content.id, title: .content.title }
                else {} end)] } end' >"$bf.$$.tmp" 2>"$bf.$$.err" || { cat "$bf.$$.err" >&2; rm -f "$bf.$$.tmp" "$bf.$$.err"; return 1; }
   mv "$bf.$$.tmp" "$bf"
@@ -1784,7 +1795,8 @@ list_board() {
   jq -c --arg r "$1" --argjson work "$BOARD_WORKING" '
     [.items[] | select(.type == "Issue" and (.repo | ascii_downcase) == ($r | ascii_downcase) and .state == "OPEN"
         and ((.status // "") | ascii_downcase | IN($work[])))
-      | { number, updated_at, labels: [.labels[] | { name: . }] }]' "$bf"
+      | { number, updated_at, labels: [.labels[] | { name: . }],
+          issue_dependencies_summary: { blocked_by }, blockers }]' "$bf"
 }
 
 # Turn the draft cards in Ready of repo $1's board (as the last list_board
@@ -1956,7 +1968,7 @@ poll_repo() {
   proposed=$(printf '%s\n' "$issues" | jq -r '.[] | select(any(.labels[]; .name == "nightshift: proposed")) | .number')
 
   # The ones with open blockers (GitHub counts them in the list), held until
-  # they close if they haven't had their first run.
+  # they close if they haven't had their first run; on a board, at any stage.
   blocked=$(printf '%s\n' "$issues" | jq -r '.[] | select((.issue_dependencies_summary.blocked_by // 0) > 0) | .number')
   # And the sub-issues a run is still linking (see cmd_sub_issue): with
   # all_issues, listed before their blockers are.
@@ -2023,7 +2035,8 @@ poll_repo() {
     # one), with a plan waiting, is the plan's approval. The board doesn't bump
     # the issue's updated_at, so the move is noticed here, against the column
     # the card was last seen in.
-    bmove=0 col=""
+    bmove=0 col="" held_now=0
+    [ -n "$board" ] && printf '%s\n' "$blocked" | grep -qx "$n" && held_now=1
     if [ -n "$board" ] && [ -d "$d" ]; then
       col=$(board_column "$repo" "$n")
       [ "$(cat "$d/column" 2>/dev/null)" != "in progress" ] && [ "$col" = "in progress" ] && handoff_ok "$d" && plan_pending "$repo" "$n" && bmove=1
@@ -2034,7 +2047,7 @@ poll_repo() {
       [ "$col" = "ready to merge" ] || rm -f "$d/merge-move"
       printf '%s\n' "$col" >"$d/column"
     fi
-    [ "$bmove" != 1 ] && [ ! -f "$d/merge-move" ] && [ ! -f "$d/update" ] && [ ! -f "$d/build" ] && [ ! -f "$d/interrupted" ] && [ ! -f "$d/stalled" ] && [ -f "$d/updated" ] && [ "$(cat "$d/updated")" = "$updated" ] && continue
+    [ "$held_now" -eq 0 ] && [ ! -f "$d/blockers" ] && [ "$bmove" != 1 ] && [ ! -f "$d/merge-move" ] && [ ! -f "$d/update" ] && [ ! -f "$d/build" ] && [ ! -f "$d/interrupted" ] && [ ! -f "$d/stalled" ] && [ -f "$d/updated" ] && [ "$(cat "$d/updated")" = "$updated" ] && continue
     if [ ! -d "$d" ] && [ -n "$board" ]; then
       # A card in a working column: only people who can write to the project move cards.
       mkdir -p "$d"
@@ -2056,16 +2069,29 @@ poll_repo() {
     [ -f "$d/ignored" ] && { echo "$updated" >"$d/updated"; continue; }
     first_run=0
     [ -s "$d/session" ] || [ -f "$d/started" ] || first_run=1
-    # Blocked, never run: held, checked again every poll (its updated isn't
-    # recorded), and started once its blockers are closed.
+    # Blocked, never run (on a board, at any stage): held, checked again every
+    # poll (its updated isn't recorded, nor its news seen), and started once its
+    # blockers are closed. A board's column moves still count: the hold only
+    # keeps the run back.
     if [ $first_run -eq 1 ] && printf '%s\n' "$linking" | grep -qx "$n"; then
       did="$did, #$n being linked"
       continue
-    elif [ $first_run -eq 1 ] && printf '%s\n' "$blocked" | grep -qx "$n"; then
-      printf '%s\n' "$proposed" | grep -qx "$n" || set_status "$repo" "$n" waiting
+    elif [ "$held_now" -eq 1 ] || { [ $first_run -eq 1 ] && printf '%s\n' "$blocked" | grep -qx "$n"; }; then
+      held_proposed=0
+      printf '%s\n' "$proposed" | grep -qx "$n" && held_proposed=1
+      [ $held_proposed -eq 1 ] || set_status "$repo" "$n" waiting
+      if [ -n "$board" ]; then
+        [ "$bmove" != 1 ] || [ -f "$d/build" ] || printf '%s\n' "$BMOVE" >"$d/build"
+        # What `status` names (a proposed card reads as proposed instead).
+        [ $held_proposed -eq 1 ] ||
+          printf '%s\n' "$issues" | jq -r --argjson n "$n" '.[] | select(.number == $n) | .blockers | map(ltrimstr("#")) | join(",")' >"$d/blockers"
+      fi
       did="$did, #$n blocked"
       continue
     fi
+    # Released: its status goes back to what it was if no run starts.
+    released=0
+    [ ! -f "$d/blockers" ] || { released=1; rm -f "$d/blockers"; }
     seen=$(cat "$d/seen" 2>/dev/null || echo 0)
     filter=".[] | select(.id > $seen and (.user.login as \$u | $allowed | index(\$u)) and (.body | contains(\"$MARKER\") | not))"
     news=$(gh api --paginate "repos/$repo/issues/$n/comments?per_page=100" \
@@ -2078,8 +2104,9 @@ poll_repo() {
       continue
     fi
     # A plain "go" to the plan: build it in a fresh session (see run_agent).
-    if [ "$bmove" = 1 ]; then
-      printf '%s\n%s' "- the board: moved to In progress" "${news:+
+    if [ "$bmove" = 1 ] || { [ "$(cat "$d/build" 2>/dev/null)" = "$BMOVE" ] && [ -n "$news" ]; }; then
+      # Or a move a hold kept back, released now with the comments made since.
+      printf '%s\n%s' "$BMOVE" "${news:+
 $news}" >"$d/build"
     elif [ -n "$news" ] && handoff_ok "$d" && approves "$repo" "$n" "$filter"; then
       printf '%s' "$news" >"$d/build"
@@ -2091,6 +2118,7 @@ $news}" >"$d/build"
     [ -n "$news" ] && [ "$(cat "$d/label" 2>/dev/null)" = "needs you" ] && set_status "$repo" "$n" ""
     if [ $first_run -eq 0 ] && [ -z "$news" ] && [ ! -f "$d/interrupted" ] && [ ! -f "$d/stalled" ] && [ ! -f "$d/update" ] && [ ! -f "$d/build" ] && [ ! -f "$d/merge-move" ]; then
       echo "$updated" >"$d/updated"
+      [ $released -eq 0 ] || set_status "$repo" "$n" "$(idle_status "$d")"
       continue
     fi
     if [ "$(count_running)" -ge "$(setting max_parallel 2)" ]; then
@@ -2297,6 +2325,8 @@ issue_text() {
   elif [ -f "$d/off" ] && [ -f "$d/interrupted" ]; then what="stopped $(age "$d/off") ago ($(cat "$d/off")) · $(resume_hint "$d")"
   elif [ -f "$d/off" ] && [ -f "$d/pr" ]; then what="PR $(cat "$d/pr") · $(cat "$d/off")"
   elif [ -f "$d/off" ]; then what="$(cat "$d/off") $(age "$d/off") ago"
+  elif [ -f "$d/blockers" ] && [ -f "$d/pr" ]; then what="PR $(cat "$d/pr") · waiting$(blockers_note "$d")"
+  elif [ -f "$d/blockers" ]; then what="waiting$(blockers_note "$d")"
   elif [ -f "$d/interrupted" ] || [ -f "$d/stalled" ]; then what="queued to resume"
   elif [ -f "$d/build" ]; then what="queued to build"
   elif [ -f "$d/update" ]; then what="PR $(cat "$d/pr") · queued: $(head -1 "$d/update")"
@@ -2629,6 +2659,11 @@ label_or() {
 # The issues an open pull request goes after: " · after #10, #11", or nothing.
 after_note() {
   [ -s "$1/after" ] && printf ' · after #%s' "$(sed 's/,/, #/g' "$1/after")"
+}
+
+# The issues holding a board card: " · after #5, o/x#3", or nothing.
+blockers_note() {
+  [ -s "$1/blockers" ] && printf ' · after %s' "$(tr ',' '\n' <"$1/blockers" | sed '/#/!s/^/#/' | paste -sd, - | sed 's/,/, /g')"
 }
 
 # What brings a stopped run back.
