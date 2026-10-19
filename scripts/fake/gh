@@ -147,13 +147,20 @@ graphql() {
 # Project $1 as the board query answers it, on one page: its id, Status field
 # and options, and its cards, an issue's read from the fake repo as it is now.
 board_page() {
-  local d r n issues="{}"
+  local d r n b i issues="{}" blockers="{}"
   d=$(gh_project_dir "$1")
   while IFS=' ' read -r r n; do
-    [ -f "$(gh_dir "$r")/issues/$n.json" ] &&
-      issues=$(jq -c --arg k "$r#$n" --slurpfile i "$(gh_dir "$r")/issues/$n.json" '.[$k] = $i[0]' <<<"$issues")
+    [ -f "$(gh_dir "$r")/issues/$n.json" ] || continue
+    issues=$(jq -c --arg k "$r#$n" --slurpfile i "$(gh_dir "$r")/issues/$n.json" '.[$k] = $i[0]' <<<"$issues")
+    # The issues it is blocked by, each as it is now.
+    for i in $(jq -r '.blocked_by_ids[]' "$(gh_dir "$r")/issues/$n.json"); do
+      b=$(gh_id_number "$r" "$i")
+      [ -n "$b" ] || continue
+      blockers=$(jq -c --arg k "$r#$n" --arg r "$r" --slurpfile b "$(gh_dir "$r")/issues/$b.json" \
+        '.[$k] += [{number: $b[0].number, state: ($b[0].state | ascii_upcase), repository: {nameWithOwner: $r}}]' <<<"$blockers")
+    done
   done < <(jq -r '.[] | select(.repo) | "\(.repo) \(.number)"' "$d/items.json")
-  jq -c --slurpfile items "$d/items.json" --argjson issues "$issues" '
+  jq -c --slurpfile items "$d/items.json" --argjson issues "$issues" --argjson blockers "$blockers" '
     . as $p | {data: {repositoryOwner: {projectV2: {
       id: .id,
       field: (if .field then {id: .field.id, options: .field.options} else null end),
@@ -165,7 +172,9 @@ board_page() {
            content: (if .draft then {__typename: "DraftIssue", id: .draft.id, title: .draft.title}
              else $issues[$i.repo + "#\($i.number)"] as $s
              | if $s then {__typename: "Issue", number: $s.number, updatedAt: $s.updated_at, state: ($s.state | ascii_upcase),
-                 repository: {nameWithOwner: $i.repo}, author: {login: $s.user.login}, labels: {nodes: $s.labels}}
+                 repository: {nameWithOwner: $i.repo}, author: {login: $s.user.login}, labels: {nodes: $s.labels},
+                 issueDependenciesSummary: {blockedBy: ([$blockers[$i.repo + "#\($i.number)"][]? | select(.state == "OPEN")] | length)},
+                 blockedBy: {nodes: ($blockers[$i.repo + "#\($i.number)"] // [])}}
                else null end end)}]}}}}}' "$d/project.json"
 }
 

@@ -632,4 +632,136 @@ built() {
   expect "a slot frees: the merge run starts" "$(runs)" 2
   expect_line "with the news" "$(run_prompt)" "^- the board: the card is in Ready to merge$")
 
+# A card blocked by an open issue, never run: no run until the blocker closes.
+# `blocked_card` puts card 7 in Ready, blocked by issue 3 (not on the board).
+blocked_card() {
+  board
+  gh_issue o/r 3 alice
+  gh_issue o/r 7 alice
+  gh_card "$BOARD" o/r 7 "${1:-Ready}"
+  gh_block_add o/r 7 5003
+}
+(world
+  blocked_card
+  poll
+  poll
+  expect "open blocker, first run: no run" "$(runs)" 0
+  expect "its status: waiting" "$(status_label 7)" waiting
+  expect "its updated isn't recorded" "$(state 7 updated)" ""
+  expect "its blockers are noted" "$(state 7 blockers)" "3"
+  expect_line "the log says so" "$(cat "$NS/watch.log")" "#7 blocked"
+  gh_comment o/r 7 alice "hello" >/dev/null
+  poll
+  expect "a comment while blocked: still no run" "$(runs)" 0
+  gh_state o/r 3
+  poll
+  expect "the blocker closed: its first run" "$(runs)" 1
+  expect_line "the comment made while it waited reaches the run" "$(run_prompt)" "^hello$"
+  expect_ok "the blockers note is gone" test ! -f "$(idir 7)/blockers"
+  expect_no_unexpected)
+
+# A card that has run gets a blocker: a reply doesn't start a run until it closes, and
+# then the run holds the reply.
+(world
+  board
+  gh_issue o/r 7 alice
+  gh_card "$BOARD" o/r 7 Ready
+  runs_do 'comment questions'
+  poll
+  expect "a first run" "$(runs)" 1
+  gh_issue o/r 3 alice
+  gh_block_add o/r 7 5003
+  gh_comment o/r 7 alice "1 yes" >/dev/null
+  poll
+  expect "blocked, a reply: no run" "$(runs)" 1
+  expect "its status: waiting" "$(status_label 7)" waiting
+  expect "its blocker is noted" "$(state 7 blockers)" "3"
+  runs_do 'comment progress'
+  gh_state o/r 3
+  poll
+  expect "the blocker closed: a run" "$(runs)" 2
+  expect_line "it holds the reply" "$(run_prompt)" "^1 yes$"
+  expect_no_unexpected)
+
+# A held card with a plan, moved to In progress: no build until released.
+(world
+  planned
+  gh_issue o/r 3 alice
+  gh_block_add o/r 7 5003
+  gh_card_move "$BOARD" o/r 7 "In progress"
+  poll
+  poll
+  expect "the move while blocked: no build" "$(runs)" 1
+  expect "its status: waiting" "$(status_label 7)" waiting
+  runs_do 'comment progress'
+  gh_state o/r 3
+  poll
+  expect "released: the build starts" "$(runs)" 2
+  expect "in a fresh session" "$(run_opt --resume)" ""
+  expect_line "the prompt: the plan is approved" "$(run_prompt)" "^The plan is approved: build it with the nightshift:build skill"
+  expect_line "the approval is the board" "$(sed -n '/^The approval:/,$p' <<<"$(run_prompt)")" "^- the board: moved to In progress$"
+  expect_no_unexpected)
+
+# A comment made while the build was held reaches the build.
+(world
+  planned
+  gh_issue o/r 3 alice
+  gh_block_add o/r 7 5003
+  gh_card_move "$BOARD" o/r 7 "In progress"
+  poll
+  early=$(gh_comment o/r 7 alice "also handle the empty case")
+  poll
+  runs_do 'comment progress'
+  gh_state o/r 3
+  poll
+  expect_line "the held comment is in the approval" "$(sed -n '/^The approval:/,$p' <<<"$(run_prompt)")" "^- @alice (comment $early):$"
+  expect_no_unexpected)
+
+# A held card with a pull request, moved to Ready to merge: no merge run until released.
+(world
+  built
+  gh_issue o/r 3 alice
+  gh_block_add o/r 7 5003
+  gh_card_move "$BOARD" o/r 7 "Ready to merge"
+  poll
+  poll
+  expect "the move while blocked: no merge run" "$(runs)" 1
+  expect "its status: waiting" "$(status_label 7)" waiting
+  runs_do 'skill nightshift:merge; cp "$CLAUDE_FAKE/runs/1/pr" "$RUN/pr"; merge_pr; comment done'
+  gh_state o/r 3
+  poll
+  expect "released: the merge run starts" "$(runs)" 2
+  expect_line "its news says where the card is" "$(sed -n '/^New on the issue/,$p' <<<"$(run_prompt)")" "^- the board: the card is in Ready to merge$"
+  expect_no_unexpected)
+
+# Released with nothing new: no run, and the status is what it was.
+(world
+  built
+  expect "a build: the pull request is open" "$(status_label 7)" "PR open"
+  gh_issue o/r 3 alice
+  gh_block_add o/r 7 5003
+  poll
+  expect "blocked after its build: waiting" "$(status_label 7)" waiting
+  gh_state o/r 3
+  poll
+  expect "released with nothing new: no run" "$(runs)" 1
+  expect "its status: PR open again" "$(status_label 7)" "PR open"
+  expect_ok "its blockers note is gone" test ! -f "$(idir 7)/blockers"
+  expect_no_unexpected)
+
+# A blocker added while a run goes doesn't stop it; the card is held after.
+(world
+  board
+  gh_issue o/r 7 alice
+  gh_issue o/r 3 alice
+  gh_card "$BOARD" o/r 7 Ready
+  runs_do 'gh_block_add o/r 7 5003; comment questions'
+  poll
+  expect "the run finished: one run" "$(runs)" 1
+  expect_ok "it wasn't stopped" test ! -f "$(idir 7)/interrupted"
+  gh_comment o/r 7 alice "1 yes" >/dev/null
+  poll
+  expect "a reply after: held" "$(runs)" 1
+  expect "its status: waiting" "$(status_label 7)" waiting)
+
 report

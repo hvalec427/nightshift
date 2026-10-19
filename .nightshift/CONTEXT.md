@@ -33,7 +33,8 @@ nightshift's runs read this file and keep it up to date.
 - **parent**: the large issue whose sub-issues these are, kept in its dir's `subs`. It opens no
   pull request; it closes when every sub-issue has merged, with one cost comment that totals them.
 - **waiting**: the `nightshift: waiting` status: a sub-issue held for open blockers before its
-  first run, or a parent with sub-issues not yet all merged.
+  first run, a card on a board held for open blockers at any stage, or a parent with sub-issues
+  not yet all merged.
 - **look item**: what stops the merge skill with a `look` comment until the user replies
   **merge**: a failed hard gate, an open review finding the plan didn't settle, a decision the
   plan didn't cover, a security-relevant change, or a request to see it first.
