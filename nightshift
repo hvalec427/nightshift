@@ -2019,13 +2019,14 @@ poll_repo() {
     count=$((count + 1))
     d=$(issue_dir "$repo" "$n")
     running "$d" && { did="$did, #$n running"; continue; }
-    # A card moved from Ready to In progress, with a plan waiting, is the plan's
-    # approval. The board doesn't bump the issue's updated_at, so the move is
-    # noticed here, against the column the card was last seen in.
+    # A card moved into In progress from any other column (or never seen in
+    # one), with a plan waiting, is the plan's approval. The board doesn't bump
+    # the issue's updated_at, so the move is noticed here, against the column
+    # the card was last seen in.
     bmove=0 col=""
     if [ -n "$board" ] && [ -d "$d" ]; then
       col=$(board_column "$repo" "$n")
-      [ "$(cat "$d/column" 2>/dev/null)" = ready ] && [ "$col" = "in progress" ] && handoff_ok "$d" && plan_pending "$repo" "$n" && bmove=1
+      [ "$(cat "$d/column" 2>/dev/null)" != "in progress" ] && [ "$col" = "in progress" ] && handoff_ok "$d" && plan_pending "$repo" "$n" && bmove=1
       # A card moved into Ready to merge, with a pull request, is a merge approval,
       # queued until the run starts.
       [ -s "$d/column" ] && [ "$(cat "$d/column")" != "ready to merge" ] && [ "$col" = "ready to merge" ] && [ -f "$d/pr" ] && [ ! -f "$d/done" ] && touch "$d/merge-move"

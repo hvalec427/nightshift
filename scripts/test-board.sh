@@ -214,7 +214,7 @@ two() {
   expect_line "and the log says so" "$(cat "$NS/watch.log")" "o/r: project= in .nightshift/config isn't a project URL"
   expect "and the label list isn't read" "$(gh_calls "issues?labels" | wc -l | tr -d ' ')" 0)
 
-# A card moved from Ready to In progress, a plan waiting, is the plan's approval:
+# A card moved to In progress, a plan waiting, is the plan's approval:
 # a fresh build session, its approval the board line.
 planned() {
   board
@@ -268,6 +268,51 @@ planned() {
   gh_card_move "$BOARD" o/r 7 "In progress"
   poll
   expect "no plan to approve: no run" "$(runs)" 1
+  expect_ok "and no build pending" test ! -f "$(idir 7)/build")
+
+# Moved to In progress from any other column, a plan waiting, approves it too. A card
+# in Backlog is off the list, so its column isn't recorded there; In review is.
+(world
+  planned
+  gh_card_move "$BOARD" o/r 7 Backlog
+  poll
+  gh_card_move "$BOARD" o/r 7 "In progress"
+  runs_do 'comment progress'
+  poll
+  expect "Backlog to In progress: a run" "$(runs)" 2
+  expect "it's a fresh session" "$(run_opt --resume)" ""
+  expect_line "the approval is the board" "$(sed -n '/^The approval:/,$p' <<<"$(run_prompt)")" "^- the board: moved to In progress$")
+(world
+  planned
+  gh_card_move "$BOARD" o/r 7 "In review"
+  poll
+  expect "seen in In review: no run" "$(runs)" 1
+  gh_card_move "$BOARD" o/r 7 "In progress"
+  runs_do 'comment progress'
+  poll
+  expect "In review to In progress: a run" "$(runs)" 2
+  expect_line "the approval is the board" "$(sed -n '/^The approval:/,$p' <<<"$(run_prompt)")" "^- the board: moved to In progress$")
+
+# A card in In progress that no poll saw in Ready, a plan waiting: approved.
+(world
+  planned
+  rm "$(idir 7)/column"
+  gh_card_move "$BOARD" o/r 7 "In progress"
+  runs_do 'comment progress'
+  poll
+  expect "no column recorded, now In progress: a run" "$(runs)" 2
+  expect_line "the approval is the board" "$(sed -n '/^The approval:/,$p' <<<"$(run_prompt)")" "^- the board: moved to In progress$")
+
+# A card already in In progress when the plan posts: nothing moved, no approval.
+(world
+  board
+  gh_issue o/r 7 alice
+  gh_card "$BOARD" o/r 7 "In progress"
+  runs_do 'skill nightshift:plan; comment plan "T1: the fast path."'
+  poll
+  expect "the plan is posted: one run" "$(runs)" 1
+  poll
+  expect "the card was there already: no build" "$(runs)" 1
   expect_ok "and no build pending" test ! -f "$(idir 7)/build")
 
 # Moved to In progress when a build session exists: not an approval again.
