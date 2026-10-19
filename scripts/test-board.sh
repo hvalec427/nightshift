@@ -764,4 +764,32 @@ blocked_card() {
   expect "a reply after: held" "$(runs)" 1
   expect "its status: waiting" "$(status_label 7)" waiting)
 
+# `status` names what a held card waits on, and says so no more once it's released.
+(world
+  blocked_card
+  poll
+  expect_line "status: a card never run" "$(ns status)" '^o/r#7  *waiting · after #3$'
+  printf '5,o/x#3\n' >"$(idir 7)/blockers"
+  expect_line "status: across repos" "$(ns status)" '^o/r#7  *waiting · after #5, o/x#3$'
+  : >"$(idir 7)/blockers"
+  expect_line "status: no blocker listed (past the first 50)" "$(ns status)" '^o/r#7  *waiting$'
+  poll
+  gh_state o/r 3
+  poll
+  expect "status: released, no longer waiting" "$(ns status | grep -c 'waiting')" 0
+  expect_no_unexpected)
+
+# With a pull request open.
+(world
+  built
+  gh_issue o/r 3 alice
+  gh_block_add o/r 7 5003
+  poll
+  expect_line "status: a pull request, held" "$(ns status)" "^o/r#7  *PR https://github.com/o/r/pull/100 · waiting · after #3 · spent"
+  gh_state o/r 3
+  poll
+  expect "status: released, it names no blocker" "$(ns status | grep -c 'after #')" 0
+  expect_line "status: released, the pull request alone" "$(ns status)" "^o/r#7  *PR https://github.com/o/r/pull/100 · nightshift:finish"
+  expect_no_unexpected)
+
 report

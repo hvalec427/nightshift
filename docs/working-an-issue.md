@@ -106,6 +106,10 @@ run with all of it. A card with nothing to run when it's released goes back to t
 had (`PR open`, `needs you`). A blocker added while a run is going doesn't stop it; the card
 is held once the run ends.
 
+`nightshift status` names what a held card waits for: `waiting · after #5, owner/repo#3`, or
+`PR <url> · waiting · after #5` when it has a pull request open. The line goes when the last
+blocker closes.
+
 ## Sessions and worktrees
 
 Each issue gets its own worktree (in the repo's clone, `.claude/worktrees/issue-<n>`,

@@ -2321,6 +2321,8 @@ issue_text() {
   elif [ -f "$d/off" ] && [ -f "$d/interrupted" ]; then what="stopped $(age "$d/off") ago ($(cat "$d/off")) · $(resume_hint "$d")"
   elif [ -f "$d/off" ] && [ -f "$d/pr" ]; then what="PR $(cat "$d/pr") · $(cat "$d/off")"
   elif [ -f "$d/off" ]; then what="$(cat "$d/off") $(age "$d/off") ago"
+  elif [ -f "$d/blockers" ] && [ -f "$d/pr" ]; then what="PR $(cat "$d/pr") · waiting$(blockers_note "$d")"
+  elif [ -f "$d/blockers" ]; then what="waiting$(blockers_note "$d")"
   elif [ -f "$d/interrupted" ] || [ -f "$d/stalled" ]; then what="queued to resume"
   elif [ -f "$d/build" ]; then what="queued to build"
   elif [ -f "$d/update" ]; then what="PR $(cat "$d/pr") · queued: $(head -1 "$d/update")"
@@ -2653,6 +2655,11 @@ label_or() {
 # The issues an open pull request goes after: " · after #10, #11", or nothing.
 after_note() {
   [ -s "$1/after" ] && printf ' · after #%s' "$(sed 's/,/, #/g' "$1/after")"
+}
+
+# The issues holding a board card: " · after #5, o/x#3", or nothing.
+blockers_note() {
+  [ -s "$1/blockers" ] && printf ' · after %s' "$(sed 's/^\([0-9]\)/#\1/; s/,\([0-9]\)/,#\1/g; s/,/, /g' "$1/blockers")"
 }
 
 # What brings a stopped run back.
