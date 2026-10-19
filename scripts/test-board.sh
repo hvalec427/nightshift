@@ -563,8 +563,9 @@ built() {
   expect_no_unexpected)
 
 # A merge run that ends without merging and without needing the user (it waits
-# on another pull request) leaves the card in Ready to merge, and a later run on
-# it carries the merge news too.
+# on another pull request) leaves the card in Ready to merge. A comment on it
+# after that is a request, not a merge: its run has no merge news, and the card
+# goes back to Your review.
 (world
   built
   gh_card_move "$BOARD" o/r 7 "Ready to merge"
@@ -574,13 +575,33 @@ built() {
   expect "the card stays in Ready to merge" "$(gh_card_column "$BOARD" o/r 7)" "Ready to merge"
   poll
   expect "and starts no third run" "$(runs)" 2
-  gh_comment o/r 7 alice "any news?" >/dev/null
-  runs_do 'comment progress'
+  gh_comment o/r 7 alice "rename the flag first" >/dev/null
+  runs_do 'commit rename.txt; comment progress'
   poll
   expect "a comment: a third run" "$(runs)" 3
-  expect_line "it carries the merge news, as the merge skill's" "$(sed -n '/^New on the issue/,$p' <<<"$(run_prompt)")" "^- the board: the card is in Ready to merge$"
-  expect_line "and the comment" "$(sed -n '/^New on the issue/,$p' <<<"$(run_prompt)")" "any news"
-  expect "the card still waits there" "$(gh_card_column "$BOARD" o/r 7)" "Ready to merge"
+  expect_line "it carries no merge news" "$(run_prompt)" "^- the board: the card is in Ready to merge$" no
+  expect_line "but the comment" "$(sed -n '/^New on the issue/,$p' <<<"$(run_prompt)")" "rename the flag"
+  expect_ok "no merge run marker is left" test ! -f "$(idir 7)/merging-board"
+  expect_ok "and no merge is queued" test ! -f "$(idir 7)/merge-move"
+  expect "the card waits in Your review" "$(gh_card_column "$BOARD" o/r 7)" "Your review"
+  poll
+  expect "and no merge run follows" "$(runs)" 3
+  expect_no_unexpected)
+
+# A move to Ready to merge and a comment in the same poll: the comment wins, no
+# merge news, and the card goes back to Your review.
+(world
+  built
+  gh_card_move "$BOARD" o/r 7 "Ready to merge"
+  gh_comment o/r 7 alice "one more thing: fix the typo" >/dev/null
+  runs_do 'commit typo.txt; comment progress'
+  poll
+  expect "the move and the comment: one run" "$(runs)" 2
+  expect_line "it carries no merge news" "$(run_prompt)" "^- the board: the card is in Ready to merge$" no
+  expect_line "but the comment" "$(sed -n '/^New on the issue/,$p' <<<"$(run_prompt)")" "fix the typo"
+  expect "the card waits in Your review" "$(gh_card_column "$BOARD" o/r 7)" "Your review"
+  poll
+  expect "and no merge run follows" "$(runs)" 2
   expect_no_unexpected)
 
 # A card already in Ready to merge when nightshift first sees it, or one with no pull
