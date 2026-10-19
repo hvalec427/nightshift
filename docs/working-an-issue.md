@@ -48,9 +48,9 @@ logged and tried again on the next poll.
 Moving a card to In progress from any other column, after nightshift has posted a plan,
 approves it: the build starts in a fresh session as it does for a **go**, its approval the
 line `- the board: moved to In progress`. A card already in In progress when the plan posts
-doesn't approve it: reply **go**, or move the card out of In progress and back. A **go** reply approves as before and nightshift moves the
-card to In progress for you (with no In progress column, it builds and logs that it didn't
-move the card). The card moving without a plan waiting (questions still open) starts
+doesn't approve it: reply **go**, or move the card out of In progress and back. A **go**
+reply approves as before and nightshift moves the card to In progress for you (with no In
+progress column, it builds and logs that it didn't move the card). The card moving without a plan waiting (questions still open) starts
 nothing. A board repo never builds without one of these: `auto_merge` is ignored, a plan
 never carries on by itself, nothing counts as a small issue, and nothing merges outside the
 card being in Ready to merge or a **merge** reply.

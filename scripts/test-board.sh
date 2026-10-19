@@ -270,7 +270,8 @@ planned() {
   expect "no plan to approve: no run" "$(runs)" 1
   expect_ok "and no build pending" test ! -f "$(idir 7)/build")
 
-# Moved to In progress from any other column, a plan waiting, approves it too.
+# Moved to In progress from any other column, a plan waiting, approves it too. A card
+# in Backlog is off the list, so its column isn't recorded there; In review is.
 (world
   planned
   gh_card_move "$BOARD" o/r 7 Backlog
