@@ -80,7 +80,7 @@ nightshift's runs read this file and keep it up to date.
   Backlog, Ready, Needs you, In progress, In review, Your review, Ready to merge and Done. The
   repo's issues in a column other than Backlog and Done are worked; the rest are off. Needs you
   holds a card waiting on the user's reply before a pull request (questions, a plan waiting
-  for its go); the user creates the column, and `nightshift doctor` reports it when missing.
+  for its go, an answer, blocked); the user creates the column, and `nightshift doctor` reports it when missing.
 - **card**: an item of the board. An issue's card is where nightshift reads its column and moves
   it as the work goes; a pull request's card is skipped.
 - **draft card**: a card with no issue behind it. One in Ready is turned into an issue of the

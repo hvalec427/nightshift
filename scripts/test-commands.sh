@@ -551,6 +551,7 @@ doctor_board() {
 (doctor_board Backlog Ready "In progress" "in review" Done
   try ns doctor
   expect "doctor: columns missing: fails" "$ST" 1
+  expect_line "doctor: names Needs you" "$OUT" "^  missing o/r: the board's Needs you column: add it to the Status field of $BOARD_URL$"
   expect_line "doctor: names Your review" "$OUT" "^  missing o/r: the board's Your review column: add it to the Status field of $BOARD_URL$"
   expect_line "doctor: names Ready to merge" "$OUT" "^  missing o/r: the board's Ready to merge column: add it to the Status field of $BOARD_URL$"
   expect_line "doctor: a column in another case is there" "$OUT" "In review" no
