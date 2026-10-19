@@ -89,13 +89,13 @@ default branch moved) and merges, and the merged pull request puts the card in D
 runs nightshift starts on a card in Ready to merge with a pull request (an update, a resumed
 run) carry that news too, so they merge. Your comment on such a card doesn't: it may ask for
 a change, so its run gets no merge news and the card goes back to Your review, like any
-change request (even when you moved the card there in the same poll). Only the card moving
-to Ready to merge, or a **merge** reply, merges. A merge run that ends needing you (a gate failed, or
-something needs a decision) puts the card back in Your review, and its `look` comment says
-why; one that ends waiting (for the pull request it goes after, say) leaves the card in Ready
-to merge. If you move the card there while a run works, the run's end leaves it and the next
-poll starts the merge run. A card that was in Ready to merge before nightshift saw it
-starts no merge by itself, and a card moved there with no pull request yet starts
+change request (even when you moved the card there in the same poll). To merge it then, move
+the card to Ready to merge again or reply **merge**. A merge run that ends needing you (a gate
+failed, or something needs a decision) puts the card back in Your review, and its `look`
+comment says why; one that ends waiting (for the pull request it goes after, say) leaves the
+card in Ready to merge. If you move the card there while a run works, the run's end leaves it
+and the next poll starts the merge run. A card that was in Ready to merge before nightshift
+saw it starts no merge by itself, and a card moved there with no pull request yet starts
 none until a run ends with one open.
 
 ## Sessions and worktrees

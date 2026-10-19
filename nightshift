@@ -37,8 +37,8 @@
 # `merge-move` (a board repo: the card is in Ready to merge with its pull request
 # open and no merge run has started for it, so one is queued; gone once a run
 # starts), `merging-board` (a board repo: the run that just started, with no
-# comment of the user's, carries the merge news; the run reads and removes it), `log` (readable, live) and
-# `out.jsonl` (the last run's raw stream-json),
+# comment of the user's, carries the merge news; the run reads and removes it),
+# `log` (readable, live) and `out.jsonl` (the last run's raw stream-json),
 # `subs` (the sub-issues it made, a number a line: see cmd_sub_issue;
 # `subs-noted`, the ones merged it commented on, and `subs-closed`, that it closed
 # itself once they all merged: see check_subs; `subs-linking`, the ones

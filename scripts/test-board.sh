@@ -599,6 +599,8 @@ built() {
   expect "the move and the comment: one run" "$(runs)" 2
   expect_line "it carries no merge news" "$(run_prompt)" "^- the board: the card is in Ready to merge$" no
   expect_line "but the comment" "$(sed -n '/^New on the issue/,$p' <<<"$(run_prompt)")" "fix the typo"
+  expect_ok "no merge run marker is left" test ! -f "$(idir 7)/merging-board"
+  expect_ok "and the queued merge is dropped" test ! -f "$(idir 7)/merge-move"
   expect "the card waits in Your review" "$(gh_card_column "$BOARD" o/r 7)" "Your review"
   poll
   expect "and no merge run follows" "$(runs)" 2
