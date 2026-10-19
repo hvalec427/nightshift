@@ -2541,24 +2541,25 @@ top_live() {
 # level (default messages).
 cmd_top() {
   top_level=
+  usage=$(top_help | head -1)
   while [ $# -gt 0 ]; do
     case "$1" in
     -h | --help) top_help; exit 0 ;;
     -l | --level)
-      [ $# -ge 2 ] || usage_error "$(top_help | head -1)"
+      [ $# -ge 2 ] || usage_error "$usage"
       top_level=$(level_number "$2")
-      [ -n "$top_level" ] || usage_error "$(top_help | head -1)"
+      [ -n "$top_level" ] || usage_error "$usage"
       shift
       ;;
     --level=*)
       top_level=$(level_number "${1#--level=}")
-      [ -n "$top_level" ] || usage_error "$(top_help | head -1)"
+      [ -n "$top_level" ] || usage_error "$usage"
       ;;
     -v | -vv | -vvv)
       top_level=$((${top_level:-0} + ${#1} - 1))
       [ "$top_level" -le 3 ] || top_level=3
       ;;
-    *) usage_error "$(top_help | head -1)" ;;
+    *) usage_error "$usage" ;;
     esac
     shift
   done

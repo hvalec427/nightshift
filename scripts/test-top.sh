@@ -104,6 +104,7 @@ line 8"
   expect "top: -l all, -l 3 and --level=all are -vvv" "$(frame 40 9 -l all)|$(frame 40 9 -l 3)|$(frame 40 9 --level=all)" \
     "$(frame 40 9 -vvv)|$(frame 40 9 -vvv)|$(frame 40 9 -vvv)"
   expect "top: more than three -v is still all" "$(frame 40 9 -vvv -vvv)" "$(frame 40 9 -vvv)"
+  expect "top: -v adds to -l, as in logs: -l messages -v is -vv" "$(frame 40 8 -l messages -v)" "$(frame 40 8 -vv)"
   expect "top: a window of 3 rows at -l runs has both runs' lines, found past the last 2 lines of the log" "$(frame 40 3 -l runs)" \
     "o/r#7 · bug · queued to build
 line 4
@@ -390,7 +391,10 @@ at one
 at two
 at three
 untagged
-tab     separated")
+tab     separated"
+  expect "top: an untagged line shows at the default level" "$(COLUMNS=40 LINES=8 ns top | sed -n "2,\$p")" "at zero
+at one
+untagged")
 
 # --- the command ------------------------------------------------------------------------------
 
