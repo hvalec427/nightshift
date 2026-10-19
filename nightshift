@@ -2429,6 +2429,8 @@ top_size() {
 # width. $4: the first row of windows to show, when they don't all fit (default
 # 0). $5 = 1 (the live loop): a first line "off page", the $4 as kept in range
 # and the rows of windows on a page, and a bottom line with the scroll keys.
+# $6: the log level of the lines (0-3, default 1, messages); a window shows the
+# last lines at that level.
 # Reads the issue dirs and logs afresh, so the live loop calls it per pass.
 top_frame() {
   for d in "$NS"/issues/*/; do
@@ -2438,7 +2440,7 @@ top_frame() {
     name=$(basename "$d")
     repo=$(echo "${name%_*}" | sed 's/_/\//')
     text=$(issue_text "$d")
-    lines=$(tail -n "$2" "$d/log" 2>/dev/null | show_level 3)
+    lines=$(show_level "${6:-1}" 2>/dev/null <"$d/log" | tail -n "$2")
     jq -nc --arg id "$repo#${name##*_}" --arg text "$text" --arg log "$lines" '{id: $id, text: $text, log: $log}'
   done | jq -rs --argjson w "$1" --argjson h "$2" --argjson rev "${3:-0}" \
     --argjson off "${4:-0}" --argjson live "${5:-0}" "$TOP_JQ"
@@ -2446,7 +2448,7 @@ top_frame() {
 
 top_help() {
   cat <<'HELP'
-usage: nightshift top
+usage: nightshift top [-l <level> | -v | -vv | -vvv]
 
 A grid of at least 8 windows (the most that fit, never fewer than the issues in
 progress), tiled to fit the terminal: a window for every issue in progress, with
@@ -2476,7 +2478,7 @@ top_byte() { dd bs=1 count=1 2>/dev/null; }
 # keys scroll the windows by rows, top_off the first row shown: j and ↓ (ESC [ B)
 # one down, k and ↑ (ESC [ A) one up, Space and PgDn (ESC [ 6 ~) a page down,
 # PgUp (ESC [ 5 ~) a page up. jq keeps top_off in range and says what it kept
-# in the frame's first line, with the rows on a page.
+# in the frame's first line, with the rows on a page. $1: the log level.
 top_live() {
   top_stty=$(stty -g)
   trap top_restore EXIT
@@ -2502,7 +2504,7 @@ top_live() {
       top_prev="${top_cols}×${top_rows}"
     fi
     tput home
-    top_out=$(top_frame "$top_cols" "$top_rows" 1 "$top_off" 1)
+    top_out=$(top_frame "$top_cols" "$top_rows" 1 "$top_off" 1 "$1")
     top_head=${top_out%%"$top_nl"*}
     top_off=${top_head% *} top_page=${top_head#* }
     printf '%s' "${top_out#*"$top_nl"}"
@@ -2526,19 +2528,38 @@ top_live() {
   done
 }
 
-# `top`: live on a terminal (stdin and stdout both), else one frame, with
-# reverse-video headers if stdout is one.
+# `top [-l <level> | -v…]`: live on a terminal (stdin and stdout both), else one
+# frame, with reverse-video headers if stdout is one; the log lines up to a
+# level (default messages).
 cmd_top() {
-  case "${1:-}" in
-  "") ;;
-  -h | --help) top_help; exit 0 ;;
-  *) usage_error "$(top_help | head -1)" ;;
-  esac
-  [ -t 0 ] && [ -t 1 ] && top_live
+  top_level=
+  while [ $# -gt 0 ]; do
+    case "$1" in
+    -h | --help) top_help; exit 0 ;;
+    -l | --level)
+      [ $# -ge 2 ] || usage_error "$(top_help | head -1)"
+      top_level=$(level_number "$2")
+      [ -n "$top_level" ] || usage_error "$(top_help | head -1)"
+      shift
+      ;;
+    --level=*)
+      top_level=$(level_number "${1#--level=}")
+      [ -n "$top_level" ] || usage_error "$(top_help | head -1)"
+      ;;
+    -v | -vv | -vvv)
+      top_level=$((${top_level:-0} + ${#1} - 1))
+      [ "$top_level" -le 3 ] || top_level=3
+      ;;
+    *) usage_error "$(top_help | head -1)" ;;
+    esac
+    shift
+  done
+  top_level=${top_level:-1}
+  [ -t 0 ] && [ -t 1 ] && top_live "$top_level"
   top_size
   rev=0
   [ -t 1 ] && rev=1
-  top_frame "$top_cols" "$top_rows" "$rev"
+  top_frame "$top_cols" "$top_rows" "$rev" 0 0 "$top_level"
 }
 
 # An issue's `cost` (its dir $1), readable, a word each: its dollars, tokens
