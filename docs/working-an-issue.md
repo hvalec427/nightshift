@@ -61,6 +61,7 @@ The card then follows the work, one move (a GraphQL mutation) each, only when it
 |---|---|
 | A build hands off, or a **go** approves; the build, tdd or update skill starts | In progress |
 | The review, finish or merge skill starts | In review |
+| Your comment starts a run on a card in Ready to merge | Your review, then In progress as the run starts |
 | A run starts on a card in Your review (a change request or an update) | In progress |
 | A run ends with its pull request open or needing you (a `look`, a `blocked`) | Your review |
 | A merge run ends needing you | Your review, from Ready to merge |
@@ -84,14 +85,17 @@ request open, a run on a board repo still checks it, fixes the failing checks an
 `look` comment (even with nothing to look at), but doesn't merge. Moving the card to Ready to
 merge then starts a run whose news is `- the board: the card is in Ready to merge`: the
 merge skill takes it as your **merge** reply, runs its hard gates again (rebasing if the
-default branch moved) and merges, and the merged pull request puts the card in Done. Any run
-nightshift starts on a card in Ready to merge with a pull request (your comment, an update)
-carries that news, so it merges too. A merge run that ends needing you (a gate failed, or
-something needs a decision) puts the card back in Your review, and its `look` comment says
-why; one that ends waiting (for the pull request it goes after, say) leaves the card in Ready
-to merge. If you move the card there while a run works, the run's end leaves it and the next
-poll starts the merge run. A card that was in Ready to merge before nightshift saw it
-starts no merge by itself, and a card moved there with no pull request yet starts
+default branch moved) and merges, and the merged pull request puts the card in Done. Other
+runs nightshift starts on a card in Ready to merge with a pull request (an update, a resumed
+run) carry that news too, so they merge. Your comment on such a card doesn't: it may ask for
+a change, so its run gets no merge news and the card goes back to Your review, like any
+change request (even when you moved the card there in the same poll). To merge it then, move
+the card to Ready to merge again or reply **merge**. A merge run that ends needing you (a gate
+failed, or something needs a decision) puts the card back in Your review, and its `look`
+comment says why; one that ends waiting (for the pull request it goes after, say) leaves the
+card in Ready to merge. If you move the card there while a run works, the run's end leaves it
+and the next poll starts the merge run. A card that was in Ready to merge before nightshift
+saw it starts no merge by itself, and a card moved there with no pull request yet starts
 none until a run ends with one open.
 
 ## Sessions and worktrees
