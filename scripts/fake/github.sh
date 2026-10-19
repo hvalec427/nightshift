@@ -212,12 +212,12 @@ gh_pr_set() {
 # A project's directory.
 gh_project_dir() { printf '%s/projects/%s' "$GH_FAKE" "$(echo "$1" | tr '/' '_')"; }
 
-# Project $1 (<owner>/<number>) with Status columns $2.. (default: the seven
+# Project $1 (<owner>/<number>) with Status columns $2.. (default: the eight
 # nightshift uses), and no cards.
 gh_project() {
   local p=$1 d cols
   shift
-  [ $# -gt 0 ] || set -- Backlog Ready "In progress" "In review" "Your review" "Ready to merge" Done
+  [ $# -gt 0 ] || set -- Backlog Ready "Needs you" "In progress" "In review" "Your review" "Ready to merge" Done
   d=$(gh_project_dir "$p")
   mkdir -p "$d"
   cols=$(printf '%s\n' "$@" | jq -R -s -c 'split("\n")[:-1]')

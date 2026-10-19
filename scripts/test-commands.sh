@@ -554,7 +554,7 @@ doctor_board() {
   expect_line "doctor: names Your review" "$OUT" "^  missing o/r: the board's Your review column: add it to the Status field of $BOARD_URL$"
   expect_line "doctor: names Ready to merge" "$OUT" "^  missing o/r: the board's Ready to merge column: add it to the Status field of $BOARD_URL$"
   expect_line "doctor: a column in another case is there" "$OUT" "In review" no
-  expect_line "doctor: counts them" "$OUT" "^2 to fix, then run nightshift doctor again$")
+  expect_line "doctor: counts them" "$OUT" "^3 to fix, then run nightshift doctor again$")
 
 (doctor_board
   gh_scopes gist read:org repo
