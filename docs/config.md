@@ -39,6 +39,14 @@ interval=5
   - `test_command`: the command that runs the whole test suite (`test_command=npm test`).
     Where a run may run the suite, its prompt names the command; unset, the run works it
     out from the repo's instructions.
+  - `project`: a GitHub project (v2) board, `project=https://github.com/users/me/projects/5`
+    (an organisation's is `…/orgs/acme/projects/5`; a trailing `/views/2` is ignored).
+    The repo is then worked from the board, not the `agent` label: see
+    [Working from a project board](working-an-issue.md#working-from-a-project-board);
+    a draft card in Ready becomes an issue of the repo there, and `auto_merge` is ignored.
+    `gh` needs the `project` scope (`gh auth refresh -s project`), and the project's Status
+    field its seven columns; `nightshift doctor` checks both and names what is missing. Unset,
+    nothing changes.
   - `base_branch=develop` is the branch its pull requests merge into, when that isn't the
     default branch. A new issue's branch starts from `origin/develop`, its pull request opens
     against it, and the review and merge compare against it. Unset, the default branch.

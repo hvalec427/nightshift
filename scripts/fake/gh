@@ -37,7 +37,7 @@ while [ $# -gt 0 ]; do
   -R | --repo) repo=$2; shift ;;
   --json | -X | --method | --state | --limit | --head | --base | --title | --body | --body-file | \
     --add-label | --remove-label | --label | --reason | --color | --description | --comment | -F | -f) OPTS+=("$1" "$2"); shift ;;
-  --paginate | --force | --version) OPTS+=("$1" "") ;;
+  --paginate | --force | --version | --active) OPTS+=("$1" "") ;;
   -*) unexpected ;;
   *) POS+=("$1") ;;
   esac
@@ -87,12 +87,95 @@ etagged() {
   printf '%s\n' "$body" | out
 }
 
+# The value of GraphQL variable $1, given as -f/-F $1=value (empty if not given).
+gql_var() {
+  local i
+  for ((i = 0; i < ${#OPTS[@]}; i += 2)); do
+    case "${OPTS[i]}" in -f | -F) [ "${OPTS[i + 1]%%=*}" = "$1" ] && { printf '%s' "${OPTS[i + 1]#*=}"; return 0; } ;; esac
+  done
+  return 1
+}
+
+# `gh api graphql`: nightshift's named operations (the query's `query Name` or
+# `mutation Name`), answered from the projects in $GH_FAKE (see github.sh). One
+# it doesn't know, or called without the variables it takes, is unexpected.
+graphql() {
+  local op p
+  op=$(gql_var query | sed -n -E 's/^[[:space:]]*(query|mutation)[[:space:]]+([A-Za-z]+).*/\2/p' | head -1)
+  case "$op" in
+  NightshiftBoard)
+    p="$(gql_var owner)/$(gql_var number)"
+    case "$p" in /* | */) unexpected ;; esac
+    [ -f "$(gh_project_dir "$p")/project.json" ] ||
+      { echo "gh: Could not resolve to a ProjectV2 with the number ${p#*/}. (repositoryOwner.projectV2)" >&2; exit 1; }
+    board_page "$p" | out ;;
+  NightshiftConvertDraft)
+    # The draft card is found in whichever project has it, the repo by its node id.
+    local item rid f r
+    item=$(gql_var item) rid=$(gql_var repo) r=""
+    for f in "$GH_FAKE"/repos/*/repo.json; do
+      [ -f "$f" ] && [ "$(jq -r .node_id "$f")" = "$rid" ] && r=$(jq -r .full_name "$f")
+    done
+    [ -n "$r" ] || { echo "gh: Could not resolve to a Repository with the id $rid. (repositoryId)" >&2; exit 1; }
+    for f in "$GH_FAKE"/projects/*/items.json; do
+      [ -f "$f" ] && jq -e --arg i "$item" 'any(.[]; .id == $i and .draft)' "$f" >/dev/null || continue
+      p=$(basename "$(dirname "$f")")
+      gh_draft_convert "${p%_*}/${p##*_}" "$item" "$r" >/dev/null || exit 1
+      jq -n -c --arg i "$item" '{data: {convertProjectV2DraftIssueItemToIssue: {item: {id: $i}}}}' | out
+      return
+    done
+    echo "gh: Could not resolve to a DraftIssue item with the id $item. (itemId)" >&2; exit 1 ;;
+  NightshiftMoveCard)
+    # The project is found by its id; the field and the option must be its own.
+    local f pid fid oid item
+    pid=$(gql_var project) item=$(gql_var item) fid=$(gql_var field) oid=$(gql_var option)
+    for f in "$GH_FAKE"/projects/*/project.json; do
+      [ -f "$f" ] && [ "$(jq -r .id "$f")" = "$pid" ] || continue
+      jq -e --arg f "$fid" --arg o "$oid" '.field.id == $f and any(.field.options[]; .id == $o)' "$f" >/dev/null ||
+        { echo "gh: Could not resolve to a ProjectV2SingleSelectField option (fieldId, value)" >&2; exit 1; }
+      jq -e --arg i "$item" 'any(.[]; .id == $i)' "$(dirname "$f")/items.json" >/dev/null ||
+        { echo "gh: Could not resolve to a ProjectV2Item with the id $item. (itemId)" >&2; exit 1; }
+      gh_item_move "$(dirname "$f")" "$item" "$oid"
+      jq -n -c --arg i "$item" '{data: {updateProjectV2ItemFieldValue: {projectV2Item: {id: $i}}}}' | out
+      return
+    done
+    echo "gh: Could not resolve to a ProjectV2 with the id $pid. (projectId)" >&2; exit 1 ;;
+  *) unexpected ;;
+  esac
+}
+
+# Project $1 as the board query answers it, on one page: its id, Status field
+# and options, and its cards, an issue's read from the fake repo as it is now.
+board_page() {
+  local d r n issues="{}"
+  d=$(gh_project_dir "$1")
+  while IFS=' ' read -r r n; do
+    [ -f "$(gh_dir "$r")/issues/$n.json" ] &&
+      issues=$(jq -c --arg k "$r#$n" --slurpfile i "$(gh_dir "$r")/issues/$n.json" '.[$k] = $i[0]' <<<"$issues")
+  done < <(jq -r '.[] | select(.repo) | "\(.repo) \(.number)"' "$d/items.json")
+  jq -c --slurpfile items "$d/items.json" --argjson issues "$issues" '
+    . as $p | {data: {repositoryOwner: {projectV2: {
+      id: .id,
+      field: (if .field then {id: .field.id, options: .field.options} else null end),
+      items: {pageInfo: {hasNextPage: false, endCursor: null}, nodes: [
+        $items[0][] | . as $i
+        | (first($p.field.options[] | select(.id == $i.option)) // null) as $o
+        | {id: .id,
+           fieldValueByName: (if $o then {name: $o.name, optionId: $o.id} else null end),
+           content: (if .draft then {__typename: "DraftIssue", id: .draft.id, title: .draft.title}
+             else $issues[$i.repo + "#\($i.number)"] as $s
+             | if $s then {__typename: "Issue", number: $s.number, updatedAt: $s.updated_at, state: ($s.state | ascii_upcase),
+                 repository: {nameWithOwner: $i.repo}, author: {login: $s.user.login}, labels: {nodes: $s.labels}}
+               else null end end)}]}}}}}' "$d/project.json"
+}
+
 D=""
 in_repo() { D=$(gh_dir "$1"); [ -d "$D" ] || not_found; }
 
 api() {
   local path=${POS[1]:-} method r owner name rest n f
   method=$(opt -X || opt --method) || method=GET
+  [ "$path" = graphql ] && { graphql; return; }
   [ "$path" = user ] && { jq -n --arg l "$(cat "$GH_FAKE/user")" '{login: $l}' | out; return; }
   owner=$(echo "$path" | cut -d/ -f2) name=$(echo "$path" | cut -d/ -f3)
   r="$owner/$name" rest=${path#repos/"$r"}
@@ -219,6 +302,11 @@ issue() {
 case "${POS[0]:-}" in
 "") opt --version >/dev/null && { echo "gh version ${FAKE_GH_VERSION:-2.99.0} (2026-01-01)"; exit 0; }; unexpected ;;
 api) api ;;
+auth)
+  # gh auth status --active: the account and the scopes its token has (see gh_scopes in github.sh).
+  [ "${POS[1]:-}" = status ] && opt --active >/dev/null || unexpected
+  printf 'github.com\n  \xe2\x9c\x93 Logged in to github.com account %s (keyring)\n  - Active account: true\n  - Token scopes: %s\n' \
+    "$(cat "$GH_FAKE/user")" "$(cat "$GH_FAKE/scopes" 2>/dev/null || echo "'gist', 'project', 'read:org', 'repo'")" ;;
 pr) pr ;;
 issue) issue ;;
 label)

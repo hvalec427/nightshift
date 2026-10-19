@@ -1,6 +1,6 @@
 ---
 name: merge
-description: Squash-merge an issue's pull request once its checks pass and nothing needs a decision, or list what does in a look comment. Started by the build, update and issue skills when the run prompt says the repo auto-merges.
+description: Squash-merge an issue's pull request once its checks pass and nothing needs a decision, or list what does in a look comment. Started by the build, update and issue skills when the run prompt says the repo auto-merges, or works from a project board.
 allowed-tools: Bash(gh pr *) Bash(gh issue *) Bash(gh run *) Bash(git fetch *) Bash(git log *) Bash(git diff *) Bash(git rev-parse *)
 user-invocable: false
 model: sonnet
@@ -12,6 +12,17 @@ effort: high
 The issue skill's rules (comments, the status label, bounds) hold throughout. You merge
 only under nightshift, when the run prompt says "This repo auto-merges". Told the repo
 doesn't auto-merge, or told neither, stop here: merging is the user's.
+
+On a project board (the prompt says "This repo works from a project board") nothing
+auto-merges, but you still run the hard gates and fix the checks. You merge only when the
+news says "the board: the card is in Ready to merge" or the user replied **merge**: take
+either as the user's **merge** reply (see After a look comment). Without one, end step 3
+on a `look` comment, even with no items: it says so ("Nothing needs a decision.") and
+ends "Move the card to Ready to merge, or reply **merge**, to merge it, or tell me what
+to change." A merge you don't do because it needs the user (a `look` or `blocked`
+comment) sends the card back to Your review: the comment says why. One you don't do
+because it waits on another pull request (a `progress` comment) leaves the card in Ready
+to merge, and the next run on it merges once that has merged.
 
 You are handed a report (what was done, the pull request's link, the review) by the skill
 that started you; it goes at the top of your one closing comment, so the issue gets one
@@ -102,8 +113,10 @@ needs the user to decide; otherwise tell the user exactly what does, and let the
 
 ## After a look comment
 
-When the user replies **merge**, run the hard gates again, and skip the triggers they just
-approved; for commits since the look comment's head, run the triggers on what's new only.
+When the user replies **merge** (or, on a board, the news says the card is in Ready to
+merge), run the hard gates again, and skip the triggers they just approved; for commits
+since the look comment's head, run the triggers on what's new only. With no look comment
+before, run them all: the user hasn't seen the items yet.
 All clear: close out as in step 3. A failing check you fix the same way, with two fix
 rounds of its own. Any other gate failing now, or a check you can't fix: a new `look`
 comment saying which.

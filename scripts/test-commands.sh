@@ -520,6 +520,72 @@ without() {
   try ns doctor
   expect_line "doctor: gh not logged in" "$OUT" "^  no      gh logged in: gh auth login$")
 
+# A board repo: o/r names alice's project 5 (columns $1.. , the seven by default).
+BOARD_URL=https://github.com/users/alice/projects/5
+doctor_board() {
+  healthy
+  gh_project alice/5 "$@"
+  origin_config "project=$BOARD_URL"
+  git -C "$CLONE" fetch -q origin
+}
+
+(doctor_board
+  try ns doctor
+  expect "doctor: a board with all seven columns: passes" "$ST" 0
+  expect_line "doctor: says the board is all there" "$OUT" "^  ok      o/r: board alice/5 (https://github.com/users/alice/projects/5), its seven columns$"
+  expect "doctor: the board is read in one query" "$(gh_calls "graphql .*query NightshiftBoard" | wc -l | tr -d ' ')" 1
+  expect_line "doctor: a board repo's PRs merge from Ready to merge, not on their own" "$OUT" "^  ok      o/r: clone $CLONE, \`agent\` label, PRs merge when you move their cards to Ready to merge$"
+  expect_line "doctor: not that they merge on their own" "$OUT" "PRs merge on their own" no
+  expect "status: a board repo's PRs merge from Ready to merge" "$(ns status | sed -n 2p)" \
+    "pull requests merge when you move their cards to Ready to merge (project= in every repo's .nightshift/config)")
+
+(doctor_board
+  second_repo ""
+  expect "status: a board and a repo that auto-merges" "$(ns status | sed -n 2p)" \
+    "pull requests merge on their own (auto_merge=false in a repo's .nightshift/config turns it off; board repos merge when you move their cards to Ready to merge)")
+
+(healthy
+  expect_line "doctor: no project=: nothing about a board" "$(ns doctor)" "board" no
+  expect "doctor: no project=: no board query" "$(gh_calls "graphql" | wc -l | tr -d ' ')" 0)
+
+(doctor_board Backlog Ready "In progress" "in review" Done
+  try ns doctor
+  expect "doctor: columns missing: fails" "$ST" 1
+  expect_line "doctor: names Your review" "$OUT" "^  missing o/r: the board's Your review column: add it to the Status field of $BOARD_URL$"
+  expect_line "doctor: names Ready to merge" "$OUT" "^  missing o/r: the board's Ready to merge column: add it to the Status field of $BOARD_URL$"
+  expect_line "doctor: a column in another case is there" "$OUT" "In review" no
+  expect_line "doctor: counts them" "$OUT" "^2 to fix, then run nightshift doctor again$")
+
+(doctor_board
+  gh_scopes gist read:org repo
+  try ns doctor
+  expect "doctor: no project scope: fails" "$ST" 1
+  expect_line "doctor: names the fix" "$OUT" "^  missing o/r: gh's \`project\` scope, for its board: gh auth refresh -s project$"
+  expect "doctor: no scope: the board isn't read" "$(gh_calls "graphql" | wc -l | tr -d ' ')" 0
+  gh_scopes gist project repo
+  expect "doctor: with the project scope: passes" "$(ns doctor >/dev/null; echo $?)" 0)
+
+(healthy
+  gh_project alice/5
+  origin_config "project=https://example.com/not-a-board"
+  git -C "$CLONE" fetch -q origin
+  try ns doctor
+  expect "doctor: a malformed project=: fails" "$ST" 1
+  expect_line "doctor: says what a project is" "$OUT" "^  bad     o/r: project=https://example.com/not-a-board in .nightshift/config: use a project's URL, https://github.com/users/<login>/projects/<n> (an organisation's: /orgs/<login>/projects/<n>)$")
+
+(healthy
+  origin_config "project=https://github.com/users/alice/projects/9"
+  git -C "$CLONE" fetch -q origin
+  try ns doctor
+  expect "doctor: a project that can't be read: fails" "$ST" 1
+  expect_line "doctor: says so, with what gh said" "$OUT" "^  no      o/r: its board (alice/9): gh: Could not resolve to a ProjectV2 with the number 9\. .*: check project= in .nightshift/config, and that gh may read it (gh auth refresh -s project)$")
+
+(doctor_board
+  jq 'del(.field)' "$(gh_project_dir alice/5)/project.json" >"$W/p.json" && mv "$W/p.json" "$(gh_project_dir alice/5)/project.json"
+  try ns doctor
+  expect "doctor: a project with no Status field: fails" "$ST" 1
+  expect_line "doctor: says it has no Status field" "$OUT" "^  no      o/r: its board (alice/5): the project has no Status field")
+
 (healthy
   rm -r "$NS/plugin"
   echo '[]' >"$CLAUDE_FAKE/plugins.json"

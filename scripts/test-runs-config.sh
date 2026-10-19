@@ -269,11 +269,12 @@ BASE_LINE="^This repo's pull requests merge into \`develop\` (base_branch in \.n
 # skill, would silently stop the skill acting (no merge, the wrong checks), so each quoted
 # string must begin a line of the prompt of some run, under each setting that changes one.
 PROMPTS=$(temp)
-for setting in "" "auto_merge=false" "full_suite=local" "full_suite=nothing" "base_branch=develop"; do
+for setting in "" "auto_merge=false" "full_suite=local" "full_suite=nothing" "base_branch=develop" "project=https://github.com/users/alice/projects/5"; do
   (world
     [ "$setting" != base_branch=develop ] || origin_file develop.md "on develop" develop
     [ -z "$setting" ] || origin_config "$setting"
     gh_issue o/r 7 alice agent
+    case "$setting" in project=*) gh_project alice/5; gh_card alice/5 o/r 7 Ready ;; esac
     runs_do 'comment questions'
     poll
     run_prompt >>"$PROMPTS")

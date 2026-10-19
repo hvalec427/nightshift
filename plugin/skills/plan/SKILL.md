@@ -52,7 +52,10 @@ the changes the user asked for makes no choice of its own.
 
 With any open choice, the plan stops for **go** and names those choices under "Decisions to
 look at". With none, it carries on: the comment says so, and the run builds without waiting.
-When unsure, it's open. A **large** plan has no carry-on: it always stops for **go**.
+When unsure, it's open. A **large** plan has no carry-on: it always stops for **go**. On a
+project board (the run prompt says "This repo works from a project board") no plan carries
+on: it always stops, and the user approves it with **go** or by moving the card to In
+progress.
 
 ## The spec
 
@@ -151,7 +154,8 @@ build's to create).
   ticket's blockers and acceptance criteria.
 - **Last line,** with an open choice, and always for a large plan: "Reply **go** to build
   it, or tell me what to change." With none: "No open choices, so I'm building it now:
-  comment to stop or change it."
+  comment to stop or change it." On a board: "Reply **go** or move the card to In progress
+  to build it, or tell me what to change."
 
 ```
 **What changes:** <two or three lines>.
@@ -168,7 +172,8 @@ build's to create).
 Reply **go** to build it, or tell me what to change.
 ```
 
-With no open choice the last line is the carry-on one instead. Post the comment, then run
-`nightshift build --carry-on`. When it says a fresh session builds it, end the run there,
-with no comment; otherwise invoke the `nightshift:build` skill with the Skill tool and build
-here. Done when the comment is posted and the run ended or went on to build, as it said.
+With no open choice the last line is the carry-on one instead (on a board, never). Post
+the comment, then run `nightshift build --carry-on`. When it says a fresh session builds
+it, end the run there, with no comment; otherwise invoke the `nightshift:build` skill with
+the Skill tool and build here. Done when the comment is posted and the run ended or went on
+to build, as it said.

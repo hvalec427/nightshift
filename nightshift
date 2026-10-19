@@ -33,7 +33,12 @@
 # `update` while an update run waits and `updating` while it runs (its status,
 # then why),
 # `conflict` (the default branch's commit its pull request was last updated
-# for), `log` (readable, live) and `out.jsonl` (the last run's raw stream-json),
+# for), `column` (a board repo: the column its card was last seen in, lower case),
+# `merge-move` (a board repo: the card is in Ready to merge with its pull request
+# open and no merge run has started for it, so one is queued; gone once a run
+# starts), `merging-board` (a board repo: the run that just started carries the
+# merge news; the run reads and removes it), `log` (readable, live) and
+# `out.jsonl` (the last run's raw stream-json),
 # `subs` (the sub-issues it made, a number a line: see cmd_sub_issue;
 # `subs-noted`, the ones merged it commented on, and `subs-closed`, that it closed
 # itself once they all merged: see check_subs; `subs-linking`, the ones
@@ -51,7 +56,9 @@
 # its session invoked (see SKILL_STATUSES); `type`, its type label as the
 # last run left it (see TYPES); and per repo, `merged/<owner>_<repo>`, the
 # merged nightshift pull requests seen, `labels/<owner>_<repo>`, the
-# version of the status labels created there, and `all_issues/<owner>_<repo>`,
+# version of the status labels created there, `poll/<owner>_<repo>.board.json`,
+# the cards of its project board as the last poll read them (see the board
+# section; only a repo with `project=` has one), and `all_issues/<owner>_<repo>`,
 # when the repo's all_issues=true was first read on (UTC), until it reads off.
 set -u
 
@@ -133,8 +140,10 @@ repo_option() {
     sed -n "s/^$2=//p" | tail -1 | sed 's/[[:space:]]*$//'
 }
 
-# Whether nightshift merges repo $1's pull requests: unless `auto_merge=false`.
-auto_merges() { [ "$(repo_option "$1" auto_merge)" != false ]; }
+# Whether nightshift merges repo $1's pull requests on its own: unless
+# `auto_merge=false`, and never on a board, where they wait for the card's
+# move to Ready to merge.
+auto_merges() { ! is_board "$1" && [ "$(repo_option "$1" auto_merge)" != false ]; }
 
 # Repo $1's base branch in clone $2: the branch its pull requests merge into.
 # `base_branch` in its config when origin has that branch, else the default
@@ -217,16 +226,22 @@ service_line() {
 }
 
 # Whether the watched repos' pull requests merge on their own, naming those
-# with auto_merge=false; nothing with no repos.
+# with auto_merge=false; the board repos' merge when a card moves to Ready to
+# merge. Nothing with no repos.
 merge_line() {
-  total=0 offs=0 off=""
+  total=0 offs=0 off="" boards=0
   for r in $(repos | cut -d' ' -f1); do
     total=$((total + 1))
-    auto_merges "$r" || { offs=$((offs + 1)); off="${off:+$off, }$r"; }
+    if is_board "$r"; then boards=$((boards + 1))
+    elif ! auto_merges "$r"; then offs=$((offs + 1)); off="${off:+$off, }$r"
+    fi
   done
+  bn=""
+  [ $boards -eq 0 ] || bn=1
   if [ $total -eq 0 ]; then return
-  elif [ $offs -eq $total ]; then echo "pull requests wait for you (auto_merge=false in every repo's .nightshift/config)"
-  else echo "pull requests merge on their own (${off:+off for: $off; }auto_merge=false in a repo's .nightshift/config turns it off)"
+  elif [ $boards -eq $total ]; then echo "pull requests merge when you move their cards to Ready to merge (project= in every repo's .nightshift/config)"
+  elif [ $offs -eq $((total - boards)) ]; then echo "pull requests wait for you (auto_merge=false in every repo's .nightshift/config${bn:+; board repos merge when you move their cards to Ready to merge})"
+  else echo "pull requests merge on their own (${off:+off for: $off; }auto_merge=false in a repo's .nightshift/config turns it off${bn:+; board repos merge when you move their cards to Ready to merge})"
   fi
 }
 
@@ -275,17 +290,18 @@ PR open|0E8A16|its pull request is open
 stopped|BFBFBF|nightshift was stopped partway'
 
 # The status each of nightshift's skills sets as a run invokes it, a line
-# each: the skill (without `nightshift:`) and its status. Others set none.
-SKILL_STATUSES='questions|thinking
-plan|planning
-diagnose|thinking
-build|building
-tdd|building
-review|building
-finish|building
-update|updating
-merge|merging
-answer|answering'
+# each: the skill (without `nightshift:`), its status and, on a project board,
+# the column its card moves to. Others set none.
+SKILL_STATUSES='questions|thinking|
+plan|planning|
+diagnose|thinking|
+build|building|In progress
+tdd|building|In progress
+review|building|In review
+finish|building|In review
+update|updating|In progress
+merge|merging|In review
+answer|answering|'
 
 # Create the status labels in a repo (or update their colours), once per
 # version of STATUSES.
@@ -581,6 +597,11 @@ run_agent() {
   echo "$wt" >"$dir/worktree"
   why=$(cat "$dir/interrupted" 2>/dev/null) && rm -f "$dir/interrupted"
   rm -f "$dir/stop"
+  # A run the watcher started with the board's merge news is a merge run (see
+  # poll_repo); the marker is for this run alone.
+  mergerun=0
+  [ ! -f "$dir/merging-board" ] || mergerun=1
+  rm -f "$dir/merging-board"
   build=0
   if [ -f "$dir/build" ]; then
     build=1
@@ -608,7 +629,7 @@ $news"
     if [ "$why" = "watch stopped" ]; then
       lead="Your last run was stopped partway because nightshift stopped (it was restarted or upgraded); carry on from where it stopped."
     elif [ -n "$why" ]; then
-      lead="Your last run was stopped partway because the $(echo "$why" | sed 's/^label/agent label was/; s/^issue/issue was/; s/ label added$/ label was added/'); that's undone now, so carry on from where it stopped."
+      lead="Your last run was stopped partway because the $(echo "$why" | sed 's/^label/agent label was/; s/^issue/issue was/; s/ label added$/ label was added/; s/^moved to /card was moved to /; s/^removed from /card was removed from /'); that's undone now, so carry on from where it stopped."
     # A run that stalled (see stalled_run), now resumed.
     elif [ -f "$dir/stalled" ]; then
       lead="Your last run ended without finishing (it stopped, maybe to wait on something, but a run ends when you stop); carry on from where it stopped."
@@ -644,6 +665,10 @@ $intro"
   elif [ -f "$dir/pr" ] || [ "$build" = 1 ]; then set_status "$repo" "$n" building
   elif [ -n "$last" ]; then set_status "$repo" "$n" "$last"
   else set_status "$repo" "$n" thinking
+  fi
+  # A run on a card in Your review is a change request or an update: the card goes back to In progress.
+  if [ "$(board_column "$repo" "$n")" = "your review" ] && is_board "$repo"; then
+    move_card "$repo" "$n" "In progress" || true
   fi
   log "$repo#$n: run starting"
   t0=$(date +%s)
@@ -734,7 +759,26 @@ $intro"
       git -C "$clone" worktree remove --force "$wt" 2>>"$dir/log" && rm -f "$dir/worktree"
     fi
   fi
-  set_status "$repo" "$n" "$(idle_status "$dir")"
+  st=$(idle_status "$dir")
+  set_status "$repo" "$n" "$st"
+  # With its pull request open, or needing the user, the card waits for the
+  # user: Your review. (One that merged goes to Done, when check_done sees it.)
+  # A card in Ready to merge by the board as it is now is the user's: a merge
+  # run that needs the user sends it back to Your review, any other merge run
+  # leaves it (it waits to merge), and a run that wasn't one leaves it too, for
+  # the next poll to start the merge.
+  if is_board "$repo" && [ -f "$dir/pr" ] && ! merged_pr "$repo" "$n" "$dir"; then
+    refresh_board "$repo" || true
+    if [ "$(board_column "$repo" "$n")" = "ready to merge" ]; then
+      if [ "$mergerun" = 1 ]; then
+        [ "$st" != "needs you" ] || move_card "$repo" "$n" "Your review" || true
+      else
+        touch "$dir/merge-move"
+      fi
+    elif [ "$st" = "PR open" ] || [ "$st" = "needs you" ]; then
+      move_card "$repo" "$n" "Your review" || true
+    fi
+  fi
 }
 
 # The pull request of $1#$2's branch, if it has one, into issue dir $3's `pr`
@@ -824,7 +868,8 @@ build_intro() {
 
 # What a run is told of repo $1's merging: whether to merge its pull requests.
 merge_note() {
-  if auto_merges "$1"; then echo "This repo auto-merges: once its pull request is open or updated, use the merge skill."
+  if is_board "$1"; then echo "This repo works from a project board (project= in .nightshift/config), where nightshift moves the cards: no carry-on (never run \`nightshift build --carry-on\`), no small-issue build (a plan always waits for a go or its card moving to In progress), and no merge unless the card is in Ready to merge or the user replied merge."
+  elif auto_merges "$1"; then echo "This repo auto-merges: once its pull request is open or updated, use the merge skill."
   else echo "This repo doesn't auto-merge (auto_merge=false in .nightshift/config): leave merging to the user."
   fi
 }
@@ -1267,7 +1312,9 @@ check_done() {
       fi
     fi
     [ "$why" = "PR merged" ] && close_after_merge "$repo" "$n" "$clone" "$d"
-    [ -n "$why" ] && retire "$repo" "$n" "$clone" "$d" "$why"
+    [ -n "$why" ] || continue
+    retire "$repo" "$n" "$clone" "$d" "$why"
+    [ "$why" != "PR merged" ] || ! is_board "$repo" || move_card "$repo" "$n" Done || true
   done
 }
 
@@ -1599,18 +1646,251 @@ list_issues() {
   cat "$f.json"
 }
 
+# --- the board ---------------------------------------------------------------------
+
+# A repo whose .nightshift/config names a `project=` (a GitHub project board)
+# works the cards of that board, in place of the issues with the agent label.
+# The board's cards are read by one GraphQL query a poll, kept in
+# poll/<owner>_<repo>.board.json: {project, field, columns, items} with the
+# project's id, its Status field's id and options ([{id, name}]), and each card
+# as {id, status, type, ...}: an Issue's repo, number, updated_at, state,
+# labels and author, a DraftIssue's draft_id and title (type is the content's
+# GraphQL type; status, the Status column's name, null with none).
+
+# Repo $1's board.json.
+board_file() { echo "$NS/poll/$(echo "$1" | tr '/' '_').board.json"; }
+
+# The GraphQL document that reads a board: its project and Status field, and
+# its cards a page at a time (gh api graphql --paginate fills $endCursor).
+# `owner` is a user's or an organisation's login. The only place the document
+# is written; to try it by hand against a real project, paste what is between
+# the quotes into
+#   gh api graphql --paginate -f query='…' -f owner=<login> -F number=<n>
+BOARD_QUERY='query NightshiftBoard($owner: String!, $number: Int!, $endCursor: String) {
+  repositoryOwner(login: $owner) {
+    ... on ProjectV2Owner {
+      projectV2(number: $number) {
+        id
+        field(name: "Status") {
+          ... on ProjectV2SingleSelectField { id options { id name } }
+        }
+        items(first: 100, after: $endCursor) {
+          pageInfo { hasNextPage endCursor }
+          nodes {
+            id
+            fieldValueByName(name: "Status") {
+              ... on ProjectV2ItemFieldSingleSelectValue { name optionId }
+            }
+            content {
+              __typename
+              ... on Issue {
+                number updatedAt state
+                repository { nameWithOwner }
+                author { login }
+                labels(first: 50) { nodes { name } }
+              }
+              ... on DraftIssue { id title }
+            }
+          }
+        }
+      }
+    }
+  }
+}'
+
+# The GraphQL document that turns a draft card into an issue of a repository
+# (`repo` is the repository's node id), keeping the card. To try it by hand:
+#   gh api graphql -f query='…' -f item=<PVTI_…> -f repo=<R_…>
+CONVERT_DRAFT='mutation NightshiftConvertDraft($item: ID!, $repo: ID!) {
+  convertProjectV2DraftIssueItemToIssue(input: {itemId: $item, repositoryId: $repo}) {
+    item { id }
+  }
+}'
+
+# The GraphQL document that sets a card's Status (`option` is the id of the
+# column's option). To try it by hand:
+#   gh api graphql -f query='…' -f project=<PVT_…> -f item=<PVTI_…> -f field=<PVTSSF_…> -f option=<id>
+MOVE_CARD='mutation NightshiftMoveCard($project: ID!, $item: ID!, $field: ID!, $option: String!) {
+  updateProjectV2ItemFieldValue(input: {projectId: $project, itemId: $item, fieldId: $field, value: {singleSelectOptionId: $option}}) {
+    projectV2Item { id }
+  }
+}'
+
+# The columns whose cards nightshift works, lower case, as a jq array; the
+# others (Backlog, Done, a card with none) it leaves alone.
+BOARD_WORKING='["ready", "in progress", "in review", "your review", "ready to merge"]'
+
+# Repo $1's settings fetched from origin ($2 is its clone), every
+# NIGHTSHIFT_PR_INTERVAL (30 s): repo_option reads the last fetch, and a repo
+# with no run going would have none.
+fetch_settings() {
+  ff="$NS/poll/$(echo "$1" | tr '/' '_').fetch" now=$(date +%s)
+  [ $((now - $(cat "$ff" 2>/dev/null || echo 0))) -ge "${NIGHTSHIFT_PR_INTERVAL:-30}" ] || return 0
+  mkdir -p "$NS/poll"
+  git -C "$2" fetch -q origin >/dev/null 2>&1 || true
+  echo "$now" >"$ff"
+}
+
+# The "<owner> <number>" of project option value $1, a user or organisation
+# project's URL (a trailing /views/N is ignored); nothing for anything else.
+parse_board() {
+  printf '%s\n' "$1" | sed -n -E 's#^https://github\.com/(users|orgs)/([^/]+)/projects/([0-9]+)(/views/[0-9]+)?/?$#\2 \3#p'
+}
+
+# Repo $1's board ($2: its clone) from its `project=`, as "<owner> <number>"; nothing without
+# one. Anything but a project's URL fails, with a note in the log.
+repo_board() {
+  fetch_settings "$1" "$2"
+  rb=$(repo_option "$1" project)
+  [ -n "$rb" ] || return 0
+  rb=$(parse_board "$rb")
+  if [ -z "$rb" ]; then
+    log "$1: project= in .nightshift/config isn't a project URL (https://github.com/users/<login>/projects/<n>)"
+    return 1
+  fi
+  printf '%s\n' "$rb"
+}
+
+# The first repo in the config whose `project=` is the board $1 (owner) $2 (number):
+# the one that turns the board's drafts into issues.
+board_first_repo() {
+  repos | while read -r bfr bfc; do
+    fetch_settings "$bfr" "$bfc"
+    [ "$(parse_board "$(repo_option "$bfr" project)" | tr 'A-Z' 'a-z')" = "$(printf '%s %s' "$1" "$2" | tr 'A-Z' 'a-z')" ] && { echo "$bfr"; break; }
+  done
+}
+
+# Read the board $2 (its owner) $3 (its number) for repo $1 into its board.json,
+# and print the repo's issues on it in a working column, open, as the issues
+# list gives them (number, updated_at, labels). Fails if the board can't be read.
+list_board() {
+  bf=$(board_file "$1")
+  mkdir -p "$NS/poll"
+  # Per process: a run's move and a poll read the board at the same time.
+  bres=$(gh api graphql --paginate -f query="$BOARD_QUERY" -f owner="$2" -F number="$3" 2>"$bf.$$.err") || { cat "$bf.$$.err" >&2; rm -f "$bf.$$.err"; return 1; }
+  printf '%s\n' "$bres" | jq -s -c '
+    [.[].data.repositoryOwner.projectV2 | select(. != null)] as $p
+    | if ($p | length) == 0 then error("project not found") elif $p[0].field == null then error("the project has no Status field") else
+      { project: $p[0].id, field: $p[0].field.id, columns: $p[0].field.options,
+        items: [$p[].items.nodes[] | select(.content != null)
+          | { id, status: (.fieldValueByName.name // null), type: .content.__typename }
+            + (if .content.__typename == "Issue"
+               then { repo: .content.repository.nameWithOwner, number: .content.number, updated_at: .content.updatedAt,
+                      state: .content.state, labels: [.content.labels.nodes[].name], author: .content.author.login }
+               elif .content.__typename == "DraftIssue" then { draft_id: .content.id, title: .content.title }
+               else {} end)] } end' >"$bf.$$.tmp" 2>"$bf.$$.err" || { cat "$bf.$$.err" >&2; rm -f "$bf.$$.tmp" "$bf.$$.err"; return 1; }
+  mv "$bf.$$.tmp" "$bf"
+  rm -f "$bf.$$.err"
+  jq -c --arg r "$1" --argjson work "$BOARD_WORKING" '
+    [.items[] | select(.type == "Issue" and (.repo | ascii_downcase) == ($r | ascii_downcase) and .state == "OPEN"
+        and ((.status // "") | ascii_downcase | IN($work[])))
+      | { number, updated_at, labels: [.labels[] | { name: . }] }]' "$bf"
+}
+
+# Turn the draft cards in Ready of repo $1's board (as the last list_board
+# read it) into issues of $1, when $1 is the first repo naming that board ($2
+# its owner, $3 its number). Prints a line for each one converted. A draft
+# that fails is logged, and tried again next poll.
+convert_drafts() {
+  cdf=$(board_file "$1")
+  cdl=$(jq -r '.items[] | select(.type == "DraftIssue" and ((.status // "") | ascii_downcase) == "ready") | "\(.id)\t\(.title)"' "$cdf")
+  [ -n "$cdl" ] || return 0
+  [ "$(board_first_repo "$2" "$3")" = "$1" ] || return 0
+  cdr=$(gh api "repos/$1" --jq .node_id 2>>"$NS/watch.log") || { log "$1: couldn't read the repository to turn its drafts into issues"; return 0; }
+  printf '%s\n' "$cdl" | while IFS=$(printf '\t') read -r cdi cdt; do
+    if gh api graphql -f query="$CONVERT_DRAFT" -f item="$cdi" -f repo="$cdr" >/dev/null 2>>"$NS/watch.log"; then
+      log "$1: turned the draft \"$cdt\" into an issue"
+      echo "$cdi"
+    else
+      log "$1: couldn't turn the draft \"$cdt\" into an issue"
+    fi
+  done
+}
+
+# Repo $1's issues on its board that are not worked, a line each: the number
+# and why ("moved to Backlog", "moved to Done", or a card in no known column).
+board_off() {
+  jq -r --arg r "$1" --argjson work "$BOARD_WORKING" '
+    .items[] | select(.type == "Issue" and (.repo | ascii_downcase) == ($r | ascii_downcase))
+    | select(((.status // "") | ascii_downcase | IN($work[])) | not)
+    | "\(.number) moved to \(.status // "Backlog")"' "$(board_file "$1")"
+}
+
+# Whether repo $1 works from a project board (its `project=` is set).
+is_board() { [ -n "$(repo_option "$1" project)" ]; }
+
+# The column, in lower case, of the card of $1#$2 as the last list_board read
+# it; empty with none (not on the board, or no Status).
+board_column() {
+  jq -r --arg r "$1" --argjson n "$2" '
+    [.items[] | select(.type == "Issue" and (.repo | ascii_downcase) == ($r | ascii_downcase) and .number == $n)][0].status // "" | ascii_downcase' \
+    "$(board_file "$1")" 2>/dev/null
+}
+
+# The route a card takes, in order, in lower case, and the moves back along it
+# that are allowed, a line each: from and to.
+BOARD_ROUTE='backlog
+ready
+in progress
+in review
+your review
+ready to merge
+done'
+BOARD_BACK='your review|in progress
+ready to merge|your review'
+
+# Read repo $1's board again into its board.json (a poll's is up to a poll
+# interval old, and a running issue's card is not re-recorded). Fails without
+# reading it, and board.json stays as it was.
+refresh_board() {
+  rfc=$(repo_clone "$1")
+  [ -n "$rfc" ] || return 1
+  rfb=$(repo_board "$1" "$rfc") && [ -n "$rfb" ] || return 1
+  # shellcheck disable=SC2086 # the owner and the number
+  list_board "$1" $rfb >/dev/null 2>>"$NS/watch.log"
+}
+
+# Move the card of $1#$2 to the column $3 (matched without regard to case) of its
+# board, by the board as it is now (read again first; the last list_board's
+# if that fails). Fails, with a line in the log, when the board has no such
+# column or card, or the mutation fails; does nothing when the card is there
+# already, or past it on the route (BOARD_ROUTE) unless the move back is one of
+# BOARD_BACK. On success the card is that column in board.json and in the
+# issue's `column`, so the move isn't taken for the user's.
+move_card() {
+  refresh_board "$1" || log_at 3 "$1#$2: couldn't read the board again: moving by the last read"
+  mcf=$(board_file "$1")
+  [ -f "$mcf" ] || return 1
+  mcc=$(jq -r --arg c "$3" 'first(.columns[] | select((.name | ascii_downcase) == ($c | ascii_downcase))) | "\(.id)\t\(.name)"' "$mcf" 2>/dev/null)
+  if [ -z "$mcc" ]; then log "$1#$2: the board has no $3 column: card not moved"; return 1; fi
+  mci=$(jq -r --arg r "$1" --argjson n "$2" '[.items[] | select(.type == "Issue" and (.repo | ascii_downcase) == ($r | ascii_downcase) and .number == $n)][0].id // empty' "$mcf")
+  if [ -z "$mci" ]; then log "$1#$2: not on the board: card not moved"; return 1; fi
+  mcn=${mcc#*"$(printf '\t')"}
+  mcfrom=$(board_column "$1" "$2") mct=$(printf '%s' "$mcn" | tr 'A-Z' 'a-z')
+  [ "$mcfrom" != "$mct" ] || return 0
+  mcr=$(printf '%s\n' "$BOARD_ROUTE" | grep -nxF "$mct" | cut -d: -f1)
+  mcq=$(printf '%s\n' "$BOARD_ROUTE" | grep -nxF "$mcfrom" | cut -d: -f1)
+  if [ -n "$mcr" ] && [ -n "$mcq" ] && [ "$mcr" -lt "$mcq" ] && ! printf '%s\n' "$BOARD_BACK" | grep -qxF "$mcfrom|$mct"; then
+    log_at 3 "$1#$2: the card is in $mcfrom, past $mcn: not moved back"
+    return 0
+  fi
+  if ! gh api graphql -f query="$MOVE_CARD" -f project="$(jq -r .project "$mcf")" -f item="$mci" \
+    -f field="$(jq -r .field "$mcf")" -f option="${mcc%%"$(printf '\t')"*}" >/dev/null 2>>"$NS/watch.log"; then
+    log "$1#$2: couldn't move the card to $mcn"
+    return 1
+  fi
+  jq -c --arg i "$mci" --arg s "$mcn" '.items |= map(if .id == $i then .status = $s else . end)' "$mcf" >"$mcf.$$.tmp" && mv "$mcf.$$.tmp" "$mcf"
+  printf '%s\n' "$mcn" | tr 'A-Z' 'a-z' >"$(issue_dir "$1" "$2")/column"
+  log "$1#$2: card moved to $mcn"
+}
+
 # With all_issues=true on repo $1, the time it was first read on (UTC, in
 # all_issues/<owner>_<repo>); off or unset, nothing, and the record goes. The
-# repo's settings are fetched first (every NIGHTSHIFT_PR_INTERVAL, 30 s), as
-# no run may be fetching them.
+# repo's settings are fetched first (fetch_settings), as no run may be
+# fetching them.
 all_issues_since() {
   af="$NS/all_issues/$(echo "$1" | tr '/' '_')"
-  ff="$NS/poll/$(echo "$1" | tr '/' '_').fetch" now=$(date +%s)
-  if [ $((now - $(cat "$ff" 2>/dev/null || echo 0))) -ge "${NIGHTSHIFT_PR_INTERVAL:-30}" ]; then
-    mkdir -p "$NS/poll"
-    git -C "$2" fetch -q origin >/dev/null 2>&1 || true
-    echo "$now" >"$ff"
-  fi
+  fetch_settings "$1" "$2"
   if [ "$(repo_option "$1" all_issues)" = true ]; then
     [ -s "$af" ] || { mkdir -p "$NS/all_issues" && date -u +%Y-%m-%dT%H:%M:%SZ >"$af"; }
     cat "$af"
@@ -1645,18 +1925,29 @@ poll_repo() {
   ensure_labels "$repo"
   # Each labelled issue, and the label that holds it (`invalid` or `wontfix`;
   # `-`, none). A held one isn't worked: it's off, as if unlabelled.
-  issues=$(list_issues "$repo" 2>>"$NS/watch.log") || { log "$repo: couldn't list issues"; return; }
-  # With all_issues=true, an allowed user's open issues from the option's
-  # on-time on count too, labelled or not: `extra` are the ones the label
-  # didn't list, whose author is the check (below).
-  extra=""
-  all_since=$(all_issues_since "$repo" "$clone")
-  if [ -n "$all_since" ]; then
-    more=$(list_issues "$repo" all 2>>"$NS/watch.log") || { log "$repo: couldn't list issues"; return; }
-    more=$(printf '%s\n' "$more" | jq -c --argjson have "$(printf '%s\n' "$issues" | jq -c '[.[].number]')" --argjson allowed "$allowed" --arg since "$all_since" \
-      '[.[] | select((.pull_request | not) and (.number | IN($have[]) | not) and (.user.login as $u | $allowed | index($u)) and .created_at >= $since)]')
-    extra=$(printf '%s\n' "$more" | jq -r '.[].number')
-    issues=$(printf '%s\n%s\n' "$issues" "$more" | jq -s -c 'add')
+  # A repo with a project= works its board's cards in place of the label.
+  board=$(repo_board "$repo" "$clone") || return 0
+  boff="" extra="" all_since=""
+  if [ -n "$board" ]; then
+    # shellcheck disable=SC2086 # the owner and the number
+    issues=$(list_board "$repo" $board 2>>"$NS/watch.log") || { log "$repo: couldn't read the board"; return; }
+    # Drafts in Ready become issues, which the board is then read for again.
+    # shellcheck disable=SC2086
+    [ -z "$(convert_drafts "$repo" $board)" ] || issues=$(list_board "$repo" $board 2>>"$NS/watch.log") || { log "$repo: couldn't read the board"; return; }
+    boff=$(board_off "$repo")
+  else
+    issues=$(list_issues "$repo" 2>>"$NS/watch.log") || { log "$repo: couldn't list issues"; return; }
+    # With all_issues=true, an allowed user's open issues from the option's
+    # on-time on count too, labelled or not: `extra` are the ones the label
+    # didn't list, whose author is the check (below).
+    all_since=$(all_issues_since "$repo" "$clone")
+    if [ -n "$all_since" ]; then
+      more=$(list_issues "$repo" all 2>>"$NS/watch.log") || { log "$repo: couldn't list issues"; return; }
+      more=$(printf '%s\n' "$more" | jq -c --argjson have "$(printf '%s\n' "$issues" | jq -c '[.[].number]')" --argjson allowed "$allowed" --arg since "$all_since" \
+        '[.[] | select((.pull_request | not) and (.number | IN($have[]) | not) and (.user.login as $u | $allowed | index($u)) and .created_at >= $since)]')
+      extra=$(printf '%s\n' "$more" | jq -r '.[].number')
+      issues=$(printf '%s\n%s\n' "$issues" "$more" | jq -s -c 'add')
+    fi
   fi
   all=$(printf '%s\n' "$issues" | jq -r '.[] | select(.pull_request | not) | "\(.number) \(.updated_at) \([.labels[].name | select(. == "invalid" or . == "wontfix")] | first // "-")"')
   open=$(printf '%s\n' "$all" | awk 'NF && $3 == "-" { print $1, $2 }')
@@ -1688,6 +1979,7 @@ poll_repo() {
     hold=$(printf '%s\n' "$held" | awk -v n="$n" '$1 == n { print $2 }')
     if [ "$state" = closed ]; then why="issue closed"
     elif [ -n "$hold" ]; then why="$hold label added"
+    elif [ -n "$board" ]; then why=$(printf '%s\n' "$boff" | awk -v n="$n" '$1 == n { sub(/^[0-9]+ /, ""); print }'); why=${why:-removed from the board}
     elif [ -f "$d/unlabelled" ] && [ -z "$all_since" ]; then why="all_issues turned off"
     elif [ -f "$d/unlabelled" ]; then why="not among the newest 100 open issues"
     else why="label removed"
@@ -1727,8 +2019,26 @@ poll_repo() {
     count=$((count + 1))
     d=$(issue_dir "$repo" "$n")
     running "$d" && { did="$did, #$n running"; continue; }
-    [ ! -f "$d/update" ] && [ ! -f "$d/build" ] && [ ! -f "$d/interrupted" ] && [ ! -f "$d/stalled" ] && [ -f "$d/updated" ] && [ "$(cat "$d/updated")" = "$updated" ] && continue
-    if [ ! -d "$d" ] && printf '%s\n' "$extra" | grep -qx "$n"; then
+    # A card moved from Ready to In progress, with a plan waiting, is the plan's
+    # approval. The board doesn't bump the issue's updated_at, so the move is
+    # noticed here, against the column the card was last seen in.
+    bmove=0 col=""
+    if [ -n "$board" ] && [ -d "$d" ]; then
+      col=$(board_column "$repo" "$n")
+      [ "$(cat "$d/column" 2>/dev/null)" = ready ] && [ "$col" = "in progress" ] && handoff_ok "$d" && plan_pending "$repo" "$n" && bmove=1
+      # A card moved into Ready to merge, with a pull request, is a merge approval,
+      # queued until the run starts.
+      [ -s "$d/column" ] && [ "$(cat "$d/column")" != "ready to merge" ] && [ "$col" = "ready to merge" ] && [ -f "$d/pr" ] && [ ! -f "$d/done" ] && touch "$d/merge-move"
+      # Moved on from Ready to merge before the merge run started: no merge.
+      [ "$col" = "ready to merge" ] || rm -f "$d/merge-move"
+      printf '%s\n' "$col" >"$d/column"
+    fi
+    [ "$bmove" != 1 ] && [ ! -f "$d/merge-move" ] && [ ! -f "$d/update" ] && [ ! -f "$d/build" ] && [ ! -f "$d/interrupted" ] && [ ! -f "$d/stalled" ] && [ -f "$d/updated" ] && [ "$(cat "$d/updated")" = "$updated" ] && continue
+    if [ ! -d "$d" ] && [ -n "$board" ]; then
+      # A card in a working column: only people who can write to the project move cards.
+      mkdir -p "$d"
+      board_column "$repo" "$n" >"$d/column"
+    elif [ ! -d "$d" ] && printf '%s\n' "$extra" | grep -qx "$n"; then
       # Unlabelled, by an allowed user: the author is the check.
       mkdir -p "$d" && touch "$d/unlabelled"
     elif [ ! -d "$d" ]; then
@@ -1767,13 +2077,18 @@ poll_repo() {
       continue
     fi
     # A plain "go" to the plan: build it in a fresh session (see run_agent).
-    if [ -n "$news" ] && handoff_ok "$d" && approves "$repo" "$n" "$filter"; then
+    if [ "$bmove" = 1 ]; then
+      printf '%s\n%s' "- the board: moved to In progress" "${news:+
+$news}" >"$d/build"
+    elif [ -n "$news" ] && handoff_ok "$d" && approves "$repo" "$n" "$filter"; then
       printf '%s' "$news" >"$d/build"
+      # The card follows the go.
+      [ -z "$board" ] || move_card "$repo" "$n" "In progress" || true
     fi
     # A reply to an issue that needs you: it no longer does, before its run
     # (or, at capacity, `queued`) sets the next status.
     [ -n "$news" ] && [ "$(cat "$d/label" 2>/dev/null)" = "needs you" ] && set_status "$repo" "$n" ""
-    if [ $first_run -eq 0 ] && [ -z "$news" ] && [ ! -f "$d/interrupted" ] && [ ! -f "$d/stalled" ] && [ ! -f "$d/update" ] && [ ! -f "$d/build" ]; then
+    if [ $first_run -eq 0 ] && [ -z "$news" ] && [ ! -f "$d/interrupted" ] && [ ! -f "$d/stalled" ] && [ ! -f "$d/update" ] && [ ! -f "$d/build" ] && [ ! -f "$d/merge-move" ]; then
       echo "$updated" >"$d/updated"
       continue
     fi
@@ -1785,6 +2100,15 @@ poll_repo() {
     [ -n "$last" ] && echo "$last" >"$d/seen"
     echo "$updated" >"$d/updated"
     touch "$d/started"
+    # A run on a card in Ready to merge with a pull request is a merge run, the
+    # merge skill's: whatever starts it (the move, a comment, an update).
+    rm -f "$d/merge-move"
+    if [ -n "$board" ] && [ "$col" = "ready to merge" ] && [ -f "$d/pr" ] && [ ! -f "$d/done" ]; then
+      touch "$d/merging-board"
+      news="- the board: the card is in Ready to merge${news:+
+
+$news}"
+    fi
     if [ -f "$d/update" ]; then
       mv "$d/update" "$d/updating"
       news="$news${news:+
@@ -1805,9 +2129,11 @@ This is an update run: the update skill's job.
     did="$did, started #$n"
   done
   [ $count -eq 1 ] && s="" || s="s"
+  kind=labelled
+  [ -z "$board" ] || kind="board"
   # Shown by default when it started an issue or one waits; otherwise at `all`.
   case "$did" in *started* | *waits*) l=0 ;; *) l=3 ;; esac
-  log_at $l "polled $repo: $count labelled issue$s${did:-, nothing new}"
+  log_at $l "polled $repo: $count $kind issue$s${did:-, nothing new}"
   # `once` waits for the runs it started (they're children of this pipeline).
   if [ "${NIGHTSHIFT_WAIT:-}" = 1 ]; then wait; fi
   }
@@ -1823,6 +2149,11 @@ handoff_ok() { { [ -s "$1/session" ] || [ "${2:-}" = carry ]; } && [ ! -f "$1/pl
 approves() {
   [ "$(gh api --paginate "repos/$1/issues/$2/comments?per_page=100" \
     --jq "$3 | .body | ascii_downcase | test(\"^\\\\s*go[.!]*\\\\s*$\")" 2>/dev/null)" = true ] || return 1
+  plan_pending "$1" "$2"
+}
+
+# Whether the last nightshift comment on $1#$2 is a plan: one waiting for its approval.
+plan_pending() {
   gh api --paginate "repos/$1/issues/$2/comments?per_page=100" \
     --jq ".[] | select(.body | contains(\"$MARKER\")) | .body | contains(\"nightshift:plan -->\")" 2>/dev/null | tail -1 | grep -qx true
 }
@@ -2270,6 +2601,7 @@ resume_hint() {
   case "$(cat "$1/off")" in
   "issue closed") echo "reopen to resume" ;;
   *" label added") echo "remove the $(sed 's/ label added$//' "$1/off") label to resume" ;;
+  "moved to "* | "removed from the board") echo "move its card back to a working column to resume" ;;
   *) echo "add the label back to resume" ;;
   esac
 }
@@ -2497,6 +2829,49 @@ repo_plugins() {
   done
 }
 
+# doctor's lines for repo $1's project board (project= in .nightshift/config), if it
+# has one: gh's `project` scope, the project and its Status field readable, and
+# each of the seven columns (BOARD_ROUTE) there.
+repo_board_doctor() {
+  rbd=$(repo_option "$1" project)
+  [ -n "$rbd" ] || return 0
+  rbp=$(parse_board "$rbd")
+  if [ -z "$rbp" ]; then
+    fail bad "$1: project=$rbd in .nightshift/config" "use a project's URL, https://github.com/users/<login>/projects/<n> (an organisation's: /orgs/<login>/projects/<n>)"
+    return 0
+  fi
+  if [ -z "$ghv" ]; then fail "?" "$1: its board ($rbp)" "needs gh to check"; return 0; fi
+  # Only a token that lists its scopes can be told lacking one (a fine-grained token doesn't).
+  rbs=$(gh auth status --active 2>&1 | sed -n 's/.*Token scopes: //p')
+  case "$rbs" in
+  '' | *"'project'"*) ;;
+  *) fail missing "$1: gh's \`project\` scope, for its board" "gh auth refresh -s project"; return 0 ;;
+  esac
+  rbn="${rbp% *}/${rbp#* }"
+  rbr=$(gh api graphql -f query="$BOARD_QUERY" -f owner="${rbp% *}" -F number="${rbp#* }" 2>&1) || {
+    fail no "$1: its board ($rbn)" "$(printf '%s' "$rbr" | head -1): check project= in .nightshift/config, and that gh may read it (gh auth refresh -s project)"
+    return 0
+  }
+  if ! printf '%s' "$rbr" | jq -e '.data.repositoryOwner.projectV2' >/dev/null 2>&1; then
+    fail no "$1: its board ($rbn)" "no such project: check project= in .nightshift/config"
+    return 0
+  fi
+  if ! printf '%s' "$rbr" | jq -e '.data.repositoryOwner.projectV2.field' >/dev/null 2>&1; then
+    fail no "$1: its board ($rbn)" "the project has no Status field: its columns are the options of one"
+    return 0
+  fi
+  rbc=$(printf '%s' "$rbr" | jq -r '.data.repositoryOwner.projectV2.field.options[].name' | tr 'A-Z' 'a-z')
+  rbm=0
+  for rbo in $(printf '%s\n' "$BOARD_ROUTE" | tr ' ' '_'); do
+    rbo=$(printf '%s' "$rbo" | tr '_' ' ')
+    printf '%s\n' "$rbc" | grep -qxF "$rbo" && continue
+    fail missing "$1: the board's $(printf '%s' "$rbo" | awk '{print toupper(substr($0, 1, 1)) substr($0, 2)}') column" "add it to the Status field of $rbd"
+    rbm=1
+  done
+  [ $rbm -eq 0 ] && pass "$1: board $rbn ($rbd), its seven columns"
+  return 0
+}
+
 # `doctor`: everything nightshift needs on this machine, what's missing and how
 # to get it. Fails when something required is.
 cmd_doctor() {
@@ -2555,7 +2930,8 @@ cmd_doctor() {
       fi
     elif [ -z "$ghv" ]; then fail "?" "$repo: its \`$LABEL\` label" "needs gh to check"
     elif gh api "repos/$repo/labels/$LABEL" >/dev/null 2>&1; then
-      if auto_merges "$repo"; then pass "$repo: clone $clone, \`$LABEL\` label, PRs merge on their own"
+      if is_board "$repo"; then pass "$repo: clone $clone, \`$LABEL\` label, PRs merge when you move their cards to Ready to merge"
+      elif auto_merges "$repo"; then pass "$repo: clone $clone, \`$LABEL\` label, PRs merge on their own"
       else pass "$repo: clone $clone, \`$LABEL\` label, PRs wait for you (auto_merge=false in .nightshift/config)"
       fi
     else fail missing "$repo: its \`$LABEL\` label" "gh label create $LABEL --repo $repo --color 5319E7"
@@ -2563,6 +2939,7 @@ cmd_doctor() {
     tracks_local_md "$clone" &&
       fail tracked "$repo: CLAUDE.local.md, so runs don't get nightshift's instructions" "untrack it: git -C $clone rm --cached CLAUDE.local.md"
     repo_plugins "$repo"
+    repo_board_doctor "$repo"
     # Options older versions read from the repo's line, ignored now.
     for o in auto_merge plugins; do
       v=$(repo_line_option "$repo" "$o")
@@ -2613,7 +2990,8 @@ cmd_add() {
   [ "$(repo_option "$repo" all_issues)" = true ] && all=1
   [ -n "$all" ] || gh label create "$LABEL" --repo "$repo" --color 5319E7 --description "nightshift works this issue" >/dev/null 2>&1 || true
   ensure_labels "$repo" || true
-  if auto_merges "$repo"; then merging="PRs merge on their own (auto_merge=false in .nightshift/config turns it off)"
+  if is_board "$repo"; then merging="PRs merge when you move their cards to Ready to merge"
+  elif auto_merges "$repo"; then merging="PRs merge on their own (auto_merge=false in .nightshift/config turns it off)"
   else merging="PRs wait for you (auto_merge=false in .nightshift/config)"
   fi
   if [ -n "$all" ]; then echo "watching $repo (clone: $clone); $merging; all_issues=true works your allowed users' new issues, no \`$LABEL\` label needed"
@@ -2766,12 +3144,15 @@ cmd_build() {
   *) usage_error "usage: nightshift build [--carry-on]" ;;
   esac
   [ -n "${NIGHTSHIFT_REPO:-}" ] && [ -n "${NIGHTSHIFT_ISSUE:-}" ] || die "nightshift build only works in a nightshift run"
+  [ $carry = 0 ] || ! is_board "$NIGHTSHIFT_REPO" || die "nightshift build --carry-on isn't allowed on a project board: the plan waits for a go or for its card to move to In progress"
   bd=$(issue_dir "$NIGHTSHIFT_REPO" "$NIGHTSHIFT_ISSUE")
   if [ $carry = 1 ] && handoff_ok "$bd" carry && [ ! -f "$bd/updating" ]; then
     printf '%s\n' "$CARRY_ON" >"$bd/build"
     echo "A fresh session builds it, with the issue, the plan and the comments since: end this run now, with no comment."
   elif [ $carry = 0 ] && handoff_ok "$bd" && [ ! -f "$bd/updating" ]; then
     cp "$bd/news" "$bd/build" 2>/dev/null || : >"$bd/build"
+    # The card follows the approval.
+    ! is_board "$NIGHTSHIFT_REPO" || move_card "$NIGHTSHIFT_REPO" "$NIGHTSHIFT_ISSUE" "In progress" || true
     echo "A fresh session builds it, with the issue, the plan and the approval: end this run now, with no comment."
   else
     echo "Build it in this session: invoke the nightshift:build skill."
@@ -2779,7 +3160,10 @@ cmd_build() {
 }
 
 # The status a skill (`nightshift:<name>`) sets, if any (see SKILL_STATUSES).
-skill_status() { printf '%s\n' "$SKILL_STATUSES" | sed -n "s/^${1#nightshift:}|//p"; }
+skill_status() { printf '%s\n' "$SKILL_STATUSES" | sed -n "s/^${1#nightshift:}|\([^|]*\)|.*/\1/p"; }
+
+# The board column a skill's card moves to, if any (see SKILL_STATUSES).
+skill_column() { printf '%s\n' "$SKILL_STATUSES" | sed -n "s/^${1#nightshift:}|[^|]*|//p"; }
 
 # `_skill <repo> <n> nightshift:<name>`: a run invoked the skill; keep it, and
 # set the status it maps to.
@@ -2787,6 +3171,9 @@ cmd_skill() {
   s=$(skill_status "$3")
   [ -z "$s" ] || set_status "$1" "$2" "$s"
   printf '%s\n' "$3" >"$(issue_dir "$1" "$2")/skill"
+  # On a board, the card goes with it.
+  sc=$(skill_column "$3")
+  [ -z "$sc" ] || ! is_board "$1" || move_card "$1" "$2" "$sc" || true
 }
 
 usage() { sed -n '2,17s/^# \{0,1\}//p' "$SELF"; }

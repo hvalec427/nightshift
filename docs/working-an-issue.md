@@ -14,6 +14,85 @@
 | Add the label back, remove `invalid`/`wontfix`, or reopen it | Picks up the stopped run where it left off |
 | Merge its pull request, or close the issue | It's done: a last comment says what its runs cost (dollars at API prices, tokens, time) and the pull request's size (`PR +412 −37 in 9 files`), and, unless `.nightshift/config` has `cost_breakdown=false`, the dollars of each model and every agent that ran in a table (`cost_comment=false` leaves the comment out): a row a run (`plan run`), in the order they ran, with the subagents it started under it; each row's model, effort, skills, tokens (a subagent's: those of its turns), cost, time and tool calls; a subagent's cost is an estimate (`~$0.30`: the tokens of its turns at its model's average rate in that run, `–` when unknown) and a run's row is the rest of the run's cost, so the rows add up to the total row (unless the estimates overshoot the run's cost). Under it, the time from the first run to the last: how much the agent worked, how long it waited on you, and other waits (queued, an update); `nightshift status` leaves it out, and its state and branch are cleaned up |
 
+## Working from a project board
+
+A repo whose `.nightshift/config` has `project=<a GitHub project's URL>` (see
+[Config](config.md#config)) is worked from that board in place of the `agent` label. Each
+poll reads the project's cards with one GraphQL query (`gh api graphql`, with the
+`project` scope: `gh auth refresh -s project`). The project's `Status` field is its
+columns, matched by name without regard to case:
+
+| Column | nightshift |
+|---|---|
+| Backlog | nothing: the card is left alone |
+| Ready | works the issue: a first run asks its questions or posts the plan |
+| In progress, In review, Your review, Ready to merge | works it too |
+| Done | nothing |
+
+Only issues of the repo count: its cards in a column other than Backlog and Done, open.
+An issue of the repo that isn't on the board, or is in Backlog or Done, is off, as if its
+label were removed: a run in flight stops (`nightshift status` says `moved to Backlog`),
+and moving the card back to a working column picks it up where it left off. An issue
+labelled `agent` that isn't on the board is ignored. Everything else works as for a
+labelled issue: your comments (from `allowed_users`) are the news, `invalid` and `wontfix`
+hold it, and the status labels follow the runs. A card in a working column starts work
+without the label check: only people who can write to the project can move cards.
+Cards of other repos and pull requests are skipped.
+
+A draft card has no issue to talk in. One in Ready is turned into an issue of the repo
+(titled as the draft, the card kept in Ready) and then worked like any card; a draft in any
+other column is left alone. When several repos in `~/.nightshift/config` name the same
+project, the first one listed turns its drafts into issues. A conversion that fails is
+logged and tried again on the next poll.
+
+Moving a card from Ready to In progress, after nightshift has posted a plan, approves it:
+the build starts in a fresh session as it does for a **go**, its approval the line `- the
+board: moved to In progress`. A **go** reply approves as before and nightshift moves the
+card to In progress for you (with no In progress column, it builds and logs that it didn't
+move the card). The card moving without a plan waiting (questions still open) starts
+nothing. A board repo never builds without one of these: `auto_merge` is ignored, a plan
+never carries on by itself, nothing counts as a small issue, and nothing merges outside the
+card being in Ready to merge or a **merge** reply.
+
+The card then follows the work, one move (a GraphQL mutation) each, only when it changes:
+
+| When | The card goes to |
+|---|---|
+| A build hands off, or a **go** approves; the build, tdd or update skill starts | In progress |
+| The review, finish or merge skill starts | In review |
+| A run starts on a card in Your review (a change request or an update) | In progress |
+| A run ends with its pull request open or needing you (a `look`, a `blocked`) | Your review |
+| A merge run ends needing you | Your review, from Ready to merge |
+| Its pull request merges | Done |
+
+So a comment on a card in Your review moves it to In progress, and the run ending puts it in
+Your review again. A card only moves forward along Backlog, Ready, In progress, In review, Your
+review, Ready to merge, Done; where you've already moved it past a column, nightshift leaves
+it. The ways back are Your review to In progress, and Ready to merge to Your review. Each move
+is decided on the board as it is then (read again just before), not as the last poll read it,
+so a card you moved a moment ago isn't overwritten. A column the project lacks means no move,
+and a line in the log (`nightshift logs`) says which.
+
+`nightshift doctor` checks each board repo: that `gh` has the `project` scope (it names the fix,
+`gh auth refresh -s project`), that the project and its Status field can be read, and which of
+the seven columns the project lacks (you add them; nightshift doesn't). A `project=` that isn't
+a project's URL is reported too.
+
+Nothing merges until you move a card to Ready to merge (or reply **merge**). With a pull
+request open, a run on a board repo still checks it, fixes the failing checks and posts its
+`look` comment (even with nothing to look at), but doesn't merge. Moving the card to Ready to
+merge then starts a run whose news is `- the board: the card is in Ready to merge`: the
+merge skill takes it as your **merge** reply, runs its hard gates again (rebasing if the
+default branch moved) and merges, and the merged pull request puts the card in Done. Any run
+nightshift starts on a card in Ready to merge with a pull request (your comment, an update)
+carries that news, so it merges too. A merge run that ends needing you (a gate failed, or
+something needs a decision) puts the card back in Your review, and its `look` comment says
+why; one that ends waiting (for the pull request it goes after, say) leaves the card in Ready
+to merge. If you move the card there while a run works, the run's end leaves it and the next
+poll starts the merge run. A card that was in Ready to merge before nightshift saw it
+starts no merge by itself, and a card moved there with no pull request yet starts
+none until a run ends with one open.
+
 ## Sessions and worktrees
 
 Each issue gets its own worktree (in the repo's clone, `.claude/worktrees/issue-<n>`,

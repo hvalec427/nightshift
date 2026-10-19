@@ -71,6 +71,16 @@ nightshift's runs read this file and keep it up to date.
 - **open choice**: a decision in a plan that the issue and the user's answers don't settle, and
   that the user might make differently (an assumption in place of an answer counts). A plan with
   none carries on to the build without waiting for a go.
+- **board**: a GitHub project (v2) named by a repo's `project=` in `.nightshift/config`. The repo
+  is worked from its cards, in place of the `agent` label; nightshift reads them with one
+  GraphQL query a poll (`BOARD_QUERY`).
+- **column**: an option of the board's `Status` field, matched by name without regard to case:
+  Backlog, Ready, In progress, In review, Your review, Ready to merge and Done. The repo's
+  issues in a column other than Backlog and Done are worked; the rest are off.
+- **card**: an item of the board. An issue's card is where nightshift reads its column and moves
+  it as the work goes; a pull request's card is skipped.
+- **draft card**: a card with no issue behind it. One in Ready is turned into an issue of the
+  repo (the first one listed that names the board), its card kept.
 - **all-issues on-time**: the UTC time a poll first read a repo's `all_issues=true`, kept in
   `~/.nightshift/all_issues/<owner>_<repo>` until the option reads off. Only an allowed user's
   unlabelled issues created at or after it are worked; older ones are left alone.

@@ -121,7 +121,8 @@ small issue (case 3) has a pull request and no plan, and its later runs take cas
    from the issue and the code. When in doubt, it isn't small. Decide it on a run with
    no plan yet, and invoke the `nightshift:build` skill in this session (no
    `nightshift build` first: there's no planning conversation to leave behind). It builds
-   the issue as its one ticket, with no plan and no wait for a **go**.
+   the issue as its one ticket, with no plan and no wait for a **go**. When the run prompt
+   says "This repo works from a project board", nothing is small: take case 4.
 4. **No plan yet, nothing open** (or the answers are in). On a `bug`, invoke the
    `nightshift:diagnose` skill: it finds the cause behind a red check, then invokes
    `nightshift:plan` itself (or asks in a `questions` comment when it can't build the
@@ -130,13 +131,15 @@ small issue (case 3) has a pull request and no plan, and its later runs take cas
 5. **A plan, and the user asked for changes** (or a new size). Invoke `nightshift:plan`
    too, for a revised plan, then wait again.
 6. **A plan the user approved** ("go", or anything that clearly means build it), **or a
-   plan that carried on** (its last line says it has no open choices, so no one said go).
+   plan that carried on** (its last line says it has no open choices, so no one said go;
+   never on a project board, where the card moving to In progress approves it).
    Run `nightshift build` first (`nightshift build --carry-on` for the carry-on): when it
    says a fresh session builds it, end the run there, with no comment. Otherwise invoke
    the `nightshift:build` skill: it builds the tickets test-first and opens the pull
-   request (and hands it to the merge skill when the repo auto-merges). For a **large**
-   plan the build makes the sub-issues instead, and a parent whose sub-issues exist is
-   not built again: a comment of the user's on it is answered in a `progress` comment.
+   request (and hands it to the merge skill when the repo auto-merges or is a board). For
+   a **large** plan the build makes the sub-issues instead, and a parent whose sub-issues
+   exist is not built again: a comment of the user's on it is answered in a `progress`
+   comment.
 7. **An update run:** the watcher's news says the base branch moved under this pull
    request. Invoke the `nightshift:update` skill: it rebases the branch and adapts the
    change to what merged.
@@ -144,11 +147,15 @@ small issue (case 3) has a pull request and no plan, and its later runs take cas
    means merge it). When the run prompt says "This repo auto-merges", invoke the
    `nightshift:merge` skill: it runs its hard gates again and merges. With
    `auto_merge=false`, a **merge** reply is a request like any other (the next case), but
-   you don't merge: that's the user's.
+   you don't merge: that's the user's. On a project board (the run prompt says "This repo
+   works from a project board") nothing auto-merges: invoke `nightshift:merge` on a
+   **merge** reply, or when the news says "the board: the card is in Ready to merge" (a `look`
+   comment before it or not), and it merges.
 9. **A pull request is open, and the user commented.** Do what they ask on this branch,
    check it, commit and push. The pull request updates with the push. Then say what you did
-   in a `progress` comment, only when the repo doesn't auto-merge. When the run prompt says
-   "This repo auto-merges", post nothing and hand what it did to the `nightshift:merge`
+   in a `progress` comment, only when the repo doesn't auto-merge (and isn't a board). When
+   the run prompt says "This repo auto-merges" or "This repo works from a project board",
+   post nothing and hand what it did to the `nightshift:merge`
    skill, invoked with the Skill tool: it puts that at the top of its one closing comment
    and checks the updated pull request again.
    On a small issue (case 3), a reply asking for a plan or "the full process" is a plan
