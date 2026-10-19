@@ -224,14 +224,11 @@ planned() {
   runs_do 'skill nightshift:plan; comment plan "T1: the fast path."'
   poll
   expect "the plan is posted: the card waits in Needs you" "$(gh_card_column "$BOARD" o/r 7)" "Needs you"
-  # The move to In progress that approves is read from Ready here: from Needs you is the next ticket's.
-  gh_card_move "$BOARD" o/r 7 Ready
-  poll
 }
 (world
   planned
   expect "the plan is posted: one run" "$(runs)" 1
-  expect "and the card stays in Ready" "$(gh_card_column "$BOARD" o/r 7)" "Ready"
+  expect "and the card stays in Needs you" "$(gh_card_column "$BOARD" o/r 7)" "Needs you"
   poll
   expect "nothing new: no second run" "$(runs)" 1
   gh_card_move "$BOARD" o/r 7 "In progress"
