@@ -396,6 +396,8 @@ tab     separated")
 
 (world
   expect_line "top --help: the usage" "$(ns top --help)" "^usage: nightshift top \[-l <level> | -v | -vv | -vvv\]$"
+  expect_line "top --help: the default level" "$(ns top --help)" "default level is messages"
+  expect_line "top --help: where the levels are" "$(ns top --help)" "nightshift logs --help"
   try ns top frobnicate
   expect "top, an argument: exit 2" "$ST" 2
   expect_line "top, an argument: the usage" "$OUT" "^usage: nightshift top \[-l <level> | -v | -vv | -vvv\]$"

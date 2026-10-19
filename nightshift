@@ -8,7 +8,7 @@
 #   nightshift stop                      stop the service (until `nightshift start`)
 #   nightshift stop <owner/repo>#<n>     stop an issue's running agent
 #   nightshift logs [<owner/repo>#<n>] [-f] [-v…]  what every issue (or one) does, at a level
-#   nightshift top                       at least 8 windows, one per issue in progress, tiled: its status and the end of its log, live on a terminal (q quits, j/k scroll)
+#   nightshift top [-l <level> | -v…]    at least 8 windows, one per issue in progress, tiled: its status and the end of its log (messages by default), live on a terminal (q quits, j/k scroll)
 #   nightshift add <owner/repo> <clone>  watch a repo, using this clone of it, and set up its .nightshift/ (config, CONTEXT.md) to commit
 #   nightshift label <status>            (in a run) set its issue's status label
 #   nightshift sub-issue --title <t> --body-file <f> [--after <n>]…  (in a run) create a sub-issue of its issue, blocked by the issues it goes after
@@ -2452,12 +2452,20 @@ usage: nightshift top [-l <level> | -v | -vv | -vvv]
 
 A grid of at least 8 windows (the most that fit, never fewer than the issues in
 progress), tiled to fit the terminal: a window for every issue in progress, with
-its status and the end of its log, and the spare windows blank. On a terminal it
+its status and the end of its log, and the spare windows blank. The log shows a
+level and the ones above it, as in `nightshift logs`. On a terminal it
 is live: it redraws every second, fits the terminal as it resizes, and q quits.
 When the windows don't all fit, j or the down arrow scrolls the grid down a row of
 windows, k or the up arrow up a row, Space or PgDn down a page, and PgUp up a page.
 Piped, it prints one frame and exits. The size, for one frame, is COLUMNS and
 LINES, or the terminal's.
+
+  -l, --level <level> show this level and the ones above it (a name, or 0-3);
+                      what each shows is in `nightshift logs --help`
+  -v, -vv, -vvv       messages, tools, all (they add up: -v -v is -vv)
+  -h, --help          this help
+
+The default level is messages (1): the runs level and Claude's text.
 HELP
 }
 
