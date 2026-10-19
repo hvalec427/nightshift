@@ -103,6 +103,14 @@ gh_block_add() {
   gh_unlock
 }
 
+# Issue $2 is made to wait for issue $4 of another repo $3, as
+# `blocked_by_other` records it (the board query reads it).
+gh_block_add_other() {
+  gh_lock
+  gh_edit "$(gh_dir "$1")/issues/$2.json" '.blocked_by_other += [{repo: $r, number: $n}]' --arg r "$3" --argjson n "$4"
+  gh_unlock
+}
+
 # The numbers of the issues issue $2 was made to wait for, a line each.
 gh_blockers() {
   local i

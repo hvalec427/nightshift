@@ -53,8 +53,8 @@
 # `usage`, `agents`, `models`, `subs`, `subs-noted` and `subs-closed` stay
 # (`revived`, the merged pull request a comment brought it back from);
 # `label`, its status label (see STATUSES; `waiting` while open blockers hold its
-# first run, or on a board its card at any stage, which the watcher checks every poll); `skill`, the last nightshift skill
-# its session invoked (see SKILL_STATUSES); `type`, its type label as the
+# first run, or on a board its card at any stage, which the watcher checks every
+# poll); `skill`, the last nightshift skill its session invoked (see SKILL_STATUSES); `type`, its type label as the
 # last run left it (see TYPES); and per repo, `merged/<owner>_<repo>`, the
 # merged nightshift pull requests seen, `labels/<owner>_<repo>`, the
 # version of the status labels created there, `poll/<owner>_<repo>.board.json`,
@@ -2077,10 +2077,14 @@ poll_repo() {
       did="$did, #$n being linked"
       continue
     elif [ "$held_now" -eq 1 ] || { [ $first_run -eq 1 ] && printf '%s\n' "$blocked" | grep -qx "$n"; }; then
-      printf '%s\n' "$proposed" | grep -qx "$n" || set_status "$repo" "$n" waiting
+      held_proposed=0
+      printf '%s\n' "$proposed" | grep -qx "$n" && held_proposed=1
+      [ $held_proposed -eq 1 ] || set_status "$repo" "$n" waiting
       if [ -n "$board" ]; then
         [ "$bmove" != 1 ] || [ -f "$d/build" ] || printf '%s\n' "$BMOVE" >"$d/build"
-        printf '%s\n' "$issues" | jq -r --argjson n "$n" '.[] | select(.number == $n) | .blockers | map(ltrimstr("#")) | join(",")' >"$d/blockers"
+        # What `status` names (a proposed card reads as proposed instead).
+        [ $held_proposed -eq 1 ] ||
+          printf '%s\n' "$issues" | jq -r --argjson n "$n" '.[] | select(.number == $n) | .blockers | map(ltrimstr("#")) | join(",")' >"$d/blockers"
       fi
       did="$did, #$n blocked"
       continue
@@ -2101,7 +2105,7 @@ poll_repo() {
     fi
     # A plain "go" to the plan: build it in a fresh session (see run_agent).
     if [ "$bmove" = 1 ] || { [ "$(cat "$d/build" 2>/dev/null)" = "$BMOVE" ] && [ -n "$news" ]; }; then
-      # (The second: a move the hold kept, now released with what came in since.)
+      # Or a move a hold kept back, released now with the comments made since.
       printf '%s\n%s' "$BMOVE" "${news:+
 $news}" >"$d/build"
     elif [ -n "$news" ] && handoff_ok "$d" && approves "$repo" "$n" "$filter"; then
@@ -2659,7 +2663,7 @@ after_note() {
 
 # The issues holding a board card: " · after #5, o/x#3", or nothing.
 blockers_note() {
-  [ -s "$1/blockers" ] && printf ' · after %s' "$(sed 's/^\([0-9]\)/#\1/; s/,\([0-9]\)/,#\1/g; s/,/, /g' "$1/blockers")"
+  [ -s "$1/blockers" ] && printf ' · after %s' "$(tr ',' '\n' <"$1/blockers" | sed '/#/!s/^/#/' | paste -sd, - | sed 's/,/, /g')"
 }
 
 # What brings a stopped run back.

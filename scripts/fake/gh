@@ -159,6 +159,11 @@ board_page() {
       blockers=$(jq -c --arg k "$r#$n" --arg r "$r" --slurpfile b "$(gh_dir "$r")/issues/$b.json" \
         '.[$k] += [{number: $b[0].number, state: ($b[0].state | ascii_upcase), repository: {nameWithOwner: $r}}]' <<<"$blockers")
     done
+    # And those in other repos.
+    while IFS=' ' read -r i b; do
+      blockers=$(jq -c --arg k "$r#$n" --arg r "$i" --slurpfile b "$(gh_dir "$i")/issues/$b.json" \
+        '.[$k] += [{number: $b[0].number, state: ($b[0].state | ascii_upcase), repository: {nameWithOwner: $r}}]' <<<"$blockers")
+    done < <(jq -r '.blocked_by_other[]? | "\(.repo) \(.number)"' "$(gh_dir "$r")/issues/$n.json")
   done < <(jq -r '.[] | select(.repo) | "\(.repo) \(.number)"' "$d/items.json")
   jq -c --slurpfile items "$d/items.json" --argjson issues "$issues" --argjson blockers "$blockers" '
     . as $p | {data: {repositoryOwner: {projectV2: {

@@ -762,21 +762,39 @@ blocked_card() {
   gh_comment o/r 7 alice "1 yes" >/dev/null
   poll
   expect "a reply after: held" "$(runs)" 1
-  expect "its status: waiting" "$(status_label 7)" waiting)
+  expect "its status: waiting" "$(status_label 7)" waiting
+  expect_no_unexpected)
 
 # `status` names what a held card waits on, and says so no more once it's released.
 (world
   blocked_card
   poll
   expect_line "status: a card never run" "$(ns status)" '^o/r#7  *waiting · after #3$'
-  printf '5,o/x#3\n' >"$(idir 7)/blockers"
-  expect_line "status: across repos" "$(ns status)" '^o/r#7  *waiting · after #5, o/x#3$'
+  gh_issue o/r 4 alice
+  gh_block_add o/r 7 5004
+  gh_state o/r 4
+  gh_repo 1org/x "$TMPDIR/none"
+  gh_issue 1org/x 5 alice
+  gh_block_add_other o/r 7 1org/x 5
+  poll
+  expect_line "status: open blockers alone, across repos" "$(ns status)" '^o/r#7  *waiting · after #3, 1org/x#5$'
+  gh_state 1org/x 5
   : >"$(idir 7)/blockers"
   expect_line "status: no blocker listed (past the first 50)" "$(ns status)" '^o/r#7  *waiting$'
   poll
   gh_state o/r 3
   poll
   expect "status: released, no longer waiting" "$(ns status | grep -c 'waiting')" 0
+  expect_no_unexpected)
+
+# A held proposed card stays proposed, in its label and in `status`.
+(world
+  blocked_card
+  gh_label_add o/r 7 alice "nightshift: proposed"
+  poll
+  expect "held: no run" "$(runs)" 0
+  expect "its status: proposed" "$(status_label 7)" proposed
+  expect "status: not waiting" "$(ns status | grep -c 'waiting')" 0
   expect_no_unexpected)
 
 # With a pull request open.
