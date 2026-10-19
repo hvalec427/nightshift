@@ -13,8 +13,15 @@ try() {
   set -e
 }
 
-# The frame at $1 columns × $2 lines.
-frame() { COLUMNS=$1 LINES=$2 ns top; }
+# The frame at $1 columns × $2 lines, with the rest as top's arguments: all four
+# levels' lines (-vvv) if there are none, so a test of layout sees every line of
+# log8. The default (messages) is `COLUMNS=… LINES=… ns top`.
+frame() {
+  local c=$1 l=$2
+  shift 2
+  [ $# -gt 0 ] || set -- -vvv
+  COLUMNS=$c LINES=$l ns top "$@"
+}
 
 # Issue $1, with its state files (the rest: name=content) and a log of eight
 # lines, "line 1" … "line 8", tagged at levels 0-3 in turn.
@@ -59,6 +66,48 @@ line 4
 line 5
 line 6
 line 7
+line 8"
+  expect "top: with no flag, the lines of runs and messages (levels 0-1), the last ones that fit" "$(COLUMNS=40 LINES=6 ns top)" \
+    "o/r#7 · bug · queued to build
+line 1
+line 4
+line 5
+line 8"
+  m="o/r#7 · bug · queued to build
+line 1
+line 4
+line 5
+line 8"
+  expect "top: -v is messages" "$(frame 40 6 -v)" "$m"
+  expect "top: -l messages is messages" "$(frame 40 6 -l messages)" "$m"
+  expect "top: --level 1 is messages" "$(frame 40 6 --level 1)" "$m"
+  expect "top: --level=messages is messages" "$(frame 40 6 --level=messages)" "$m"
+  expect "top: -l runs: just the runs' lines" "$(frame 40 6 -l runs)" "o/r#7 · bug · queued to build
+line 4
+line 8"
+  expect "top: -vv: lines up to tools (not line 3 or 7)" "$(frame 40 8 -vv)" "o/r#7 · bug · queued to build
+line 1
+line 2
+line 4
+line 5
+line 6
+line 8"
+  expect "top: -vvv: every line" "$(frame 40 9 -vvv | sed -n '2,$p')" "line 1
+line 2
+line 3
+line 4
+line 5
+line 6
+line 7
+line 8"
+  expect "top: -v -v is -vv" "$(frame 40 8 -v -v)" "$(frame 40 8 -vv)"
+  expect "top: -l all, -l 3 and --level=all are -vvv" "$(frame 40 9 -l all)|$(frame 40 9 -l 3)|$(frame 40 9 --level=all)" \
+    "$(frame 40 9 -vvv)|$(frame 40 9 -vvv)|$(frame 40 9 -vvv)"
+  expect "top: more than three -v is still all" "$(frame 40 9 -vvv -vvv)" "$(frame 40 9 -vvv)"
+  expect "top: -v adds to -l, as in logs: -l messages -v is -vv" "$(frame 40 8 -l messages -v)" "$(frame 40 8 -vv)"
+  expect "top: a window of 3 rows at -l runs has both runs' lines, found past the last 2 lines of the log" "$(frame 40 3 -l runs)" \
+    "o/r#7 · bug · queued to build
+line 4
 line 8"
   expect "top: the lines the screen has, whatever its height" "$(frame 40 6 | rows) $(frame 100 20 | rows)" "6 20"
   expect "top: a tall window starts with what the log has, blank below" "$(frame 40 11 | sed -n '1p;2p;9p;10p' | tr '\n' '|')" \
@@ -342,15 +391,25 @@ at one
 at two
 at three
 untagged
-tab     separated")
+tab     separated"
+  expect "top: an untagged line shows at the default level" "$(COLUMNS=40 LINES=8 ns top | sed -n "2,\$p")" "at zero
+at one
+untagged")
 
 # --- the command ------------------------------------------------------------------------------
 
 (world
-  expect_line "top --help: the usage" "$(ns top --help)" "^usage: nightshift top$"
+  expect_line "top --help: the usage" "$(ns top --help)" "^usage: nightshift top \[-l <level> | -v | -vv | -vvv\]$"
+  expect_line "top --help: the default level" "$(ns top --help)" "default level is messages"
+  expect_line "top --help: where the levels are" "$(ns top --help)" "nightshift logs --help"
   try ns top frobnicate
   expect "top, an argument: exit 2" "$ST" 2
-  expect_line "top, an argument: the usage" "$OUT" "^usage: nightshift top$"
+  expect_line "top, an argument: the usage" "$OUT" "^usage: nightshift top \[-l <level> | -v | -vv | -vvv\]$"
+  for a in "-x" "-l" "-l loud" "--level" "--level=loud" "--level=" "-vvvv" "-v frobnicate" "7"; do
+    try ns top $a
+    expect "top $a: exit 2" "$ST" 2
+    expect_line "top $a: the usage" "$OUT" "^usage: nightshift top \[-l <level> | -v | -vv | -vvv\]$"
+  done
   expect_line "help lists top" "$(ns help)" "^  nightshift top "
   issue 7
   log8 7
@@ -372,7 +431,7 @@ await() {
   return 1
 }
 
-# Runs `nightshift top` under a pty (BSD script) sized 40×6 (or $4×$3), TERM=xterm, with $1
+# Runs `nightshift top $5` under a pty (BSD script) sized 40×6 (or $4×$3), TERM=xterm, with $1
 # on its stdin (or, for "-", what the caller writes to the fifo $W/in), and, given a signal $2, sends it that once its screen is up.
 # Its screen is in $W/tty (carriage returns dropped), its exit status in $ST
 # ("hung" if it outlasted 20 s), and the terminal's icanon, echo, min and time
@@ -385,8 +444,8 @@ live() {
   [ "$1" = - ] || { rm -f "$W/in"; printf '%s' "$1" >"$W/in"; }
   cat "$W/in" | TERM=xterm script -q /dev/null sh -c 'mode() { stty -a | tr " ;" "\n\n" | grep -x -e icanon -e -icanon -e echo -e -echo; stty -g | tr ":" "\n" | grep -e "^min=" -e "^time="; }
     echo $$ >"$1"; stty cols "$6" rows "$5"; unset COLUMNS LINES; mode >"$2"
-    perl -e "\$SIG{INT} = q(DEFAULT); exec @ARGV" "$0" top; echo $? >"$3"; mode >"$4"' \
-    "$ROOT/nightshift" "$W/sh" "$W/before" "$W/st" "$W/after" "${3:-6}" "${4:-40}" >"$W/tty.raw" 2>&1 &
+    perl -e "\$SIG{INT} = q(DEFAULT); exec @ARGV" "$0" top $7; echo $? >"$3"; mode >"$4"' \
+    "$ROOT/nightshift" "$W/sh" "$W/before" "$W/st" "$W/after" "${3:-6}" "${4:-40}" "${5:-}" >"$W/tty.raw" 2>&1 &
   pid=$!
   if [ -n "${2:-}" ]; then
     # nightshift is the shell's child, and draws once it has the alternate screen.
@@ -426,6 +485,18 @@ live() {
   expect "top, live: HUP ends it with status 129" "$ST" 129
   expect_line "top, live: HUP shows the cursor again" "$(cat "$W/tty")" "${esc}\[?25h"
   expect "top, live: HUP restores the terminal's settings" "$(cat "$W/after")" "$(cat "$W/before")")
+
+(world
+  issue 7
+  log8 7
+  live q "" 6 40 "-l runs"
+  expect_line "top, live: -l runs reaches the live frame: the runs' line 4" "$(cat "$W/tty")" "^line 4 \{34\}"
+  expect_line "top, live: and not the messages' line 5" "$(cat "$W/tty")" "^line 5" no
+  live q "" 9 40 "-vvv"
+  expect_line "top, live: -vvv shows line 3 too" "$(cat "$W/tty")" "^line 3 \{34\}"
+  live q
+  expect_line "top, live: by default, messages: line 5" "$(cat "$W/tty")" "^line 5 \{34\}"
+  expect_line "top, live: and not tools' line 6" "$(cat "$W/tty")" "^line 6" no)
 
 # Scrolling, at 40×6 (one 5-row window above the bottom line: a page is one issue) and 40×17
 # (two 8-row windows: a page is two). The bottom lines it drew, in order, and the headers,

@@ -3,7 +3,8 @@
 ```sh
 nightshift status                   # the service, the issues in progress, what each is doing and in which skill (or why it stopped), for how long, a running one's heartbeat (its latest step and last activity), what it spent so far, its context size, and merge order
 nightshift status --all             # the done ones too: when their pull request merged, or the issue closed
-nightshift top                      # at least 8 windows, one per issue in progress, tiled to fit the terminal: its status and the end of its log, redrawn every second until `q`; with more issues than fit, `j`/`k`, the arrows, Space and PgDn/PgUp scroll the grid by rows of windows (piped: one frame, the first)
+nightshift top                      # at least 8 windows, one per issue in progress, tiled to fit the terminal: its status and the end of its log, redrawn every second until `q`, with the log lines of `messages` (see `logs` below for levels); with more issues than fit, `j`/`k`, the arrows, Space and PgDn/PgUp scroll the grid by rows of windows (piped: one frame, the first)
+nightshift top -vv                  # the same with tool calls too: the default is `-v` (messages), `-l <level>` names a level, `-vvv` shows everything
 nightshift start                    # run the service: nightshift watch, in the background whenever you're logged in
 nightshift stop                     # stop the service, and the runs in flight (they resume when it starts again), until nightshift start
 nightshift stop <owner/repo>#<n>    # stop one (it stays stopped until you comment)
