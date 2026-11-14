@@ -11,7 +11,7 @@
 #   nightshift top [-l <level> | -v…]    at least 8 windows, one per issue in progress, tiled: its status and the end of its log (messages by default), live on a terminal (q quits, j/k scroll)
 #   nightshift add <owner/repo> <clone>  watch a repo, using this clone of it, and set up its .nightshift/ (config, CONTEXT.md) to commit
 #   nightshift label <status>            (in a run) set its issue's status label
-#   nightshift sub-issue --title <t> --body-file <f> [--after <n>]…  (in a run) create a sub-issue of its issue, blocked by the issues it goes after
+#   nightshift sub-issue --title <t> --body-file <f> [--after <n>]…  (in a run) create a sub-issue of its issue, blocked by the issues it goes after (on a board, in Ready)
 #   nightshift build [--carry-on]        (in a run) build the approved plan, in a fresh session if it's the planning one (--carry-on: no approval, the plan has no open choices)
 #   nightshift doctor                    check the tools and setup it needs on this machine
 #   nightshift --version                 the version that runs
@@ -1733,6 +1733,15 @@ MOVE_CARD='mutation NightshiftMoveCard($project: ID!, $item: ID!, $field: ID!, $
   }
 }'
 
+# The GraphQL document that adds an issue (`content` is its node id) to a
+# project as a card, or gives the card it has already. To try it by hand:
+#   gh api graphql -f query='…' -f project=<PVT_…> -f content=<I_…>
+ADD_CARD='mutation NightshiftAddCard($project: ID!, $content: ID!) {
+  addProjectV2ItemById(input: {projectId: $project, contentId: $content}) {
+    item { id }
+  }
+}'
+
 # The columns whose cards nightshift works, lower case, as a jq array; the
 # others (Backlog, Done, a card with none) it leaves alone.
 BOARD_WORKING='["ready", "needs you", "in progress", "in review", "your review", "ready to merge"]'
@@ -1908,6 +1917,26 @@ move_card() {
   jq -c --arg i "$mci" --arg s "$mcn" '.items |= map(if .id == $i then .status = $s else . end)' "$mcf" >"$mcf.$$.tmp" && mv "$mcf.$$.tmp" "$mcf"
   printf '%s\n' "$mcn" | tr 'A-Z' 'a-z' >"$(issue_dir "$1" "$2")/column"
   log "$1#$2: card moved to $mcn"
+}
+
+# Add issue $1#$2 ($3: its node id) to its repo's board as a card in column $4
+# (matched without regard to case), by the board as it is now. Fails, with a
+# line in the log, when the board can't be read or has no such column, or a
+# mutation fails. The issue's dir isn't touched: the poll finds the new card.
+add_card() {
+  refresh_board "$1" || { log "$1#$2: couldn't read the board: card not added"; return 1; }
+  acf=$(board_file "$1")
+  acc=$(jq -r --arg c "$4" 'first(.columns[] | select((.name | ascii_downcase) == ($c | ascii_downcase))) | "\(.id)\t\(.name)"' "$acf" 2>/dev/null)
+  if [ -z "$acc" ]; then log "$1#$2: the board has no $4 column: card not added"; return 1; fi
+  acn=${acc#*"$(printf '\t')"}
+  aci=$(gh api graphql -f query="$ADD_CARD" -f project="$(jq -r .project "$acf")" -f content="$3" \
+    --jq .data.addProjectV2ItemById.item.id 2>>"$NS/watch.log") || aci=""
+  if [ -z "$aci" ] || ! gh api graphql -f query="$MOVE_CARD" -f project="$(jq -r .project "$acf")" -f item="$aci" \
+    -f field="$(jq -r .field "$acf")" -f option="${acc%%"$(printf '\t')"*}" >/dev/null 2>>"$NS/watch.log"; then
+    log "$1#$2: couldn't add the card to $acn"
+    return 1
+  fi
+  log "$1#$2: card added to $acn"
 }
 
 # With all_issues=true on repo $1, the time it was first read on (UTC, in
@@ -3152,7 +3181,9 @@ cmd_label() {
 # sub-issue of its issue (the parent): the body and the parent marker, labelled
 # the parent's type, linked under the parent, blocked by each issue it goes
 # --after, and noted in the parent's `subs`, and only then labelled `agent`, so
-# the watcher can't start it before its blockers are linked. With all_issues,
+# the watcher can't start it before its blockers are linked. On a board repo
+# it then goes on the board in Ready, last for the same reason (the go on the
+# parent approved it). With all_issues,
 # the label doesn't hold it, so it's in the parent's `subs-linking` until its
 # links are made. A step that fails after the issue was created closes it,
 # saying why, and drops it from `subs` (see sub_issue_drop), so the run can make
@@ -3177,6 +3208,7 @@ cmd_sub_issue() {
   done
   [ -n "$si_title" ] && [ -f "$si_file" ] || die "$si_use"
   si_repo=$NIGHTSHIFT_REPO si_parent=$NIGHTSHIFT_ISSUE
+  si_board=$(repo_board "$si_repo" "$(repo_clone "$si_repo")") || die "project= in .nightshift/config isn't a project URL: nothing was created"
   si_type=$(fetch_type "$si_repo" "$si_parent") || die "couldn't read #$si_parent's type: nothing was created"
   si_body="$(cat "$si_file")
 
@@ -3187,7 +3219,8 @@ cmd_sub_issue() {
   # Noted at once: the parent waits on it however the rest goes.
   si_dir=$(issue_dir "$si_repo" "$si_parent")
   mkdir -p "$si_dir" && echo "$si_n" >>"$si_dir/subs" && echo "$si_n" >>"$si_dir/subs-linking"
-  si_id=$(gh api "repos/$si_repo/issues/$si_n" --jq .id 2>/dev/null) || si_id=""
+  si_ids=$(gh api "repos/$si_repo/issues/$si_n" --jq '"\(.id) \(.node_id)"' 2>/dev/null) || si_ids=""
+  si_id=${si_ids%% *} si_node=${si_ids#* }
   [ -n "$si_id" ] && gh api -X POST "repos/$si_repo/issues/$si_parent/sub_issues" -F "sub_issue_id=$si_id" >/dev/null 2>&1 ||
     sub_issue_drop "couldn't link it under #$si_parent"
   for si_a in $si_after; do
@@ -3198,6 +3231,9 @@ cmd_sub_issue() {
   { grep -vx "$si_n" "$si_dir/subs-linking" || true; } >"$si_dir/subs-linking.new" && mv "$si_dir/subs-linking.new" "$si_dir/subs-linking"
   gh issue edit "$si_n" --repo "$si_repo" --add-label "$LABEL" >/dev/null 2>&1 ||
     sub_issue_drop "couldn't label it $LABEL"
+  if [ -n "$si_board" ]; then
+    add_card "$si_repo" "$si_n" "$si_node" Ready || sub_issue_drop "couldn't add it to the board in Ready"
+  fi
   echo "$si_url"
 }
 

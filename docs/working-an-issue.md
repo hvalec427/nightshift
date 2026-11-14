@@ -158,8 +158,9 @@ nightshift picks a size on the first run and names it, with why, in that run's c
   It always asks its questions first, and its plan is split into **sub-issues**, each a few
   tickets, naming the sub-issues it's blocked by. The plan always waits for **go**, never
   carrying on. On **go**, nightshift creates the sub-issues (`nightshift sub-issue`, labelled
-  `agent` and with the parent's type), builds nothing on the parent and opens no pull
-  request for it, and posts one comment listing them. Each sub-issue is then built from its
+  `agent` and with the parent's type, and on a project board added as cards in Ready),
+  builds nothing on the parent and opens no pull request for it, and posts one comment
+  listing them. Each sub-issue is then built from its
   body, with no questions, plan or **go** (your **go** on the parent covers them), reviewed
   and merged as its own pull request. One with no open blockers starts right away, in
   parallel with the others; one with open blockers waits (`nightshift: waiting`) until they

@@ -156,6 +156,60 @@ body_of() { jq -r .body "$(gh_dir o/r)/issues/$1.json"; }
   expect "the parent still lists it" "$(state 7 subs)" "8"
   expect "held as linking" "$(state 7 subs-linking)" "8")
 
+# --- on a board -------------------------------------------------------------------------
+
+# Without a board, nothing is asked of a project.
+(parent
+  ns sub-issue --title T --body-file "$W/body.md" >/dev/null
+  expect "no project=: no graphql call" "$(gh_calls graphql)" ""
+  expect_no_unexpected)
+
+# A parent on a board repo: alice's project 5 (columns $@, the default eight
+# without).
+board_parent() {
+  parent
+  gh_project alice/5 "$@"
+  origin_config "project=https://github.com/users/alice/projects/5"
+}
+
+(board_parent
+  try ns sub-issue --title "S1: the base" --body-file "$W/body.md"
+  expect "a board: creates it" "$ST $OUT" "0 https://github.com/o/r/issues/8"
+  expect "its card is in Ready" "$(gh_card_column alice/5 o/r 8)" "Ready"
+  expect "it still gets agent and the type" "$(gh_labels o/r 8 | sort | paste -sd, -)" "agent,bug"
+  expect "the parent's subs" "$(state 7 subs)" "8"
+  try ns sub-issue --title "S2: on the base" --body-file "$W/body.md" --after 8
+  expect "S2's card is in Ready too" "$(gh_card_column alice/5 o/r 9)" "Ready"
+  expect "it waits for #8" "$(gh_blockers o/r 9)" "8"
+  expect "the card comes last, after the links and agent" \
+    "$(grep 'issues/9\|issue edit 9\|graphql' "$GH_FAKE/calls" | grep -o 'blocked_by\|add-label agent\|NightshiftAddCard\|NightshiftMoveCard' | tail -4 | paste -sd, -)" \
+    "blocked_by,add-label agent,NightshiftAddCard,NightshiftMoveCard"
+  expect "one card each" "$(jq length "$(gh_project_dir alice/5)/items.json")" 2
+  expect_no_unexpected)
+
+(board_parent
+  echo 'api graphql *NightshiftAddCard*' >"$GH_FAKE/fail"
+  try ns sub-issue --title T --body-file "$W/body.md"
+  expect "can't add the card: fails, says what it did" "$ST $OUT" "1 nightshift: created #8 but couldn't add it to the board in Ready: closed it and dropped it from #7's sub-issues; run it again"
+  expect "the stray issue is closed" "$(gh_state_of 8)" "closed"
+  expect "the parent doesn't count it" "$(state 7 subs)" ""
+  expect_line "the log says so" "$(cat "$NS/watch.log")" "o/r#8: couldn't add the card to Ready"
+  expect_no_unexpected)
+
+(board_parent Backlog Done
+  try ns sub-issue --title T --body-file "$W/body.md"
+  expect "a board with no Ready: fails, says what it did" "$ST $OUT" "1 nightshift: created #8 but couldn't add it to the board in Ready: closed it and dropped it from #7's sub-issues; run it again"
+  expect "no card added" "$(jq length "$(gh_project_dir alice/5)/items.json")" 0
+  expect_line "the log says so" "$(cat "$NS/watch.log")" "o/r#8: the board has no Ready column: card not added"
+  expect_no_unexpected)
+
+(parent
+  origin_config "project=my board"
+  try ns sub-issue --title T --body-file "$W/body.md"
+  expect "a bad project=: fails before creating" "$ST $OUT" "1 nightshift: project= in .nightshift/config isn't a project URL: nothing was created"
+  expect "nothing created" "$(gh_calls 'issue create')" ""
+  expect_no_unexpected)
+
 # --- the fake -----------------------------------------------------------------------------
 
 # What the watcher will read: an issue's open blockers, as GitHub counts them,

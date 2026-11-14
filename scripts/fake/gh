@@ -140,6 +140,30 @@ graphql() {
       return
     done
     echo "gh: Could not resolve to a ProjectV2 with the id $pid. (projectId)" >&2; exit 1 ;;
+  NightshiftAddCard)
+    # The project is found by its id, the issue by its node id; an issue on the
+    # board already keeps its card, as on GitHub.
+    local f pid cid r n i
+    pid=$(gql_var project) cid=$(gql_var content)
+    [ -n "$pid" ] && [ -n "$cid" ] || unexpected
+    r="" n=""
+    for f in "$GH_FAKE"/repos/*/issues/*.json; do
+      case "${f##*/}" in *.*.json) continue ;; esac
+      [ -f "$f" ] && [ "$(jq -r .node_id "$f")" = "$cid" ] || continue
+      r=$(jq -r .full_name "$(dirname "$(dirname "$f")")/repo.json") n=$(jq -r .number "$f")
+    done
+    [ -n "$r" ] || { echo "gh: Could not resolve to a node with the global id of '$cid'. (contentId)" >&2; exit 1; }
+    for f in "$GH_FAKE"/projects/*/project.json; do
+      [ -f "$f" ] && [ "$(jq -r .id "$f")" = "$pid" ] || continue
+      gh_lock
+      gh_edit "$(dirname "$f")/items.json" 'if any(.[]; .repo == $r and .number == $n) then . else . + [{id: ("PVTI_" + ($r | gsub("/"; "_")) + "_\($n)"), repo: $r, number: $n, option: null}] end' \
+        --arg r "$r" --argjson n "$n"
+      gh_unlock
+      i=$(jq -r --arg r "$r" --argjson n "$n" 'first(.[] | select(.repo == $r and .number == $n)).id' "$(dirname "$f")/items.json")
+      jq -n -c --arg i "$i" '{data: {addProjectV2ItemById: {item: {id: $i}}}}' | out
+      return
+    done
+    echo "gh: Could not resolve to a ProjectV2 with the id $pid. (projectId)" >&2; exit 1 ;;
   *) unexpected ;;
   esac
 }

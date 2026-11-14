@@ -5,8 +5,8 @@
 # first, as gh lists them), origin (the path of its git remote) and per issue
 # issues/<n>.json (created_at: now, or gh_created), <n>.comments.json and
 # <n>.events.json. An issue has an `id` (5000 + its number, apart from the
-# number, as on GitHub), an `issue_dependencies_summary` whose `blocked_by`
-# counts its open blockers (a test sets it: gh_set_blocked_by),
+# number, as on GitHub), a `node_id` (I_<owner>_<repo>_<n>), an
+# `issue_dependencies_summary` whose `blocked_by` counts its open blockers (a test sets it: gh_set_blocked_by),
 # `blocked_by_ids` (the ids it was made to wait for) and, as a parent,
 # `sub_issue_ids`. `user` is who gh is logged in as; `scopes` (once a test has
 # called gh_scopes) the scopes of its token; `clock` counts, for ids and update
@@ -52,8 +52,8 @@ gh_issue() {
   shift 3
   d=$(gh_dir "$repo")
   gh_lock
-  printf '{"number":%s,"id":%s,"state":"open","title":"Issue %s","user":{"login":"%s"},"labels":[],"created_at":"%s","updated_at":"t%s","issue_dependencies_summary":{"blocked_by":0,"blocking":0,"total_blocked_by":0,"total_blocking":0},"blocked_by_ids":[],"sub_issue_ids":[]}\n' \
-    "$n" "$((5000 + n))" "$n" "$by" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(gh_tick)" >"$d/issues/$n.json"
+  printf '{"number":%s,"id":%s,"node_id":"I_%s_%s","state":"open","title":"Issue %s","user":{"login":"%s"},"labels":[],"created_at":"%s","updated_at":"t%s","issue_dependencies_summary":{"blocked_by":0,"blocking":0,"total_blocked_by":0,"total_blocking":0},"blocked_by_ids":[],"sub_issue_ids":[]}\n' \
+    "$n" "$((5000 + n))" "$(echo "$repo" | tr '/' '_')" "$n" "$n" "$by" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(gh_tick)" >"$d/issues/$n.json"
   echo '[]' >"$d/issues/$n.comments.json"
   echo '[]' >"$d/issues/$n.events.json"
   gh_unlock
@@ -206,7 +206,8 @@ gh_pr_set() {
 # cards in order: {id, repo, number, option} for an issue and {id, draft:
 # {id, title}, option} for a draft, `option` the id of the card's Status
 # option (null: none). An issue card is read live from the issue's own file.
-# A repo's node id (repo.json) is R_<owner>_<repo>.
+# A repo's node id (repo.json) is R_<owner>_<repo>, an issue's (its file's
+# node_id) I_<owner>_<repo>_<n>.
 # A project is named by "<owner>/<number>" in the functions below.
 
 # A project's directory.
